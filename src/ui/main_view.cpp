@@ -508,9 +508,17 @@ void MainView::PaintTransport(Painter &p)
         p.Text(L"Nothing to record", line1, Font::BodyStrong, kWarn);
         p.Text(L"Tick the microphone or system audio.", line2, Font::Small, kTextMuted);
     } else if (o.kind == Outcome::Kind::Failed) {
-        p.Text(o.message, line1, Font::BodyStrong, kError);
-        p.Text(o.files.empty() ? L"Nothing was recorded." : L"The audio captured before the problem was kept.",
-               line2, Font::Small, kTextMuted);
+        /* "What: why (hr=...)": the what on the first line and the why on the second, so neither is cut short. */
+        const std::size_t colon = o.message.find(L": ");
+        if (colon == std::wstring::npos) {
+            p.Text(o.message, line1, Font::BodyStrong, kError);
+            p.Text(o.files.empty() ? L"Nothing was recorded." : L"The audio captured before the problem was kept.",
+                   line2, Font::Small, kTextMuted);
+        } else {
+            p.Text(o.message.c_str(), static_cast<UINT32>(colon), line1, Font::BodyStrong, kError);
+            p.Text(o.message.c_str() + colon + 2, static_cast<UINT32>(o.message.size() - colon - 2), line2,
+                   Font::Small, kTextMuted);
+        }
     } else if (o.kind == Outcome::Kind::Saved) {
         p.Text(L"Saved", line1, Font::BodyStrong, kOk);
         p.Text(savedName_, line2, Font::Small, kTextMuted);
