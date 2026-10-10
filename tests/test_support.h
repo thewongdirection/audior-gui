@@ -51,6 +51,24 @@ std::string Describe(const T &v)
     }
 }
 
+/* The comparisons take their operands as function arguments, so temporaries
+ * (including references into them, like `MakeVector()[0]`) live until the
+ * comparison is done. */
+template <typename A, typename B>
+void CheckEq(const char *file, int line, const char *expression, const A &a, const B &b)
+{
+    if (!(a == b))
+        ReportFailure(file, line,
+                      std::string("CHECK_EQ(") + expression + ") failed: " + Describe(a) + " vs " + Describe(b));
+}
+
+inline void CheckNear(const char *file, int line, const char *expression, double a, double b, double epsilon)
+{
+    if (!(std::fabs(a - b) <= epsilon))
+        ReportFailure(file, line,
+                      std::string("CHECK_NEAR(") + expression + ") failed: " + Describe(a) + " vs " + Describe(b));
+}
+
 }  // namespace testing
 
 #define TEST(name)                                                    \
@@ -64,22 +82,7 @@ std::string Describe(const T &v)
             ::testing::ReportFailure(__FILE__, __LINE__, "CHECK(" #cond ") failed");  \
     } while (0)
 
-#define CHECK_EQ(a, b)                                                               \
-    do {                                                                             \
-        const auto &va_ = (a);                                                       \
-        const auto &vb_ = (b);                                                       \
-        if (!(va_ == vb_))                                                           \
-            ::testing::ReportFailure(__FILE__, __LINE__,                             \
-                std::string("CHECK_EQ(" #a ", " #b ") failed: ") +                   \
-                ::testing::Describe(va_) + " vs " + ::testing::Describe(vb_));       \
-    } while (0)
+#define CHECK_EQ(a, b) ::testing::CheckEq(__FILE__, __LINE__, #a ", " #b, (a), (b))
 
-#define CHECK_NEAR(a, b, eps)                                                        \
-    do {                                                                             \
-        const double va_ = static_cast<double>(a);                                   \
-        const double vb_ = static_cast<double>(b);                                   \
-        if (!(std::fabs(va_ - vb_) <= (eps)))                                        \
-            ::testing::ReportFailure(__FILE__, __LINE__,                             \
-                std::string("CHECK_NEAR(" #a ", " #b ") failed: ") +                 \
-                ::testing::Describe(va_) + " vs " + ::testing::Describe(vb_));       \
-    } while (0)
+#define CHECK_NEAR(a, b, epsilon) \
+    ::testing::CheckNear(__FILE__, __LINE__, #a ", " #b, static_cast<double>(a), static_cast<double>(b), (epsilon))
