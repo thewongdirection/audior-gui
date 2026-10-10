@@ -173,7 +173,10 @@ TEST(Mp3Sink_EncodesAFileWhereTheEncoderExists)
     const std::vector<std::int16_t> pcm = Tone(48000);                  /* one second */
     for (int i = 0; i < 2; ++i)
         CHECK(SUCCEEDED(sink->Write(pcm.data(), pcm.size() * sizeof(std::int16_t))));
-    CHECK(SUCCEEDED(sink->Close(true)));
+    const HRESULT closed = sink->Close(true);
+    if (FAILED(closed))
+        std::printf("    Mp3Sink::Close failed, hr=0x%08lX\n", static_cast<unsigned long>(closed));
+    CHECK(SUCCEEDED(closed));
 
     const std::vector<std::uint8_t> file = ReadFileBytes(path);
     CHECK(file.size() > 20000 && file.size() < 40000);                  /* 2 s at 128 kbps is ~32 KB */

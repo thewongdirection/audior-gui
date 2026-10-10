@@ -136,11 +136,17 @@ HRESULT Mp3Sink::Write(const void *pcm, std::size_t bytes)
     return hr;
 }
 
+/* While the file is open the byte stream knows its length; once it is closed the file system does. */
 void Mp3Sink::RefreshSize()
 {
     QWORD length = 0;
-    if (file_ && SUCCEEDED(file_->GetLength(&length)))
+    if (file_ && SUCCEEDED(file_->GetLength(&length))) {
         fileBytes_ = length;
+        return;
+    }
+    WIN32_FILE_ATTRIBUTE_DATA info;
+    if (GetFileAttributesExW(path_.c_str(), GetFileExInfoStandard, &info))
+        fileBytes_ = static_cast<std::uint64_t>(info.nFileSizeHigh) << 32 | info.nFileSizeLow;
 }
 
 HRESULT Mp3Sink::Close(bool keep)
@@ -149,22 +155,20 @@ HRESULT Mp3Sink::Close(bool keep)
         return closeHr_;
     closed_ = true;
     if (writer_) {
-        closeHr_ = writer_->Finalize();         /* writes the last frames */
+        closeHr_ = writer_->Finalize();         /* writes the last frames and closes the file */
         if (timeHns_ == 0)
             closeHr_ = S_OK;                    /* nothing was recorded, so there was nothing to finish */
         writer_.Reset();
     }
     if (file_) {
-        if (keep)
-            RefreshSize();
-        const HRESULT closed = file_->Close();  /* the file is complete only now */
-        if (SUCCEEDED(closeHr_))
-            closeHr_ = closed;
+        file_->Close();                         /* normally already closed by Finalize: nothing to learn from it */
         file_.Reset();
     }
     if (started_)
         MFShutdown();
-    if (!keep && created_)
+    if (keep)
+        RefreshSize();
+    else if (created_)
         DeleteFileW(path_.c_str());             /* only a file this sink made */
     return closeHr_;
 }
