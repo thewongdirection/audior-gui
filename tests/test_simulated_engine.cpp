@@ -295,3 +295,27 @@ TEST(Sim_AFailureAlsoShowsWhenAskingForStatsFirst)
     CHECK_NEAR(rig.engine.Stats().seconds, 1.0, 1e-9);          /* no IsRecording() call before */
     CHECK_EQ(rig.engine.Failure(), std::wstring(L"boom"));
 }
+
+TEST(Sim_AFailureAppliesToOneRecordingOnly)
+{
+    Rig rig;
+    rig.engine.FailAfter(1.0, L"boom");
+    rig.Start();
+    rig.now = 2.0;
+    CHECK(!rig.engine.IsRecording());
+    CHECK_EQ(rig.engine.Failure(), std::wstring(L"boom"));
+
+    rig.Start();                                        /* the next one is healthy */
+    rig.now = 10.0;
+    CHECK(rig.engine.IsRecording());
+    CHECK(rig.engine.Failure().empty());
+}
+
+TEST(Sim_StartNoticesAFailureNobodyHasPolledYet)
+{
+    Rig rig;
+    rig.engine.FailAfter(1.0, L"boom");
+    rig.Start();
+    rig.now = 5.0;                                      /* it failed at t=1; nothing looked */
+    CHECK(rig.Start());                                 /* so Start() must not say "already running" */
+}

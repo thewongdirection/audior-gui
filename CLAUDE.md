@@ -32,7 +32,7 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
     in the repo, and temporary files, downloads, caches and toolchain
     installers are removed as soon as they are no longer needed.
 - Code that reads like its surroundings: match the existing naming, comment
-  density and idiom.
+  density and idiom. Sources are UTF-8 (`build.bat` compiles with `/utf-8`).
 
 ## Layout
 

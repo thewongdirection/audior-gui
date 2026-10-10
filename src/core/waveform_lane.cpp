@@ -12,16 +12,26 @@ float AmplitudeToHeight(float linear)
     const float db = LinearToDb(std::fabs(linear));
     if (!std::isfinite(db))
         return 0.0f;
-    const float floorDb = -54.0f;
-    return std::min(1.0f, std::max(0.0f, (db - floorDb) / -floorDb));
+    return std::min(1.0f, std::max(0.0f, (db - kHeightFloorDb) / -kHeightFloorDb));
 }
 
 namespace {
 
+WaveformConfig Normalized(WaveformConfig c)
+{
+    c.windowSeconds = std::max(c.windowSeconds, 1);
+    c.binsPerBar    = std::max(c.binsPerBar, 1);
+    c.maxLagSeconds = std::max(c.maxLagSeconds, 0.0);
+    return c;
+}
+
+/* What the view can reach back to: its window, measured from a playhead that
+ * may trail the newest audio by up to the maximum lag, plus a bar at each end
+ * for the partly revealed bars. */
 std::size_t HistoryCapacity(const WaveformConfig &c)
 {
-    /* The view's window, plus a couple of bars of slack at the old edge. */
     return static_cast<std::size_t>(c.windowSeconds) * kPeakBinsPerSecond +
+           static_cast<std::size_t>(std::ceil(c.maxLagSeconds * kPeakBinsPerSecond)) +
            static_cast<std::size_t>(c.binsPerBar) * 2;
 }
 
@@ -30,9 +40,8 @@ std::size_t HistoryCapacity(const WaveformConfig &c)
 WaveformLane::WaveformLane() : WaveformLane(WaveformConfig()) {}
 
 WaveformLane::WaveformLane(const WaveformConfig &config)
-    : config_(config), history_(HistoryCapacity(config))
+    : config_(Normalized(config)), history_(HistoryCapacity(config_))
 {
-    config_.binsPerBar = std::max(config_.binsPerBar, 1);
 }
 
 void WaveformLane::Reset()

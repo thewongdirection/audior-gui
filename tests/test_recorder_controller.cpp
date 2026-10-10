@@ -292,3 +292,35 @@ TEST(Controller_AnimatesWhileRecordingAndUntilTheWaveformsSettle)
     rig.Run(10.0);
     CHECK(!rig.ctl.Animating());            /* settled: the UI can stop its timer */
 }
+
+namespace {
+
+/* Counts Stop() calls. */
+class SpyEngine : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    int stops = 0;
+    void Stop() override
+    {
+        ++stops;
+        SimulatedEngine::Stop();
+    }
+};
+
+}  // namespace
+
+TEST(Controller_AcknowledgesAFailedRecordingWithStop)
+{
+    double now = 0.0;
+    SpyEngine engine([&now] { return now; });
+    RecorderController ctl(engine, [] { return LocalTime(); });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    engine.FailAfter(1.0, L"Audio capture failed");
+
+    ctl.Start();
+    now = 2.0;
+    ctl.Tick(2.0);
+    CHECK(ctl.GetPhase() == Phase::Idle);
+    CHECK_EQ(engine.stops, 1);                          /* the engine was told to let go */
+    CHECK(ctl.LastOutcome().kind == Outcome::Kind::Failed);
+}

@@ -8,8 +8,14 @@
  * locking if it records on other threads.
  *
  * Audio reaches the GUI only as peak bins (see PeakBin), pulled with
- * TakePeaks().  What an engine reports must be what it records: after the
- * microphone gain, so that clipping shows up in the waveform.
+ * TakePeaks().  What an engine reports must be what it records: each stream
+ * after the microphone gain (so clipping shows up in the waveform) and before
+ * any merge weighting, clamped to -1..+1 as it is written.
+ *
+ * The controller needs the engine to be usable (COM initialised, devices
+ * listable) as soon as it is constructed, and it never overwrites a file it
+ * did not create: Start() must fail, with a message, rather than replace an
+ * existing file.
  */
 #pragma once
 
@@ -39,7 +45,10 @@ public:
     virtual bool Start(const RecordingSettings &settings, const std::wstring &outputPath,
                        std::wstring *error) = 0;
 
-    /* Stop and finalise the file(s).  Does nothing when not recording. */
+    /* Stop and finalise the file(s).  Does nothing when not recording.  The
+     * controller also calls it after IsRecording() went false by itself, so
+     * an engine can release what it still holds.  It runs on the UI thread
+     * and may take a moment (closing devices, flushing the encoder). */
     virtual void Stop() = 0;
 
     /* True while recording.  Becomes false by itself if the recording fails
@@ -54,7 +63,9 @@ public:
      * deliver none. */
     virtual std::size_t TakePeaks(StreamId stream, PeakBin *out, std::size_t capacity) = 0;
 
-    /* Why the last recording ended on its own, or empty. */
+    /* Why the last recording failed, or empty.  That includes a failure to
+     * finalise the files after a normal Stop() (a full disk on the last
+     * flush, say), not only one that ended the recording by itself. */
     virtual std::wstring Failure() = 0;
 
     /* The files the current or last recording wrote. */

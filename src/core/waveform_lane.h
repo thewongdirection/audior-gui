@@ -29,8 +29,11 @@ struct WaveformConfig {
     double maxLagSeconds = 0.6;
 };
 
-/* Bar height (0..1) for a linear amplitude: a dB scale from kFloorDb to
- * full scale, which reads like loudness better than a linear one does. */
+/* The bottom of the bar-height scale: quieter sounds are drawn at height 0. */
+constexpr float kHeightFloorDb = -54.0f;
+
+/* Bar height (0..1) for a linear amplitude: a dB scale from kHeightFloorDb
+ * up to full scale, which reads like loudness better than a linear one does. */
 float AmplitudeToHeight(float linear);
 
 class WaveformLane {

@@ -84,20 +84,21 @@ set "TEST_SRC="
 for %%f in (tests\*.cpp) do set "TEST_SRC=!TEST_SRC! %%f"
 cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\run_tests.exe" !TEST_SRC! !CORE_OBJ! /link %LFLAGS% || goto :buildfail
 
-if "%WANT_APP%"=="1" (
-    set "UI_SRC=src\main.cpp"
-    for %%f in (src\ui\*.cpp) do set "UI_SRC=!UI_SRC! %%f"
-    cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_gui.exe" !UI_SRC! !CORE_OBJ! ^
-        /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% || goto :buildfail
-)
-
 REM Only libraries that ship with Windows may be imported (see tests\check_imports.ps1).
-set "BUILT=%OUT%\run_tests.exe"
-if "%WANT_APP%"=="1" set "BUILT=!BUILT! %OUT%\audior_gui.exe"
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 !BUILT! || goto :buildfail
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\run_tests.exe || goto :buildfail
 
-if not "%RUN_TESTS%"=="1" goto :builddone
+REM Run the tests before compiling the UI, so a UI error never hides a test result.
+if not "%RUN_TESTS%"=="1" goto :build_app
 "%OUT%\run_tests.exe" || goto :buildfail
+
+:build_app
+if not "%WANT_APP%"=="1" goto :builddone
+set "UI_SRC=src\main.cpp"
+for %%f in (src\ui\*.cpp) do set "UI_SRC=!UI_SRC! %%f"
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_gui.exe" !UI_SRC! !CORE_OBJ! ^
+    /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% || goto :buildfail
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\audior_gui.exe || goto :buildfail
+
 :builddone
 endlocal & exit /b 0
 

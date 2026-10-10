@@ -256,3 +256,35 @@ TEST(Lane_IsActiveUntilItHasCaughtUpAndTheMeterIsQuiet)
     lane.Advance(10.0);                     /* the meter has fallen to silence */
     CHECK(!lane.Active());
 }
+
+TEST(Lane_TheFullWindowSurvivesALaggingPlayhead)
+{
+    /* A burst that leaves the playhead the maximum lag behind the data must
+     * not push the oldest visible bars out of the history. */
+    WaveformConfig config;
+    config.windowSeconds = 2;
+    WaveformLane lane(config);
+    Feed(lane, Bins(1000, 0.5f));
+    lane.Advance(kBin);
+    CHECK_NEAR(lane.Playhead(), 940.0, 1e-9);           /* 60 bins behind */
+
+    std::vector<float> h;
+    lane.Bars(lane.MaxBars(), &h);
+    CHECK_EQ(h.size(), lane.MaxBars());
+    for (float v : h)
+        CHECK(v > 0.0f);                                /* no bar has fallen out */
+}
+
+TEST(Lane_NonsenseConfigIsTamed)
+{
+    WaveformConfig config;
+    config.windowSeconds = -3;
+    config.binsPerBar = 0;
+    config.maxLagSeconds = -1.0;
+    WaveformLane lane(config);                          /* must not throw or divide by zero */
+    Feed(lane, Bins(10, 0.5f));
+    lane.Advance(1.0);
+    std::vector<float> h;
+    lane.Bars(lane.MaxBars(), &h);
+    CHECK(lane.MaxBars() >= 1);
+}

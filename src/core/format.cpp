@@ -31,7 +31,7 @@ std::wstring FormatBytes(std::uint64_t bytes)
     }
     double value = static_cast<double>(bytes);
     int unit = 0;
-    while (value >= 1024.0 && unit < 4) {
+    while (value >= 1023.95 && unit < 4) {     /* so "%.1f" never prints 1024.0 */
         value /= 1024.0;
         ++unit;
     }

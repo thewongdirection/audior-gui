@@ -54,8 +54,11 @@ void LaneView::Paint(Painter &p, const D2D1_RECT_F &card, const LaneStyle &style
     if (Height(area) < 20.0f || Width(area) < 40.0f)
         return;
     PaintBars(p, area, style.color, lane);
-    if (!recording && !lane.HasAudio())
-        p.Text(L"Press Start to record", area, Font::Small, theme::kTextFaint, Align::Center);
+    if (!recording && !lane.HasAudio()) {      /* below the baseline, not on it */
+        const float cy = (area.top + area.bottom) * 0.5f;
+        p.Text(L"Press Start to record", RectF(area.left, cy + 12, area.right, cy + 36), Font::Small,
+               theme::kTextFaint, Align::Center);
+    }
 }
 
 void LaneView::PaintBars(Painter &p, const D2D1_RECT_F &area, const D2D1_COLOR_F &color,

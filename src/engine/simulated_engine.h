@@ -27,8 +27,8 @@ public:
 
     explicit SimulatedEngine(Clock nowSeconds, std::uint64_t seed = 1);
 
-    /* Make the next recording fail by itself after `seconds`, as an unplugged
-     * microphone would (for demos and tests). */
+    /* Make the next recording (only) fail by itself after `seconds`, as an
+     * unplugged microphone would (for demos and tests). */
     void FailAfter(double seconds, std::wstring message);
 
     bool IsSimulated() const override { return true; }
@@ -58,7 +58,8 @@ private:
     std::vector<std::wstring> files_;
     std::wstring  failure_;
 
-    double        failAfter_ = -1.0;        /* < 0: never */
+    double        failAfter_ = -1.0;        /* armed for the next Start(); < 0: none */
+    double        failAt_    = -1.0;        /* when the current recording fails; < 0: never */
     std::wstring  failMessage_;
 };
 

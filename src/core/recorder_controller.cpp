@@ -133,8 +133,10 @@ void RecorderController::Tick(double dtSeconds)
     if (phase_ == Phase::Recording) {
         DrainPeaks();
         stats_ = engine_.Stats();
-        if (!engine_.IsRecording())
+        if (!engine_.IsRecording()) {
+            engine_.Stop();         /* lets the engine release and finalise what it holds */
             Finish();
+        }
     }
     for (WaveformLane &lane : lanes_)
         lane.Advance(dtSeconds);

@@ -35,8 +35,6 @@ inline std::string Describe(const std::wstring &w)
     return s + "\"";
 }
 
-inline std::string Describe(const wchar_t *w) { return Describe(std::wstring(w)); }
-
 template <typename T>
 std::string Describe(const T &v)
 {

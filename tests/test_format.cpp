@@ -63,3 +63,10 @@ TEST(FormatDb_RoundsAndShowsSilence)
     CHECK_EQ(FormatDb(-0.3f), std::wstring(L"0 dB"));          /* never "-0 dB" */
     CHECK_EQ(FormatDb(-std::numeric_limits<float>::infinity()), std::wstring(L"-∞ dB"));
 }
+
+TEST(FormatBytes_NeverShowsTheNextUnitAs1024)
+{
+    CHECK_EQ(FormatBytes(1048575), std::wstring(L"1.0 MB"));        /* not "1024.0 KB" */
+    CHECK_EQ(FormatBytes(1048576), std::wstring(L"1.0 MB"));
+    CHECK_EQ(FormatBytes(1023 * 1024), std::wstring(L"1023.0 KB"));
+}
