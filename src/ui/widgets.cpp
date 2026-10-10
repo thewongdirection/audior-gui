@@ -127,31 +127,37 @@ bool Segmented::Key(UINT vk)
     return true;
 }
 
-/* ---- Toggle ---------------------------------------------------------- */
+/* ---- Checkbox -------------------------------------------------------- */
 
-void Toggle::Paint(Painter &p, const WidgetState &st) const
+void Checkbox::Paint(Painter &p, const WidgetState &st) const
 {
-    const float h = Height(rect), r = h * 0.5f;
-    const D2D1_COLOR_F track = on ? accent : (st.hot ? theme::kBorder : Rgb(0x343C4B));
-    p.FillRound(rect, r, Dim(track, enabled));
-    const float cx = on ? rect.right - r : rect.left + r;
-    p.FillCircle(cx, (rect.top + rect.bottom) * 0.5f, r - 3.0f, Dim(Rgb(0xFFFFFF), enabled));
+    const float cx = (rect.left + rect.right) * 0.5f, cy = (rect.top + rect.bottom) * 0.5f;
+    const D2D1_RECT_F box = RectXYWH(cx - 10.0f, cy - 10.0f, 20.0f, 20.0f);
+    if (checked) {
+        p.FillRound(box, 6.0f, Dim(accent, enabled));
+        const D2D1_COLOR_F tick = Dim(theme::kBackground, enabled);        /* a dark tick on the accent */
+        p.Line(cx - 5.0f, cy, cx - 1.5f, cy + 3.5f, tick, 2.2f);
+        p.Line(cx - 1.5f, cy + 3.5f, cx + 5.0f, cy - 3.5f, tick, 2.2f);
+    } else {
+        p.FillRound(box, 6.0f, Dim(st.hot ? theme::kHover : theme::kRaised, enabled));
+        p.StrokeRound(box, 6.0f, Dim(theme::kTextFaint, enabled), 1.5f);
+    }
 }
 
-void Toggle::Flip()
+void Checkbox::Flip()
 {
-    on = !on;
+    checked = !checked;
     if (onChange)
-        onChange(on);
+        onChange(checked);
 }
 
-void Toggle::Release(float, float, bool inside)
+void Checkbox::Release(float, float, bool inside)
 {
     if (inside)
         Flip();
 }
 
-bool Toggle::Key(UINT vk)
+bool Checkbox::Key(UINT vk)
 {
     if (vk != VK_RETURN && vk != VK_SPACE)
         return false;

@@ -1,10 +1,12 @@
 /*
- * lane_view.h - Draws one stream's card: title, level readout and the
+ * lane_view.h - Draws one stream's pane: title, level readout and the
  * scrolling waveform.
  *
- * The waveform is a row of rounded bars (see WaveformLane::Bars).  The view
- * keeps its scratch buffers between frames, so painting a steady-state frame
- * allocates nothing.
+ * The pane's controls (the include checkbox, the device drop-down, the
+ * microphone gain) are widgets placed by MainView in the header area; this
+ * class draws everything else.  The waveform is a row of rounded bars (see
+ * WaveformLane::Bars).  The view keeps its scratch buffers between frames, so
+ * painting a steady-state frame allocates nothing.
  */
 #pragma once
 
@@ -23,14 +25,14 @@ struct LaneStyle {
 
 class LaneView {
 public:
-    /* `device` is the device's name, shown under the title.  `recording`
-     * only changes the hint shown while the lane is still empty. */
-    void Paint(Painter &painter, const D2D1_RECT_F &card, const LaneStyle &style,
-               const std::wstring &device, const WaveformLane &lane, bool recording);
+    /* Where the waveform starts, below the pane's controls. */
+    static constexpr float kControlsHeight = 96.0f;
 
-    /* The compact card shown for a stream that is switched off. */
-    static void PaintOff(Painter &painter, const D2D1_RECT_F &card, const LaneStyle &style,
-                         const wchar_t *hint);
+    /* `included`: the stream is part of the recording (else the pane is dimmed
+     * and says so).  `recording` only changes the hint shown while the lane is
+     * still empty. */
+    void Paint(Painter &painter, const D2D1_RECT_F &card, const LaneStyle &style,
+               const WaveformLane &lane, bool included, bool recording);
 
 private:
     void PaintBars(Painter &painter, const D2D1_RECT_F &area, const D2D1_COLOR_F &color,

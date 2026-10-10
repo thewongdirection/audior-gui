@@ -78,11 +78,11 @@ private:
     void Select(int index);
 };
 
-/* An on/off switch. */
-class Toggle : public Widget {
+/* A checkbox, in the accent colour of the stream it controls. */
+class Checkbox : public Widget {
 public:
-    bool                      on = false;
-    D2D1_COLOR_F              accent = theme::kSystem;
+    bool                      checked = false;
+    D2D1_COLOR_F              accent  = theme::kMic;
     std::function<void(bool)> onChange;
 
     void Paint(Painter &painter, const WidgetState &state) const override;

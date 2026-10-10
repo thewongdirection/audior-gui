@@ -17,22 +17,18 @@ constexpr float kBarFill   = 0.58f;     /* bar width as a fraction of the pitch 
 }  // namespace
 
 void LaneView::Paint(Painter &p, const D2D1_RECT_F &card, const LaneStyle &style,
-                     const std::wstring &device, const WaveformLane &lane, bool recording)
+                     const WaveformLane &lane, bool included, bool recording)
 {
-    p.FillRound(card, theme::kCardRadius, theme::kSurface);
-    p.StrokeRound(card, theme::kCardRadius, theme::kBorder);
+    p.FillRound(card, theme::kCardRadius, included ? theme::kSurface : WithAlpha(theme::kSurface, 0.55f));
+    p.StrokeRound(card, theme::kCardRadius, included ? theme::kBorder : WithAlpha(theme::kBorder, 0.8f));
 
-    /* Title, device name. */
-    const float x = card.left + kPad;
-    p.FillCircle(x + 5, card.top + 24, 5.0f, style.color);
-    p.Text(style.title, RectF(x + 20, card.top + 12, card.right - 150, card.top + 36), Font::Heading,
-           theme::kText);
-    p.Text(device, RectF(x + 20, card.top + 34, card.right - 150, card.top + 54), Font::Small,
-           theme::kTextMuted);
+    /* The title sits right of the pane's checkbox. */
+    p.Text(style.title, RectF(card.left + 52, card.top + 10, card.right - 150, card.top + 38), Font::Heading,
+           included ? theme::kText : theme::kTextFaint);
 
     /* Level readout and clip flag, right-aligned. */
-    const bool clipping = lane.Clipping();
-    if (recording || lane.HasAudio()) {
+    const bool clipping = included && lane.Clipping();
+    if (included && (recording || lane.HasAudio())) {
         const float db = lane.LevelDb();
         const long key = std::isfinite(db) ? std::lround(db) : LONG_MIN;
         if (!levelValid_ || key != levelKey_) {
@@ -50,9 +46,14 @@ void LaneView::Paint(Painter &p, const D2D1_RECT_F &card, const LaneStyle &style
     }
 
     /* The waveform. */
-    const D2D1_RECT_F area = RectF(card.left + kPad, card.top + 64, card.right - kPad, card.bottom - kPad);
+    const D2D1_RECT_F area = RectF(card.left + kPad, card.top + kControlsHeight, card.right - kPad,
+                                   card.bottom - kPad);
     if (Height(area) < 20.0f || Width(area) < 40.0f)
         return;
+    if (!included) {
+        p.Text(L"Not recorded", area, Font::Small, theme::kTextFaint, Align::Center);
+        return;
+    }
     PaintBars(p, area, style.color, lane);
     if (!recording && !lane.HasAudio()) {      /* below the baseline, not on it */
         const float cy = (area.top + area.bottom) * 0.5f;
@@ -89,17 +90,6 @@ void LaneView::PaintBars(Painter &p, const D2D1_RECT_F &area, const D2D1_COLOR_F
                     WithAlpha(color, alpha));
     }
     p.PopClip();
-}
-
-void LaneView::PaintOff(Painter &p, const D2D1_RECT_F &card, const LaneStyle &style, const wchar_t *hint)
-{
-    p.FillRound(card, theme::kCardRadius, WithAlpha(theme::kSurface, 0.55f));
-    p.StrokeRound(card, theme::kCardRadius, WithAlpha(theme::kBorder, 0.8f));
-
-    const float x = card.left + kPad, cy = (card.top + card.bottom) * 0.5f;
-    p.FillCircle(x + 5, cy, 5.0f, WithAlpha(style.color, 0.35f));
-    p.Text(style.title, RectF(x + 20, cy - 20, x + 220, cy), Font::Heading, theme::kTextFaint);
-    p.Text(hint, RectF(x + 20, cy, card.right - kPad, cy + 20), Font::Small, theme::kTextFaint);
 }
 
 }  // namespace audiorgui::ui

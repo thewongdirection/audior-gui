@@ -319,3 +319,15 @@ TEST(Sim_StartNoticesAFailureNobodyHasPolledYet)
     rig.now = 5.0;                                      /* it failed at t=1; nothing looked */
     CHECK(rig.Start());                                 /* so Start() must not say "already running" */
 }
+
+TEST(Sim_MicrophoneStreamExistsOnlyWhenIncluded)
+{
+    Rig rig;
+    rig.settings.includeMicrophone = false;
+    rig.settings.includeSystemAudio = true;
+    rig.Start();
+    rig.now = 1.0;
+    CHECK_EQ(rig.Take(StreamId::Microphone).size(), std::size_t(0));
+    CHECK_EQ(rig.Take(StreamId::System).size(), std::size_t(100));
+    CHECK_EQ(rig.engine.OutputFiles().size(), std::size_t(1));
+}

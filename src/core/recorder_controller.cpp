@@ -35,7 +35,8 @@ const RecordingSettings &RecorderController::Active() const
 
 bool RecorderController::StreamEnabled(StreamId stream) const
 {
-    return stream == StreamId::Microphone || Active().includeSystemAudio;
+    const RecordingSettings &s = Active();
+    return stream == StreamId::Microphone ? s.includeMicrophone : s.includeSystemAudio;
 }
 
 /* "audior-<time>.<ext>" in the output folder.  The time has one-second

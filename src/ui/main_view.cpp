@@ -1,5 +1,6 @@
 #include "main_view.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "../core/format.h"
@@ -13,7 +14,12 @@ constexpr float kPi = 3.14159265358979f;
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
 const LaneStyle kSystemStyle = {L"System audio", theme::kSystem};
 
-constexpr float kOffLaneHeight = 76.0f;     /* the card shown for a stream that is off */
+std::wstring GainText(int percent) { return L"+" + std::to_wstring(percent) + L"%"; }
+
+std::wstring ShareText(int micPercent)
+{
+    return L"Mic " + std::to_wstring(micPercent) + L"%  ·  System " + std::to_wstring(100 - micPercent) + L"%";
+}
 
 std::wstring FileName(const std::wstring &path)
 {
@@ -35,6 +41,35 @@ std::wstring Tail(const std::wstring &path, std::size_t keep)
 
 MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(controller), host_(host)
 {
+    micCheck_.accent = theme::kMic;
+    micCheck_.onChange = [this](bool on) {
+        ctl_.Settings().includeMicrophone = on;
+        Refresh();
+    };
+    systemCheck_.accent = theme::kSystem;
+    systemCheck_.onChange = [this](bool on) {
+        ctl_.Settings().includeSystemAudio = on;
+        Refresh();
+    };
+
+    micField_.style = Button::Style::Field;
+    micField_.onClick = [this] {
+        ChooseDevice(DeviceKind::Microphone, &RecordingSettings::microphoneId, micField_);
+    };
+    systemField_.style = Button::Style::Field;
+    systemField_.onClick = [this] {
+        ChooseDevice(DeviceKind::Playback, &RecordingSettings::systemDeviceId, systemField_);
+    };
+
+    gainSlider_.minimum = 0;
+    gainSlider_.maximum = kMaxAmplifyPercent;
+    gainSlider_.step = 5;
+    gainSlider_.accent = theme::kMic;
+    gainSlider_.onChange = [this](int v) {              /* only its own label: it fires on every drag step */
+        ctl_.Settings().micAmplifyPercent = v;
+        gainText_ = GainText(v);
+    };
+
     folderField_.style = Button::Style::Field;
     folderField_.onClick = [this] {
         if (!host_)
@@ -55,31 +90,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
     bitrateField_.style = Button::Style::Field;
     bitrateField_.onClick = [this] { ChooseBitrate(); };
 
-    micField_.style = Button::Style::Field;
-    micField_.onClick = [this] {
-        ChooseDevice(DeviceKind::Microphone, &RecordingSettings::microphoneId, micField_);
-    };
-
-    gainSlider_.minimum = 0;
-    gainSlider_.maximum = kMaxAmplifyPercent;
-    gainSlider_.step = 5;
-    gainSlider_.accent = theme::kMic;
-    gainSlider_.onChange = [this](int v) {
-        ctl_.Settings().micAmplifyPercent = v;
-        Refresh();
-    };
-
-    systemToggle_.onChange = [this](bool on) {
-        ctl_.Settings().includeSystemAudio = on;
-        Refresh();
-    };
-
-    systemField_.style = Button::Style::Field;
-    systemField_.onClick = [this] {
-        ChooseDevice(DeviceKind::Playback, &RecordingSettings::systemDeviceId, systemField_);
-    };
-
-    mixSeg_.options = {L"Merged file", L"Separate files"};
+    mixSeg_.options = {L"One merged file", L"Two separate tracks"};
     mixSeg_.onChange = [this](int i) {
         ctl_.Settings().mixMode = i == 0 ? MixMode::Merge : MixMode::Separate;
         Refresh();
@@ -91,7 +102,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
     shareSlider_.accent = theme::kSystem;
     shareSlider_.onChange = [this](int v) {
         ctl_.Settings().mergeMicPercent = v;
-        Refresh();
+        shareText_ = ShareText(v);
     };
 
     startButton_.text = L"Start recording";
@@ -118,11 +129,10 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
             host_->ShowInFolder(o.files[0]);
     };
 
-    Widget *const order[] = {&folderField_, &formatSeg_, &bitrateField_, &micField_, &gainSlider_,
-                             &systemToggle_, &systemField_, &mixSeg_, &shareSlider_,
-                             &startButton_, &stopButton_, &showButton_};
-    for (std::size_t i = 0; i < 12; ++i)
-        all_[i] = order[i];
+    Widget *const order[kWidgetCount] = {
+        &micCheck_, &micField_, &gainSlider_, &systemCheck_, &systemField_, &folderField_, &formatSeg_,
+        &bitrateField_, &mixSeg_, &shareSlider_, &startButton_, &stopButton_, &showButton_};
+    std::copy(order, order + kWidgetCount, all_);
 
     Refresh();
 }
@@ -140,66 +150,85 @@ std::wstring MainView::DeviceName(DeviceKind kind, const std::wstring &id) const
     return id.empty() ? L"No device found" : L"Device not available";
 }
 
+/* What a device drop-down shows: the device, or the system default and which
+ * device that currently is. */
+std::wstring MainView::DeviceFieldText(DeviceKind kind, const std::wstring &id) const
+{
+    return id.empty() ? L"Default · " + DeviceName(kind, id) : DeviceName(kind, id);
+}
+
 std::wstring MainView::Summarize(const RecordingSettings &s) const
 {
-    std::wstring t = s.includeSystemAudio ? L"Microphone + system audio" : L"Microphone";
+    std::wstring t;
+    if (RecordsBoth(s))
+        t = L"Microphone + system audio";
+    else if (s.includeMicrophone)
+        t = L"Microphone";
+    else if (s.includeSystemAudio)
+        t = L"System audio";
+    else
+        return L"No stream selected";
+
     t += L"  ·  ";
     t += s.format == Format::Mp3 ? L"MP3 " + std::to_wstring(s.mp3BitrateKbps) + L" kbps"
                                  : std::wstring(L"WAV 48 kHz");
-    if (s.includeSystemAudio)
-        t += s.mixMode == MixMode::Merge ? L"  ·  one merged file" : L"  ·  two files";
+    if (RecordsBoth(s))
+        t += s.mixMode == MixMode::Merge ? L"  ·  one merged file" : L"  ·  two separate tracks";
     return t;
 }
 
 void MainView::Refresh()
 {
     const RecordingSettings &s = ctl_.Settings();
-    const RecordingSettings &a = ctl_.Active();
     const bool unlocked = !ctl_.SettingsLocked();
+    const bool both = RecordsBoth(s);
+    const bool merging = s.mixMode == MixMode::Merge;
+
+    micCheck_.checked = s.includeMicrophone;
+    micCheck_.enabled = unlocked;
+    micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
+    micField_.enabled = unlocked && s.includeMicrophone;
+    gainSlider_.value = s.micAmplifyPercent;
+    gainSlider_.enabled = micField_.enabled;
+    gainText_ = GainText(s.micAmplifyPercent);
+
+    systemCheck_.checked = s.includeSystemAudio;
+    systemCheck_.enabled = unlocked;
+    systemField_.text = DeviceFieldText(DeviceKind::Playback, s.systemDeviceId);
+    systemField_.enabled = unlocked && s.includeSystemAudio;
 
     folderField_.text = s.outputDirectory.empty() ? L"Choose a folder…" : Tail(s.outputDirectory, 34);
     folderField_.enabled = unlocked;
-
     formatSeg_.selected = s.format == Format::Mp3 ? 0 : 1;
     formatSeg_.enabled = unlocked;
     bitrateField_.text = std::to_wstring(s.mp3BitrateKbps) + L" kbps";
     bitrateField_.enabled = unlocked && s.format == Format::Mp3;
 
-    micField_.text = s.microphoneId.empty() ? L"System default" : DeviceName(DeviceKind::Microphone, s.microphoneId);
-    micField_.enabled = unlocked;
-    gainSlider_.value = s.micAmplifyPercent;
-    gainSlider_.enabled = unlocked;
-    gainText_ = L"+" + std::to_wstring(s.micAmplifyPercent) + L"%";
-
-    systemToggle_.on = s.includeSystemAudio;
-    systemToggle_.enabled = unlocked;
-    systemField_.visible = mixSeg_.visible = s.includeSystemAudio;
-    systemField_.text = s.systemDeviceId.empty() ? L"System default" : DeviceName(DeviceKind::Playback, s.systemDeviceId);
-    systemField_.enabled = mixSeg_.enabled = unlocked;
-    mixSeg_.selected = s.mixMode == MixMode::Merge ? 0 : 1;
-    shareSlider_.visible = s.includeSystemAudio && s.mixMode == MixMode::Merge;
+    mixSeg_.selected = merging ? 0 : 1;
+    mixSeg_.enabled = unlocked && both;
+    mixHint_ = !both    ? L"Select both streams to merge or split them"
+               : merging ? L"Both streams are mixed into one file"
+                         : L"A _mic file and a _system file";
+    shareSlider_.visible = both && merging;
     shareSlider_.enabled = unlocked;
     shareSlider_.value = s.mergeMicPercent;
-    shareText_ = L"Mic " + std::to_wstring(s.mergeMicPercent) + L"%  ·  System " +
-                 std::to_wstring(100 - s.mergeMicPercent) + L"%";
+    shareText_ = ShareText(s.mergeMicPercent);
 
-    startButton_.enabled = ctl_.CanStart();
+    startButton_.enabled = ctl_.CanStart() && (s.includeMicrophone || s.includeSystemAudio);
     stopButton_.enabled = ctl_.CanStop();
     stopButton_.style = ctl_.CanStop() ? Button::Style::Prominent : Button::Style::Secondary;
 
     const Outcome &o = ctl_.LastOutcome();
-    const bool saved = o.kind == Outcome::Kind::Saved && !o.files.empty() && ctl_.CanStart();
-    showButton_.visible = saved;
+    const bool kept = o.kind != Outcome::Kind::None && !o.files.empty() && ctl_.CanStart();
+    showButton_.visible = kept;          /* after a failure too: the captured audio is kept */
     savedName_.clear();
-    if (saved) {
+    if (kept && o.kind == Outcome::Kind::Saved) {
         savedName_ = FileName(o.files[0]);
         if (o.files.size() > 1)
             savedName_ += L"  +" + std::to_wstring(o.files.size() - 1) + L" more";
     }
 
-    summary_ = Summarize(a);
-    micDevice_ = DeviceName(DeviceKind::Microphone, a.microphoneId);
-    systemDevice_ = DeviceName(DeviceKind::Playback, a.systemDeviceId);
+    summary_ = Summarize(ctl_.Active());
 
     /* Start and Stop swap roles: keep the keyboard focus on the live one. */
     if (focus_ && !focus_->Interactive()) {
@@ -221,8 +250,9 @@ void MainView::Update()
 
 void MainView::ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor)
 {
+    ctl_.RefreshDevices();                  /* pick up anything plugged in since the last look */
     const std::vector<DeviceInfo> &devices = ctl_.Devices(kind);
-    std::vector<std::wstring> items{L"System default"};
+    std::vector<std::wstring> items{DeviceFieldText(kind, std::wstring())};
     int selected = 0;
     for (std::size_t i = 0; i < devices.size(); ++i) {
         items.push_back(devices[i].name + (devices[i].isDefault ? L"  (default)" : L""));
@@ -256,16 +286,31 @@ void MainView::ChooseBitrate()
 /* Layout                                                                  */
 /* ====================================================================== */
 
+/* A pane's include checkbox and device drop-down. */
+void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Button &device)
+{
+    include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
+    device.rect = RectXYWH(card.left + 20, card.top + 48, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
+}
+
 void MainView::Layout(float w, float h)
 {
     using namespace theme;
     width_ = w;
-    height_ = h;
 
     const float bottom = h - kTransportH - kGap;
-    content_   = RectF(kMargin, kHeaderH, w - kMargin - kPanelW - kGap, bottom);
+    const D2D1_RECT_F content = RectF(kMargin, kHeaderH, w - kMargin - kPanelW - kGap, bottom);
     panel_     = RectF(w - kMargin - kPanelW, kHeaderH, w - kMargin, bottom);
     transport_ = RectF(0, h - kTransportH, w, h);
+
+    /* Two equal panes, each with its own controls. */
+    const float each = (Height(content) - kGap) * 0.5f;
+    micCard_    = RectF(content.left, content.top, content.right, content.top + each);
+    systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
+    LayoutPane(micCard_, micCheck_, micField_);
+    LayoutPane(systemCard_, systemCheck_, systemField_);
+    gainRow_ = RectF(micField_.rect.right + 20, micCard_.top + 48, micCard_.right - 20, micCard_.top + 84);
+    gainSlider_.rect = RectF(gainRow_.left + 40, gainRow_.top + 6, gainRow_.right - 52, gainRow_.bottom - 6);
 
     /* The settings panel, top to bottom. */
     const float pad = 18.0f, x = panel_.left + pad, iw = kPanelW - 2 * pad;
@@ -275,14 +320,9 @@ void MainView::Layout(float w, float h)
     captions_[1] = {L"FORMAT", RectXYWH(x, y, iw, 14)};             y += 18;
     formatSeg_.rect = RectXYWH(x, y, 140, 36);
     bitrateField_.rect = RectXYWH(x + 152, y, iw - 152, 36);        y += 36 + 16;
-    captions_[2] = {L"MICROPHONE", RectXYWH(x, y, iw, 14)};         y += 18;
-    micField_.rect = RectXYWH(x, y, iw, 36);                        y += 36 + 10;
-    gainRow_ = RectXYWH(x, y, iw, 18);                              y += 18;
-    gainSlider_.rect = RectXYWH(x, y, iw, 24);                      y += 24 + 16;
-    captions_[3] = {L"SYSTEM AUDIO", RectXYWH(x, y + 5, iw - 60, 14)};
-    systemToggle_.rect = RectXYWH(x + iw - 44, y, 44, 24);          y += 24 + 12;
-    systemField_.rect = RectXYWH(x, y, iw, 36);                     y += 36 + 10;
-    mixSeg_.rect = RectXYWH(x, y, iw, 36);                          y += 36 + 10;
+    captions_[2] = {L"OUTPUT", RectXYWH(x, y, iw, 14)};             y += 18;
+    mixSeg_.rect = RectXYWH(x, y, iw, 36);                          y += 36 + 6;
+    mixHintRect_ = RectXYWH(x, y, iw, 18);                          y += 18 + 14;
     shareRow_ = RectXYWH(x, y, iw, 18);                             y += 18;
     shareSlider_.rect = RectXYWH(x, y, iw, 24);
 
@@ -294,19 +334,6 @@ void MainView::Layout(float w, float h)
     showButton_.rect = RectXYWH(messageArea_.right - 140, by + 8, 140, 32);
 }
 
-void MainView::LaneRects(D2D1_RECT_F *mic, D2D1_RECT_F *system) const
-{
-    const float total = Height(content_);
-    if (ctl_.StreamEnabled(StreamId::System)) {
-        const float each = (total - theme::kGap) * 0.5f;
-        *mic = RectF(content_.left, content_.top, content_.right, content_.top + each);
-        *system = RectF(content_.left, content_.bottom - each, content_.right, content_.bottom);
-    } else {
-        *mic = RectF(content_.left, content_.top, content_.right, content_.bottom - theme::kGap - kOffLaneHeight);
-        *system = RectF(content_.left, content_.bottom - kOffLaneHeight, content_.right, content_.bottom);
-    }
-}
-
 /* ====================================================================== */
 /* Painting                                                                */
 /* ====================================================================== */
@@ -316,15 +343,12 @@ void MainView::Paint(Painter &p)
     p.Clear(theme::kBackground);
     PaintHeader(p);
 
-    D2D1_RECT_F micCard, systemCard;
-    LaneRects(&micCard, &systemCard);
     const bool recording = ctl_.GetPhase() == Phase::Recording;
-    micView_.Paint(p, micCard, kMicStyle, micDevice_, ctl_.Lane(StreamId::Microphone), recording);
-    if (ctl_.StreamEnabled(StreamId::System))
-        systemView_.Paint(p, systemCard, kSystemStyle, systemDevice_, ctl_.Lane(StreamId::System), recording);
-    else
-        LaneView::PaintOff(p, systemCard, kSystemStyle, L"Off — switch it on in the settings to record what you hear");
-
+    micView_.Paint(p, micCard_, kMicStyle, ctl_.Lane(StreamId::Microphone),
+                   ctl_.StreamEnabled(StreamId::Microphone), recording);
+    systemView_.Paint(p, systemCard_, kSystemStyle, ctl_.Lane(StreamId::System),
+                      ctl_.StreamEnabled(StreamId::System), recording);
+    PaintPaneControls(p);
     PaintPanel(p);
     PaintTransport(p);
 
@@ -333,7 +357,7 @@ void MainView::Paint(Painter &p)
             continue;
         WidgetState st;
         st.hot = w == hot_ && (pressed_ == nullptr || pressed_ == w);
-        st.pressed = w == pressed_;
+        st.pressed = w == pressed_ && w == hot_;        /* only while the pointer is still on it */
         st.focused = w == focus_ && focusVisible_;
         w->Paint(p, st);
         if (st.focused)
@@ -347,9 +371,9 @@ void MainView::PaintHeader(Painter &p)
     p.Text(L"audior", RectF(kMargin, 0, kMargin + 110, kHeaderH), Font::Title, kText);
 
     if (ctl_.IsSimulated()) {
-        const D2D1_RECT_F pill = RectXYWH(kMargin + 92, (kHeaderH - 24) * 0.5f, 188, 24);
-        p.StrokeRound(pill, 12.0f, WithAlpha(kWarn, 0.55f));
-        p.Text(L"DEMO  ·  simulated audio", pill, Font::Label, kWarn, Align::Center);
+        const D2D1_RECT_F badge = RectXYWH(kMargin + 92, (kHeaderH - 24) * 0.5f, 188, 24);
+        p.StrokeRound(badge, 12.0f, WithAlpha(kWarn, 0.55f));
+        p.Text(L"DEMO  ·  simulated audio", badge, Font::Label, kWarn, Align::Center);
     }
 
     /* Status, top right. */
@@ -370,6 +394,16 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
+/* The microphone gain's label and value (its slider is a widget). */
+void MainView::PaintPaneControls(Painter &p)
+{
+    const bool on = micField_.enabled;
+    p.Text(L"Gain", RectF(gainRow_.left, gainRow_.top, gainRow_.left + 36, gainRow_.bottom), Font::Body,
+           on ? theme::kTextMuted : theme::kTextFaint);
+    p.Text(gainText_, RectF(gainRow_.right - 50, gainRow_.top, gainRow_.right, gainRow_.bottom),
+           Font::BodyStrong, on ? theme::kText : theme::kTextFaint, Align::Right);
+}
+
 void MainView::PaintPanel(Painter &p)
 {
     using namespace theme;
@@ -379,8 +413,7 @@ void MainView::PaintPanel(Painter &p)
     for (const Caption &c : captions_)
         p.Text(c.text, c.rect, Font::Label, kTextFaint);
 
-    p.Text(L"Gain", gainRow_, Font::Body, kTextMuted);
-    p.Text(gainText_, gainRow_, Font::BodyStrong, kText, Align::Right);
+    p.Text(mixHint_, mixHintRect_, Font::Small, kTextFaint);
     if (shareSlider_.visible) {
         p.Text(L"Share of the mix", shareRow_, Font::Body, kTextMuted);
         p.Text(shareText_, shareRow_, Font::BodyStrong, kText, Align::Right);
@@ -411,12 +444,16 @@ void MainView::PaintTransport(Painter &p)
 
     /* What is going on, in words. */
     const Outcome &o = ctl_.LastOutcome();
+    const RecordingSettings &s = ctl_.Settings();
     const float textRight = showButton_.visible ? showButton_.rect.left - kGap : messageArea_.right;
     const D2D1_RECT_F line1 = RectF(messageArea_.left, transport_.top + 22, textRight, transport_.top + 48);
     const D2D1_RECT_F line2 = RectF(messageArea_.left, transport_.top + 48, textRight, transport_.top + 72);
     if (recording) {
         p.Text(L"Recording", line1, Font::BodyStrong, kText);
         p.Text(summary_, line2, Font::Small, kTextMuted);
+    } else if (!s.includeMicrophone && !s.includeSystemAudio) {      /* Start is off: say why */
+        p.Text(L"Nothing to record", line1, Font::BodyStrong, kWarn);
+        p.Text(L"Tick the microphone or system audio.", line2, Font::Small, kTextMuted);
     } else if (o.kind == Outcome::Kind::Failed) {
         p.Text(o.message, line1, Font::BodyStrong, kError);
         p.Text(o.files.empty() ? L"Nothing was recorded." : L"The audio captured before the problem was kept.",
@@ -480,16 +517,15 @@ void MainView::MouseLeave()
 
 void MainView::MoveFocus(int direction)
 {
-    const int count = 12;
     int i = -1;
-    for (int k = 0; k < count; ++k) {
+    for (int k = 0; k < kWidgetCount; ++k) {
         if (all_[k] == focus_)
             i = k;
     }
     if (i < 0 && direction < 0)
         i = 0;
-    for (int step = 0; step < count; ++step) {
-        i = (i + direction + count) % count;
+    for (int step = 0; step < kWidgetCount; ++step) {
+        i = (i + direction + kWidgetCount) % kWidgetCount;
         if (all_[i]->Interactive()) {
             focus_ = all_[i];
             return;

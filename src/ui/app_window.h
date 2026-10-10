@@ -57,8 +57,9 @@ private:
     UINT   dpi_  = 96;
     ComPtr<ID2D1HwndRenderTarget> target_;
 
-    bool          timerOn_       = false;
-    bool          trackingMouse_ = false;
+    bool          timerOn_          = false;
+    bool          trackingMouse_    = false;
+    bool          releasingCapture_ = false;       /* we, not the system, are ending the capture */
     LARGE_INTEGER lastTick_      = {};
     LARGE_INTEGER frequency_     = {};
 };

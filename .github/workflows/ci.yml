@@ -31,11 +31,23 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path shots | Out-Null
-          foreach ($scenario in 'idle', 'recording', 'mic-only', 'clipping', 'saved', 'error') {
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'clipping', 'saved', 'error') {
             $run = Start-Process -FilePath bin\x64\audior_gui.exe -Wait -PassThru `
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }
           }
+
+      - name: Launch the real window and close it
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath bin\x64\audior_gui.exe -PassThru
+          Start-Sleep -Seconds 3
+          if ($app.HasExited) { throw "audior_gui exited early with code $($app.ExitCode)" }
+          $app.Refresh()
+          if ($app.MainWindowHandle -eq 0) { throw "audior_gui created no window" }
+          [void]$app.CloseMainWindow()
+          if (-not $app.WaitForExit(10000)) { $app.Kill(); throw "audior_gui did not close" }
+          if ($app.ExitCode -ne 0) { throw "audior_gui exited with code $($app.ExitCode)" }
 
       - uses: actions/upload-artifact@v4
         with:

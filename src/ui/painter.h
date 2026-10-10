@@ -45,7 +45,8 @@ public:
     void Text(const wchar_t *text, const D2D1_RECT_F &r, Font font,
               const D2D1_COLOR_F &color, Align align = Align::Left)
     {
-        Text(text, static_cast<UINT32>(wcslen(text)), r, font, color, align);
+        if (text)
+            Text(text, static_cast<UINT32>(wcslen(text)), r, font, color, align);
     }
 
     void PushClip(const D2D1_RECT_F &r);

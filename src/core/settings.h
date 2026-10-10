@@ -8,6 +8,8 @@
  *   audior option           setting
  *   -f, --format            format
  *   -b, --bitrate           mp3BitrateKbps      96 112 128 160 192 224 256 320
+ *   (always on in audior)   includeMicrophone   the GUI lets either stream be
+ *                                               switched off; one must stay on
  *   -m, --mic               microphoneId        "" = system default
  *   -a, --amplify           micAmplifyPercent   0..300 (microphone only)
  *   -i, --include-output    includeSystemAudio
@@ -38,6 +40,7 @@ struct RecordingSettings {
     std::wstring outputDirectory;
     Format       format             = Format::Mp3;
     int          mp3BitrateKbps     = kDefaultMp3Bitrate;
+    bool         includeMicrophone  = true;
     std::wstring microphoneId;                          /* "" = default */
     int          micAmplifyPercent  = 0;
     bool         includeSystemAudio = false;
@@ -45,6 +48,10 @@ struct RecordingSettings {
     MixMode      mixMode            = MixMode::Merge;
     int          mergeMicPercent    = kDefaultMergeMicPercent;
 };
+
+/* True when both streams are recorded: only then do merging and separate
+ * tracks mean anything. */
+inline bool RecordsBoth(const RecordingSettings &s) { return s.includeMicrophone && s.includeSystemAudio; }
 
 /* An empty string when the settings are valid, else a message for the user. */
 std::wstring Validate(const RecordingSettings &settings);

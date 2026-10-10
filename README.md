@@ -13,15 +13,14 @@ the recording options of the `audior` command-line recorder in a side panel.
 +----------------------------------------------------------------+
 |  audior  [DEMO]                                      * Recording|
 +------------------------------------------+---------------------+
-|  * Microphone                    -12 dB  |  SAVE TO            |
-|  Realtek Microphone Array                |  [ ...\audior      v]|
+|  [x] Microphone                  -12 dB  |  SAVE TO            |
+|  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\audior      v]|
 |  |||  ||||||  ||| ||||||||| |||||| |||   |  FORMAT             |
 +------------------------------------------+  [MP3|WAV] [128 kbps]|
-|  * System audio                  -20 dB  |  MICROPHONE         |
-|  Speakers (Realtek)                      |  [Default         v] |
-|  ||| |||||  |||||| ||||  |||||| ||| ||   |  Gain  ----o--- +0% |
-|                                          |  SYSTEM AUDIO   (o) |
-+------------------------------------------+  ...                |
+|  [x] System audio                -20 dB  |  OUTPUT             |
+|  [Speakers (Realtek)  v]                 |  [merged|2 tracks]  |
+|  ||| |||||  |||||| ||||  |||||| ||| ||   |  Mic 65% . Sys 35%  |
++------------------------------------------+---------------------+
 |  00:00:12   Recording              [ Stop ] [ * Start recording ]|
 +----------------------------------------------------------------+
 ```
@@ -59,14 +58,19 @@ To see the UI without opening it, render a scenario to a PNG:
 bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
-Scenarios: `idle`, `recording`, `mic-only`, `clipping`, `saved`, `error`.
+Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`, `error`.
 
 ## Design
 
-- **One lane per stream.** The microphone lane is always there; the system-audio
-  lane appears when *System audio* is switched on (otherwise a quiet placeholder
-  keeps the layout stable). Each lane has its own accent colour, device name,
-  peak level in dB and a **CLIP** flag, so `Gain` problems are visible.
+- **One pane per stream.** The microphone and the system audio (what the speakers
+  play) each get a pane with its own **checkbox** (is this stream recorded?), a
+  **drop-down of every detected device** (refreshed each time it opens, so a
+  newly plugged-in microphone appears), a peak level in dB, a **CLIP** flag and
+  its waveform. At least one stream must stay ticked. The microphone pane also
+  holds the gain.
+- **Merged or two tracks.** With both streams on, *Output* chooses **one merged
+  file** (with a slider for the microphone's share of the mix) or **two separate
+  tracks** (`..._mic` and `..._system`). With one stream, one file is written.
 - **Scrolling bars.** Bar heights follow a dB scale (about 54 dB of range), newest
   on the right. The playhead glides at the real-time rate even though an engine
   delivers audio in bursts, so the motion is smooth.
@@ -119,4 +123,3 @@ clipping shows in the waveform. Nothing else in the app changes when it lands.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
 - Settings are not remembered between runs.
-- The device list is read once at start-up.

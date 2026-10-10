@@ -95,7 +95,7 @@ RecordingStats SimulatedEngine::Stats()
 std::size_t SimulatedEngine::TakePeaks(StreamId stream, PeakBin *out, std::size_t capacity)
 {
     const int s = StreamIndex(stream);
-    if (stream == StreamId::System && !settings_.includeSystemAudio)
+    if (stream == StreamId::Microphone ? !settings_.includeMicrophone : !settings_.includeSystemAudio)
         return 0;
 
     const std::uint64_t due = static_cast<std::uint64_t>(Elapsed() * kPeakBinsPerSecond);

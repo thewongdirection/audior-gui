@@ -206,6 +206,7 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
                      suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
         if (target_)
             target_->SetDpi(static_cast<float>(dpi_), static_cast<float>(dpi_));
+        Invalidate();
         return 0;
     }
 
@@ -257,9 +258,18 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_LBUTTONUP:
+        releasingCapture_ = true;
         ReleaseCapture();                   /* before the view acts: it may open a menu */
+        releasingCapture_ = false;
         view_.MouseUp(ToDip(GET_X_LPARAM(lParam)), ToDip(GET_Y_LPARAM(lParam)));
         Invalidate();
+        return 0;
+
+    case WM_CAPTURECHANGED:                 /* Alt+Tab, a dialog...: the press is over */
+        if (!releasingCapture_) {
+            view_.CancelPress();
+            Invalidate();
+        }
         return 0;
 
     case WM_SETCURSOR:
@@ -270,6 +280,10 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_KEYDOWN:
+        /* Holding Space or Enter must not repeat the action (Start would turn
+         * straight into Stop); the arrow keys do repeat, for the sliders. */
+        if ((lParam & 0x40000000) && (wParam == VK_SPACE || wParam == VK_RETURN))
+            return 0;
         if (view_.KeyDown(static_cast<UINT>(wParam), GetKeyState(VK_SHIFT) < 0)) {
             Invalidate();
             return 0;
@@ -282,8 +296,12 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_CLOSE:
-    case WM_ENDSESSION:
         ctl_.Stop();                        /* never leave a recording half-written */
+        break;
+
+    case WM_ENDSESSION:
+        if (wParam)                         /* the session really is ending */
+            ctl_.Stop();
         break;
 
     case WM_DESTROY:

@@ -46,6 +46,9 @@ bool Build(Scene &scene, const std::wstring &name)
             ctl.Settings().micAmplifyPercent = 300;
         if (name == L"error")
             scene.engine.FailAfter(4.0, L"Audio capture failed (hr=0x88890004)");
+    } else if (name == L"system-only") {
+        ctl.Settings().includeMicrophone = false;
+        ctl.Settings().includeSystemAudio = true;
     } else if (name != L"mic-only") {
         return false;
     }

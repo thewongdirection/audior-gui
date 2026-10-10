@@ -21,6 +21,8 @@ bool IsValidMp3Bitrate(int kbps)
 
 std::wstring Validate(const RecordingSettings &s)
 {
+    if (!s.includeMicrophone && !s.includeSystemAudio)
+        return L"Turn on at least one stream: the microphone or system audio.";
     if (s.outputDirectory.empty())
         return L"Choose a folder to save recordings in.";
     if (s.format == Format::Mp3 && !IsValidMp3Bitrate(s.mp3BitrateKbps))
@@ -72,7 +74,7 @@ std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix)
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &s,
                                              const std::wstring &outputPath)
 {
-    if (s.includeSystemAudio && s.mixMode == MixMode::Separate)
+    if (RecordsBoth(s) && s.mixMode == MixMode::Separate)
         return {SuffixedPath(outputPath, L"_mic"), SuffixedPath(outputPath, L"_system")};
     return {outputPath};
 }

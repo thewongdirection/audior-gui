@@ -20,6 +20,7 @@ TEST(Settings_DefaultsMatchAudior)
     CHECK(s.format == Format::Mp3);
     CHECK_EQ(s.mp3BitrateKbps, 128);
     CHECK_EQ(s.micAmplifyPercent, 0);
+    CHECK(s.includeMicrophone);
     CHECK(!s.includeSystemAudio);
     CHECK(s.mixMode == MixMode::Merge);
     CHECK_EQ(s.mergeMicPercent, 65);
@@ -140,4 +141,38 @@ TEST(PlannedOutputFiles_OneFileUnlessSeparate)
 
     s.includeSystemAudio = false;           /* "separate" means nothing without system audio */
     CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));
+}
+
+TEST(Validate_NeedsAtLeastOneStream)
+{
+    RecordingSettings s = Valid();
+    s.includeMicrophone = false;
+    CHECK(!Validate(s).empty());                        /* nothing selected */
+    s.includeSystemAudio = true;
+    CHECK(Validate(s).empty());                         /* system audio alone is fine */
+    s.includeSystemAudio = false;
+    s.includeMicrophone = true;
+    CHECK(Validate(s).empty());                         /* so is the microphone alone */
+}
+
+TEST(PlannedOutputFiles_SeparateTracksNeedBothStreams)
+{
+    RecordingSettings s = Valid();
+    s.mixMode = MixMode::Separate;
+    const std::wstring path = L"C:\\r\\a.mp3";
+
+    s.includeMicrophone = true;
+    s.includeSystemAudio = false;
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));      /* microphone only */
+
+    s.includeMicrophone = false;
+    s.includeSystemAudio = true;
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));      /* system audio only */
+    CHECK_EQ(PlannedOutputFiles(s, path)[0], path);
+
+    s.includeMicrophone = true;
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(2));      /* both: two tracks */
+    CHECK(RecordsBoth(s));
+    s.includeSystemAudio = false;
+    CHECK(!RecordsBoth(s));
 }

@@ -8,7 +8,7 @@
  * clock, so the picture is identical on every machine.  CI uses it to publish
  * a picture of the UI, and it is a quick way to look at a design change.
  *
- * Scenarios: idle, recording, mic-only, clipping, saved, error.
+ * Scenarios: idle, recording, mic-only, system-only, clipping, saved, error.
  */
 #pragma once
 

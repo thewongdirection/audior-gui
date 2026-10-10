@@ -324,3 +324,30 @@ TEST(Controller_AcknowledgesAFailedRecordingWithStop)
     CHECK_EQ(engine.stops, 1);                          /* the engine was told to let go */
     CHECK(ctl.LastOutcome().kind == Outcome::Kind::Failed);
 }
+
+TEST(Controller_SystemAudioAloneRunsOnlyTheSystemLane)
+{
+    Rig rig;
+    rig.ctl.Settings().includeMicrophone = false;
+    rig.ctl.Settings().includeSystemAudio = true;
+    CHECK(!rig.ctl.StreamEnabled(StreamId::Microphone));
+    CHECK(rig.ctl.StreamEnabled(StreamId::System));
+
+    CHECK(rig.ctl.Start());
+    rig.Run(1.0);
+    CHECK(!rig.ctl.Lane(StreamId::Microphone).HasAudio());
+    CHECK(rig.ctl.Lane(StreamId::System).HasAudio());
+    rig.ctl.Stop();
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Saved);
+}
+
+TEST(Controller_StartNeedsAStream)
+{
+    Rig rig;
+    rig.ctl.Settings().includeMicrophone = false;
+    rig.ctl.Settings().includeSystemAudio = false;
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(!rig.ctl.LastOutcome().message.empty());
+}
