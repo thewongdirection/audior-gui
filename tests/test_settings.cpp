@@ -1,0 +1,143 @@
+#include "../src/core/settings.h"
+#include "test_support.h"
+
+using namespace audiorgui;
+
+namespace {
+
+RecordingSettings Valid()
+{
+    RecordingSettings s;
+    s.outputDirectory = L"C:\\Recordings";
+    return s;
+}
+
+}  // namespace
+
+TEST(Settings_DefaultsMatchAudior)
+{
+    RecordingSettings s;
+    CHECK(s.format == Format::Mp3);
+    CHECK_EQ(s.mp3BitrateKbps, 128);
+    CHECK_EQ(s.micAmplifyPercent, 0);
+    CHECK(!s.includeSystemAudio);
+    CHECK(s.mixMode == MixMode::Merge);
+    CHECK_EQ(s.mergeMicPercent, 65);
+    CHECK(s.microphoneId.empty());
+    CHECK(s.systemDeviceId.empty());
+}
+
+TEST(Settings_Mp3BitrateList)
+{
+    const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};
+    for (int kbps : valid)
+        CHECK(IsValidMp3Bitrate(kbps));
+    CHECK_EQ(kMp3BitrateCount, 8);
+
+    const int invalid[] = {-1, 0, 64, 80, 95, 97, 129, 321, 1000};
+    for (int kbps : invalid)
+        CHECK(!IsValidMp3Bitrate(kbps));
+}
+
+TEST(Validate_AcceptsDefaultsWithAFolder)
+{
+    CHECK(Validate(Valid()).empty());
+}
+
+TEST(Validate_RequiresAnOutputFolder)
+{
+    RecordingSettings s;
+    CHECK(!Validate(s).empty());
+}
+
+TEST(Validate_RejectsBadBitrateForMp3Only)
+{
+    RecordingSettings s = Valid();
+    s.mp3BitrateKbps = 100;
+    CHECK(!Validate(s).empty());
+    s.format = Format::Wav;                 /* audior ignores the bitrate for WAV */
+    CHECK(Validate(s).empty());
+}
+
+TEST(Validate_AmplifyBounds)
+{
+    RecordingSettings s = Valid();
+    s.micAmplifyPercent = 0;
+    CHECK(Validate(s).empty());
+    s.micAmplifyPercent = 300;
+    CHECK(Validate(s).empty());
+    s.micAmplifyPercent = 301;
+    CHECK(!Validate(s).empty());
+    s.micAmplifyPercent = -1;
+    CHECK(!Validate(s).empty());
+}
+
+TEST(Validate_MergeShareBounds)
+{
+    RecordingSettings s = Valid();
+    s.mergeMicPercent = 0;
+    CHECK(Validate(s).empty());
+    s.mergeMicPercent = 100;
+    CHECK(Validate(s).empty());
+    s.mergeMicPercent = 101;
+    CHECK(!Validate(s).empty());
+    s.mergeMicPercent = -5;
+    CHECK(!Validate(s).empty());
+}
+
+TEST(DefaultBaseName_IsSortableAndZeroPadded)
+{
+    LocalTime t;
+    t.year = 2026; t.month = 3; t.day = 7; t.hour = 9; t.minute = 5; t.second = 2;
+    CHECK_EQ(DefaultBaseName(t), std::wstring(L"audior-20260307-090502"));
+    t.month = 12; t.day = 31; t.hour = 23; t.minute = 59; t.second = 59;
+    CHECK_EQ(DefaultBaseName(t), std::wstring(L"audior-20261231-235959"));
+}
+
+TEST(ExtensionFor_MatchesFormat)
+{
+    CHECK_EQ(std::wstring(ExtensionFor(Format::Mp3)), std::wstring(L".mp3"));
+    CHECK_EQ(std::wstring(ExtensionFor(Format::Wav)), std::wstring(L".wav"));
+}
+
+TEST(JoinPath_DoesNotDoubleTheSeparator)
+{
+    CHECK_EQ(JoinPath(L"C:\\a", L"x.mp3"), std::wstring(L"C:\\a\\x.mp3"));
+    CHECK_EQ(JoinPath(L"C:\\a\\", L"x.mp3"), std::wstring(L"C:\\a\\x.mp3"));
+    CHECK_EQ(JoinPath(L"C:/a/", L"x.mp3"), std::wstring(L"C:/a/x.mp3"));
+    CHECK_EQ(JoinPath(L"", L"x.mp3"), std::wstring(L"x.mp3"));
+    CHECK_EQ(JoinPath(L"C:\\", L"x.mp3"), std::wstring(L"C:\\x.mp3"));
+}
+
+TEST(SuffixedPath_InsertsBeforeTheExtension)
+{
+    CHECK_EQ(SuffixedPath(L"C:\\a\\rec.wav", L"_mic"), std::wstring(L"C:\\a\\rec_mic.wav"));
+    CHECK_EQ(SuffixedPath(L"rec.tar.mp3", L"_system"), std::wstring(L"rec.tar_system.mp3"));
+}
+
+TEST(SuffixedPath_IgnoresDotsInFolderNames)
+{
+    CHECK_EQ(SuffixedPath(L"C:\\my.folder\\rec", L"_mic"), std::wstring(L"C:\\my.folder\\rec_mic"));
+    CHECK_EQ(SuffixedPath(L"C:/v1.2/rec", L"_mic"), std::wstring(L"C:/v1.2/rec_mic"));
+}
+
+TEST(PlannedOutputFiles_OneFileUnlessSeparate)
+{
+    RecordingSettings s = Valid();
+    const std::wstring path = L"C:\\r\\a.mp3";
+
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));      /* mic only      */
+
+    s.includeSystemAudio = true;
+    s.mixMode = MixMode::Merge;
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));      /* merged        */
+
+    s.mixMode = MixMode::Separate;
+    const auto files = PlannedOutputFiles(s, path);                    /* separate      */
+    CHECK_EQ(files.size(), std::size_t(2));
+    CHECK_EQ(files[0], std::wstring(L"C:\\r\\a_mic.mp3"));
+    CHECK_EQ(files[1], std::wstring(L"C:\\r\\a_system.mp3"));
+
+    s.includeSystemAudio = false;           /* "separate" means nothing without system audio */
+    CHECK_EQ(PlannedOutputFiles(s, path).size(), std::size_t(1));
+}

@@ -1,0 +1,113 @@
+/*
+ * widgets.h - The few controls the window needs, drawn with Direct2D.
+ *
+ * A widget owns its state and look; MainView owns the layout and wires the
+ * callbacks.  Input arrives in DIPs.  Keyboard handling follows the usual
+ * conventions (Space / Enter activate, arrows adjust) so the window is fully
+ * usable without a mouse.
+ */
+#pragma once
+
+#include <windows.h>
+
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "geometry.h"
+#include "painter.h"
+
+namespace audiorgui::ui {
+
+struct WidgetState {
+    bool hot     = false;       /* the pointer is over it         */
+    bool pressed = false;       /* the mouse button is held on it */
+    bool focused = false;       /* it has the keyboard focus      */
+};
+
+class Widget {
+public:
+    D2D1_RECT_F rect    = {};
+    bool        visible = true;
+    bool        enabled = true;
+
+    virtual ~Widget() = default;
+
+    bool Interactive() const { return visible && enabled; }
+    bool Hit(float x, float y) const { return Interactive() && Contains(rect, x, y); }
+
+    virtual void Paint(Painter &painter, const WidgetState &state) const = 0;
+
+    virtual void Press(float x, float y) { (void)x; (void)y; }              /* button down on it     */
+    virtual void Drag(float x, float y) { (void)x; (void)y; }               /* moved while held      */
+    virtual void Release(float x, float y, bool inside)                     /* button up             */
+    {
+        (void)x; (void)y; (void)inside;
+    }
+    virtual bool Key(UINT virtualKey) { (void)virtualKey; return false; }   /* true if it used the key */
+};
+
+/* A push button, or (Style::Field) a field that opens a choice when clicked. */
+class Button : public Widget {
+public:
+    enum class Style { Primary, Prominent, Secondary, Field };
+    enum class Glyph { None, Record, Stop };
+
+    std::wstring          text;
+    Style                 style = Style::Secondary;
+    Glyph                 glyph = Glyph::None;
+    std::function<void()> onClick;
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Release(float x, float y, bool inside) override;
+    bool Key(UINT virtualKey) override;
+};
+
+/* A row of mutually exclusive options. */
+class Segmented : public Widget {
+public:
+    std::vector<std::wstring> options;
+    int                       selected = 0;
+    std::function<void(int)>  onChange;
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Press(float x, float y) override;
+    bool Key(UINT virtualKey) override;
+
+private:
+    void Select(int index);
+};
+
+/* An on/off switch. */
+class Toggle : public Widget {
+public:
+    bool                      on = false;
+    D2D1_COLOR_F              accent = theme::kSystem;
+    std::function<void(bool)> onChange;
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Release(float x, float y, bool inside) override;
+    bool Key(UINT virtualKey) override;
+
+private:
+    void Flip();
+};
+
+/* A horizontal slider over an integer range. */
+class Slider : public Widget {
+public:
+    int                      minimum = 0, maximum = 100, value = 0, step = 1;
+    D2D1_COLOR_F             accent = theme::kMic;
+    std::function<void(int)> onChange;
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Press(float x, float y) override;
+    void Drag(float x, float y) override;
+    bool Key(UINT virtualKey) override;
+
+private:
+    void SetValue(int v);
+    void SetFromX(float x);
+};
+
+}  // namespace audiorgui::ui

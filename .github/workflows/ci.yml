@@ -1,0 +1,52 @@
+name: CI
+
+# Builds with the real Visual Studio toolchain on a Windows runner, checks that
+# only in-box Windows DLLs are imported, runs the unit tests, and publishes the
+# executables and screenshots of the UI.  Warnings fail the build (CL=/WX).
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build, check imports and test (x64 and x86)
+        shell: cmd
+        env:
+          CL: /WX
+        run: build.bat
+
+      - name: Render the UI scenarios
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path shots | Out-Null
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'clipping', 'saved', 'error') {
+            $run = Start-Process -FilePath bin\x64\audior_gui.exe -Wait -PassThru `
+              -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
+            if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: shots/*.png
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audior-gui-windows
+          path: |
+            bin/x64/audior_gui.exe
+            bin/x86/audior_gui.exe
+          retention-days: 14
