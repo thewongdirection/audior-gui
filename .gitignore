@@ -1,0 +1,22 @@
+# Build output
+bin/
+build/
+
+# MSVC
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.exe
+
+# Local test recordings and UI screenshots
+*.wav
+*.mp3
+*.png
+!docs/*.png
+
+# Editor / OS
+.vs/
+*.user
+Thumbs.db
