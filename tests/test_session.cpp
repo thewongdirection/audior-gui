@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include "../src/engine/pcm.h"
 #include "../src/engine/recording_session.h"
 #include "test_support.h"
 
