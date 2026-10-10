@@ -212,4 +212,157 @@ bool Slider::Key(UINT vk)
     }
 }
 
+/* ---- TextBox --------------------------------------------------------- */
+
+namespace {
+
+constexpr float kTextPad = 12.0f;               /* between the box's edge and its text */
+
+bool Down(int virtualKey) { return GetKeyState(virtualKey) < 0; }
+
+}  // namespace
+
+void TextBox::SetText(const std::wstring &text)
+{
+    if (editor.Text() != text)
+        editor.SetText(text);
+}
+
+void TextBox::Edited(bool changed)
+{
+    if (changed && onChange)
+        onChange(editor.Text());
+}
+
+/* The layout of the current text, made when the text changed. */
+void TextBox::EnsureLayout(Painter &painter) const
+{
+    if (layout_ && layoutText_ == editor.Text())
+        return;
+    layoutText_ = editor.Text();
+    layout_ = layoutText_.empty() ? ComPtr<IDWriteTextLayout>() : painter.Layout(Font::Body, layoutText_);
+}
+
+float TextBox::XOf(std::size_t position) const
+{
+    const std::size_t length = layoutText_.size();
+    if (!layout_ || position == 0 || length == 0)
+        return 0.0f;
+    float x = 0.0f, y = 0.0f;
+    DWRITE_HIT_TEST_METRICS metrics;
+    if (position >= length)                     /* after the last character: its trailing edge */
+        layout_->HitTestTextPosition(static_cast<UINT32>(length - 1), TRUE, &x, &y, &metrics);
+    else
+        layout_->HitTestTextPosition(static_cast<UINT32>(position), FALSE, &x, &y, &metrics);
+    return x;
+}
+
+/* The caret position nearest to `x` (in DIPs, window coordinates). */
+std::size_t TextBox::PositionAt(float x) const
+{
+    if (!layout_)
+        return 0;
+    BOOL trailing = FALSE, inside = FALSE;
+    DWRITE_HIT_TEST_METRICS metrics;
+    layout_->HitTestPoint(x - (rect.left + kTextPad) + scroll_, 1.0f, &trailing, &inside, &metrics);
+    return metrics.textPosition + (trailing ? metrics.length : 0);
+}
+
+void TextBox::Paint(Painter &p, const WidgetState &st) const
+{
+    EnsureLayout(p);
+    const D2D1_COLOR_F border = invalid ? theme::kError : st.active ? theme::kFocusRing : theme::kBorder;
+    p.FillRound(rect, theme::kControlRadius, Dim(st.hot && !st.active ? theme::kHover : theme::kRaised, enabled));
+    p.StrokeRound(rect, theme::kControlRadius, Dim(border, enabled), st.active ? 1.5f : 1.0f);
+
+    const D2D1_RECT_F inner = RectF(rect.left + kTextPad, rect.top, rect.right - kTextPad, rect.bottom);
+    const std::wstring &text = editor.Text();
+    const D2D1_COLOR_F ink = Dim(theme::kText, enabled);
+    if (text.empty()) {
+        p.Text(placeholder, inner, Font::Body, Dim(theme::kTextFaint, enabled));
+    } else if (!layout_) {
+        p.Text(text, inner, Font::Body, ink);                   /* no layout to measure: no caret or scrolling */
+    } else {
+        DWRITE_TEXT_METRICS m = {};
+        layout_->GetMetrics(&m);
+        const float width = m.widthIncludingTrailingWhitespace;
+        const float caretX = XOf(editor.Caret());
+        const float room = Width(inner);
+        if (width <= room)
+            scroll_ = 0.0f;
+        else if (caretX - scroll_ > room - 2.0f)                /* keep the caret in view */
+            scroll_ = caretX - room + 2.0f;
+        else if (caretX < scroll_)
+            scroll_ = caretX;
+        scroll_ = std::max(0.0f, std::min(scroll_, width - room + 2.0f));      /* no blank space after shortening */
+
+        p.PushClip(inner);
+        if (st.active && editor.HasSelection()) {
+            p.Fill(RectF(inner.left + XOf(editor.SelectionStart()) - scroll_, rect.top + 8,
+                         inner.left + XOf(editor.SelectionEnd()) - scroll_, rect.bottom - 8),
+                   WithAlpha(theme::kFocusRing, 0.35f));
+        }
+        const float left = inner.left - scroll_;
+        p.Text(text, RectF(left, inner.top, left + width + 4.0f, inner.bottom), Font::Body, ink);
+        p.PopClip();
+    }
+
+    if (st.active && enabled) {
+        const float x = inner.left + XOf(editor.Caret()) - scroll_;
+        p.Line(x, rect.top + 9, x, rect.bottom - 9, theme::kText, 1.5f);
+    }
+}
+
+void TextBox::Press(float x, float)
+{
+    editor.Move(PositionAt(x), Down(VK_SHIFT));
+}
+
+void TextBox::Drag(float x, float)
+{
+    editor.Move(PositionAt(x), true);
+}
+
+bool TextBox::Key(UINT vk)
+{
+    const bool shift = Down(VK_SHIFT), ctrl = Down(VK_CONTROL);
+    switch (vk) {
+    case VK_LEFT:   editor.Left(shift, ctrl);  return true;
+    case VK_RIGHT:  editor.Right(shift, ctrl); return true;
+    case VK_HOME:   editor.Home(shift);        return true;
+    case VK_END:    editor.End(shift);         return true;
+    case VK_BACK:   Edited(editor.Backspace(ctrl)); return true;
+    case VK_DELETE: Edited(editor.Delete(ctrl));    return true;
+    default:        break;
+    }
+    if (!ctrl || Down(VK_MENU))                 /* AltGr is Ctrl+Alt and types characters: leave those to WM_CHAR */
+        return false;
+    switch (vk) {
+    case 'A':
+        editor.SelectAll();
+        return true;
+    case 'C':
+    case 'X':
+        if (editor.HasSelection() && clipboardSet)
+            clipboardSet(editor.Selected());
+        if (vk == 'X')
+            Edited(editor.DeleteSelection());
+        return true;
+    case 'V':
+        if (clipboardGet)
+            Edited(editor.Insert(clipboardGet()));
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool TextBox::Char(wchar_t c)
+{
+    if (c < 32 || c == 0x7F)                    /* Enter, Tab, Backspace and the Ctrl+letters are keys, not text */
+        return false;
+    Edited(editor.Insert(std::wstring(1, c)));
+    return true;
+}
+
 }  // namespace audiorgui::ui

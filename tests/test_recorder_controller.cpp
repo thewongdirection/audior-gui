@@ -1,3 +1,5 @@
+#include <set>
+
 #include "../src/core/recorder_controller.h"
 #include "../src/engine/simulated_engine.h"
 #include "test_support.h"
@@ -10,16 +12,28 @@ namespace {
 struct Rig {
     double    now = 0.0;
     LocalTime time;
+    std::set<std::wstring> existing;                    /* the "disk": files earlier recordings made */
     SimulatedEngine engine;
     RecorderController ctl;
 
     Rig()
         : engine([this] { return now; }),
-          ctl(engine, [this] { return time; })
+          ctl(engine, [this] { return time; },
+              [this](const std::wstring &path) { return existing.count(path) > 0; })
     {
         time.year = 2026; time.month = 10; time.day = 10;
         time.hour = 15; time.minute = 30; time.second = 45;
         ctl.Settings().outputDirectory = L"C:\\Rec";
+    }
+
+    /* Records for no time at all; the files it "wrote" now exist.  Returns the first. */
+    std::wstring Record()
+    {
+        CHECK(ctl.Start());
+        ctl.Stop();
+        const std::vector<std::wstring> &files = ctl.LastOutcome().files;
+        existing.insert(files.begin(), files.end());
+        return files.empty() ? std::wstring() : files[0];
     }
 
     /* Let `seconds` pass, ticking the way the UI does (60 times a second). */
@@ -231,20 +245,94 @@ TEST(Controller_AnEngineThatCannotStartLeavesTheReason)
 TEST(Controller_RestartingWithinASecondDoesNotOverwrite)
 {
     Rig rig;
-    std::vector<std::wstring> names;
-    for (int i = 0; i < 3; ++i) {
-        CHECK(rig.ctl.Start());
-        rig.ctl.Stop();
-        names.push_back(rig.ctl.LastOutcome().files[0]);
-    }
-    CHECK_EQ(names[0], std::wstring(L"C:\\Rec\\audior-20261010-153045.mp3"));
-    CHECK_EQ(names[1], std::wstring(L"C:\\Rec\\audior-20261010-153045-2.mp3"));
-    CHECK_EQ(names[2], std::wstring(L"C:\\Rec\\audior-20261010-153045-3.mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045.mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045 (2).mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045 (3).mp3"));
 
     rig.time.second = 46;                               /* a new second: a plain name again */
-    rig.ctl.Start();
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153046.mp3"));
+}
+
+TEST(Controller_ATypedNameGetsTheFormatsExtension)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"meeting";
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\meeting.mp3"));
+
+    rig.ctl.Settings().fileName = L"clip.wav";          /* audior: --output clip.wav with mp3 gives clip.mp3 */
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\clip.mp3"));
+
+    rig.ctl.Settings().format = Format::Wav;
+    rig.ctl.Settings().fileName = L"Clip.MP3";
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\Clip.wav"));
+
+    rig.ctl.Settings().fileName = L"take.2";            /* only what follows the last dot is an extension */
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\take.wav"));
+}
+
+TEST(Controller_ATypedNameIsNeverOverwritten)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"meeting.mp3";
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\meeting.mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\meeting (2).mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\meeting (3).mp3"));
+}
+
+TEST(Controller_SeparateTracksAvoidEitherExistingFile)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;
+    rig.ctl.Settings().fileName = L"call";
+    rig.existing.insert(L"C:\\Rec\\call_system.mp3");        /* only the second of the pair is taken */
+
+    CHECK(rig.ctl.Start());
     rig.ctl.Stop();
-    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\audior-20261010-153046.mp3"));
+    const auto &files = rig.ctl.LastOutcome().files;
+    CHECK_EQ(files.size(), std::size_t(2));
+    CHECK_EQ(files[0], std::wstring(L"C:\\Rec\\call (2)_mic.mp3"));
+    CHECK_EQ(files[1], std::wstring(L"C:\\Rec\\call (2)_system.mp3"));
+}
+
+TEST(Controller_ABadFileNameStopsTheStartWithAReason)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"a:b";
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(!rig.ctl.LastOutcome().message.empty());
+
+    rig.ctl.Settings().fileName = L"nul";
+    CHECK(!rig.ctl.Start());
+
+    rig.ctl.Settings().fileName = L"fine";
+    CHECK(rig.ctl.Start());
+}
+
+TEST(Controller_AnOverlongPathIsRefused)
+{
+    Rig rig;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    rig.ctl.Settings().fileName = std::wstring(30, L'n');       /* 3 + 240 + 1 + 30 + 4 = 278 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(rig.ctl.LastOutcome().message.find(L"too long") != std::wstring::npos);
+
+    rig.ctl.Settings().fileName = std::wstring(8, L'n');        /* 3 + 240 + 1 + 8 + 4 = 256: fits */
+    CHECK(rig.ctl.Start());
+}
+
+TEST(Controller_TheLongestOfTheTwoTracksCountsTowardsTheLimit)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    rig.ctl.Settings().fileName = std::wstring(6, L'n');        /* 254; "_mic" makes 258, "_system" 261 */
+    CHECK(!rig.ctl.Start());                                    /* only the longer of the two is over the limit */
+    rig.ctl.Settings().mixMode = MixMode::Merge;
+    CHECK(rig.ctl.Start());                                     /* one file at 254 fits */
 }
 
 TEST(Controller_AFailedStartDoesNotUseUpAName)

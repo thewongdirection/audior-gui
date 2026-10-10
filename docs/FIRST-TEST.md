@@ -1,0 +1,56 @@
+# First test on real hardware
+
+The automated tests cover everything after the capture and the failure paths of
+the capture, but the build machines have no microphone. These checks are the part
+only a PC with audio hardware can do. They take about ten minutes.
+
+## Get the program
+
+Either build it (`build.bat x64`), or download **audior-gui-windows** from the
+*Artifacts* of the latest green run of the CI workflow and unzip it. Run
+`audior_gui.exe`; there is nothing to install.
+
+If Windows SmartScreen warns about an unknown publisher (the file is not code
+signed), choose *More info*, then *Run anyway*.
+
+## 1. The window
+
+1. Start `audior_gui.exe`. Both drop-downs should list your devices, each marked
+   *Default · name* at the top.
+2. While idle the waveforms rest; they move only while recording.
+3. Press **Start recording**, speak, play some music, press **Stop**.
+   The waveforms move, the time runs, the status says *Saved*, **Show in folder**
+   opens `Documents\audior`.
+4. Play the file. For MP3, check the length matches the clock.
+
+## 2. The cases worth trying
+
+| Try | Expect |
+|---|---|
+| Tick **System audio**, play a video, record merged | One file with both. Move the *Share of the mix* slider and record again: the balance changes. |
+| Same, **Two separate tracks** | `..._mic` and `..._system` files, equal length. Pause the music for a while: the system file still has the full length (silence) and stays in step. |
+| Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
+| System audio gain 150% | The system waveform is taller and the file louder. |
+| Untick **Microphone**, keep **System audio** | Only the system file/lane. |
+| Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
+| Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
+| Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
+| Close the window while recording | The file is complete and plays. |
+
+## 3. From a command prompt
+
+```bat
+audior_gui --list-devices
+audior_gui -o "%TEMP%\cli-test" -f wav -i --separate     :: the window opens already recording
+audior_gui --stop                                         :: from another prompt: ends it
+```
+
+`audior_gui --stop` prints `Stop signal sent.`; with nothing recording it prints
+`No active recording to stop.` and exits with code 1. While other programs play
+audio, their volume should not drop when you start recording (the communications
+ducking opt-out).
+
+## If something is wrong
+
+Note the message in the window, including the `hr=0x...` code, and the output of
+`audior_gui --list-devices`.

@@ -40,7 +40,12 @@ class RecorderController {
 public:
     using Clock = std::function<LocalTime()>;
 
-    RecorderController(IRecordingEngine &engine, Clock clock);
+    /* Whether a file is already on disk.  A recording never takes the name of
+     * one that is: it gets " (2)", " (3)" ... instead.  Without it every name
+     * is taken to be free (the engine still refuses to overwrite). */
+    using FileExists = std::function<bool(const std::wstring &path)>;
+
+    RecorderController(IRecordingEngine &engine, Clock clock, FileExists fileExists = nullptr);
 
     /* ---- settings (the UI edits them while Idle) ---- */
     RecordingSettings       &Settings()       { return settings_; }
@@ -83,8 +88,11 @@ private:
     void DrainPeaks();
     void Finish();
 
+    bool AnyPlannedFileExists(const std::wstring &path) const;
+
     IRecordingEngine  &engine_;
     Clock              clock_;
+    FileExists         fileExists_;
     RecordingSettings  settings_;
     RecordingSettings  active_;
     Phase              phase_ = Phase::Idle;
@@ -92,8 +100,6 @@ private:
     RecordingStats     stats_;
     Outcome            outcome_;
     std::vector<DeviceInfo> devices_[2];
-    std::wstring       lastBaseName_;
-    int                repeatCount_ = 0;
 };
 
 }  // namespace audiorgui

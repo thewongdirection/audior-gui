@@ -49,6 +49,11 @@ public:
             Text(text, static_cast<UINT32>(wcslen(text)), r, font, color, align);
     }
 
+    ComPtr<IDWriteTextLayout> Layout(Font font, const std::wstring &text) const
+    {
+        return gfx_.Layout(font, text.c_str(), static_cast<UINT32>(text.size()));
+    }
+
     void PushClip(const D2D1_RECT_F &r);
     void PopClip();
 

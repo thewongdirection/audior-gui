@@ -71,7 +71,10 @@ echo Building audior-gui (%ARCH%)...
 
 set "CFLAGS=/nologo /W4 /O1 /Gy /MT /std:c++17 /Zc:__cplusplus /permissive- /utf-8 /EHsc /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX"
 set "LFLAGS=/OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib ucrt.lib"
-set "GUILIBS=user32.lib gdi32.lib shell32.lib ole32.lib uuid.lib dwmapi.lib d2d1.lib dwrite.lib windowscodecs.lib"
+set "GUILIBS=user32.lib gdi32.lib shell32.lib dwmapi.lib d2d1.lib dwrite.lib windowscodecs.lib"
+REM The recording engine: COM, WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
+REM delay-loaded so the program also starts on Windows N editions that lack it.
+set "ENGLIBS=ole32.lib uuid.lib avrt.lib mfplat.lib mfreadwrite.lib mfuuid.lib delayimp.lib /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll"
 
 REM The logic shared by the app and the tests: compiled once per architecture.
 set "CORE_SRC="
@@ -82,7 +85,7 @@ cl.exe %CFLAGS% /c /Fo"%OBJ%\\" !CORE_SRC! || goto :buildfail
 
 set "TEST_SRC="
 for %%f in (tests\*.cpp) do set "TEST_SRC=!TEST_SRC! %%f"
-cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\run_tests.exe" !TEST_SRC! !CORE_OBJ! /link %LFLAGS% || goto :buildfail
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\run_tests.exe" !TEST_SRC! !CORE_OBJ! /link %LFLAGS% %ENGLIBS% || goto :buildfail
 
 REM Only libraries that ship with Windows may be imported (see tests\check_imports.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\run_tests.exe || goto :buildfail
@@ -93,10 +96,10 @@ if not "%RUN_TESTS%"=="1" goto :build_app
 
 :build_app
 if not "%WANT_APP%"=="1" goto :builddone
-set "UI_SRC=src\main.cpp"
+set "UI_SRC=src\main.cpp src\console.cpp"
 for %%f in (src\ui\*.cpp) do set "UI_SRC=!UI_SRC! %%f"
 cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_gui.exe" !UI_SRC! !CORE_OBJ! ^
-    /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% || goto :buildfail
+    /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% %ENGLIBS% || goto :buildfail
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\audior_gui.exe || goto :buildfail
 
 :builddone

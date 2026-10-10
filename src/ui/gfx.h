@@ -28,6 +28,10 @@ public:
     IWICImagingFactory *Wic() const { return wic_.Get(); }
     IDWriteTextFormat  *Format(Font font) const { return formats_[static_cast<int>(font)].Get(); }
 
+    /* `text` laid out on one line (no wrapping, no trimming), for measuring
+     * it and finding the character under a point.  Null if it cannot be made. */
+    ComPtr<IDWriteTextLayout> Layout(Font font, const wchar_t *text, UINT32 length) const;
+
 private:
     HRESULT MakeFormat(Font font, const wchar_t *family, float size, DWRITE_FONT_WEIGHT weight);
 

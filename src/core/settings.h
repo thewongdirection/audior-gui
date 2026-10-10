@@ -11,15 +11,20 @@
  *   (always on in audior)   includeMicrophone   the GUI lets either stream be
  *                                               switched off; one must stay on
  *   -m, --mic               microphoneId        "" = system default
- *   -a, --amplify           micAmplifyPercent   0..300 (microphone only)
+ *   -a, --amplify           micAmplifyPercent   0..300
+ *   (not in audior)         systemAmplifyPercent 0..300: the same for system
+ *                                               audio, which audior records at
+ *                                               unity
  *   -i, --include-output    includeSystemAudio
  *   -d, --output-device     systemDeviceId      "" = system default
  *   --merge / --separate    mixMode
  *   --merge <percent>       mergeMicPercent     0..100 (the microphone's share)
- *   -o, --output            outputDirectory     (the GUI names the file itself)
+ *   -o, --output            outputDirectory + fileName   (the folder is picked;
+ *                           an empty name means a timestamped one)
  */
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -34,10 +39,16 @@ inline constexpr int kDefaultMp3Bitrate = 128;
 inline constexpr int kMaxAmplifyPercent = 300;
 inline constexpr int kDefaultMergeMicPercent = 65;
 
+/* The longest path a recording may be written to (Windows' MAX_PATH less its
+ * terminator).  audior allows 247 characters for the name it is given, leaving
+ * room for the extension and the "_system" suffix it then adds. */
+inline constexpr std::size_t kMaxOutputPathChars = 259;
+
 bool IsValidMp3Bitrate(int kbps);
 
 struct RecordingSettings {
     std::wstring outputDirectory;
+    std::wstring fileName;                              /* "" = a timestamped name */
     Format       format             = Format::Mp3;
     int          mp3BitrateKbps     = kDefaultMp3Bitrate;
     bool         includeMicrophone  = true;
@@ -45,6 +56,7 @@ struct RecordingSettings {
     int          micAmplifyPercent  = 0;
     bool         includeSystemAudio = false;
     std::wstring systemDeviceId;                        /* "" = default */
+    int          systemAmplifyPercent = 0;
     MixMode      mixMode            = MixMode::Merge;
     int          mergeMicPercent    = kDefaultMergeMicPercent;
 };
@@ -55,6 +67,22 @@ inline bool RecordsBoth(const RecordingSettings &s) { return s.includeMicrophone
 
 /* An empty string when the settings are valid, else a message for the user. */
 std::wstring Validate(const RecordingSettings &settings);
+
+/* ---- the output file's name ------------------------------------------- */
+
+/* Gives `name` the extension of `format`: "meeting" -> "meeting.mp3",
+ * "clip.wav" with MP3 -> "clip.mp3", "clip.MP3" stays.  Only the part after the
+ * last dot is taken for an extension, so "take.2" becomes "take.mp3".  This is
+ * audior's rule for --output. */
+std::wstring EnforceExtension(const std::wstring &name, Format format);
+
+/* Why `name` cannot be a file name on Windows (illegal characters, reserved
+ * device names such as CON or NUL, a name that is only an extension), or empty
+ * if it can.  Also true of the empty name, which stands for a timestamped one. */
+std::wstring FileNameProblem(const std::wstring &name);
+
+/* Characters a file name may not contain. */
+bool IsFileNameChar(wchar_t c);
 
 /* ---- output files ---------------------------------------------------- */
 

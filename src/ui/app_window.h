@@ -28,10 +28,15 @@ public:
     bool Create(HINSTANCE instance, int showCommand);
     int  Run();                         /* the message loop; returns the exit code */
 
+    /* Begins recording as if the user had pressed Start (for --output). */
+    void StartRecording();
+
     /* IViewHost */
     std::wstring PickFolder(const std::wstring &current) override;
     int  Choose(const std::vector<std::wstring> &items, int selected, const D2D1_RECT_F &anchor) override;
     void ShowInFolder(const std::wstring &file) override;
+    std::wstring ClipboardText() override;
+    void SetClipboardText(const std::wstring &text) override;
     void Wake() override;
 
 private:
