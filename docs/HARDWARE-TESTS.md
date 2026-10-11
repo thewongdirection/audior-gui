@@ -2,7 +2,7 @@
 
 CI runners have no audio devices, so the capture path (`wasapi_capture.cpp`,
 `devices.cpp`) is only unit-tested for its failure paths. `hardware_tests.exe` closes
-that gap: it starts the **real `audior_gui.exe`**, records on **real devices**, and checks
+that gap: it starts the **real `Audior-GUI.exe`**, records on **real devices**, and checks
 the files that come out. It is native C++ like the rest of the project (Win32 and Media
 Foundation only; no scripts, no third-party tools).
 
@@ -26,7 +26,7 @@ not be set up (no application next to the test program, no microphone or playbac
 device, a bad option). The whole run takes about 13 minutes.
 
 **Needs:** a microphone and a playback device, a desktop session, and
-`audior_gui.exe` in the same folder as `hardware_tests.exe` (`build.bat hardware`
+`Audior-GUI.exe` in the same folder as `hardware_tests.exe` (`build.bat hardware`
 puts them there). T12 also uses the other architecture's build if it is built.
 
 ### What it does to your PC
@@ -38,14 +38,22 @@ puts them there). T12 also uses the other architecture's build if it is built.
 - **Opens the application windows behind everything else, without taking the focus.** They are
   visible and fully usable (click one in the taskbar to watch it), but they never cover the window
   you are working in and the keyboard focus never moves. The program passes its launch
-  show-command straight to `ShowWindow`, so the test program starts it with `SW_SHOWMINNOACTIVE`,
-  restores it with `SW_SHOWNOACTIVATE` and sends it to the bottom of the window stack
+  show-command straight to `ShowWindow`, so the test program starts it with `SW_SHOWMINNOACTIVE`
+  (which sends a window to the tray, hidden: the test program finds it by its window class, not
+  by visibility), restores it with `SW_SHOWNOACTIVATE` and sends it to the bottom of the window stack
   (`tests/hardware/app_process.cpp`). T14 samples the foreground window every 100 ms and fails
-  if it ever belongs to the application; clicking a window yourself counts as stolen focus.
-- **Nothing else may record meanwhile.** Every `audior_gui.exe` ends on the same machine-wide stop
+  if it ever belongs to the application; clicking a window yourself counts as stolen focus. A
+  failure says when it happened and how it began, for example `308 of 5885 samples, in 2
+  episodes: T1 at 3.4 s for 29.6 s (no input for 6.1 s: not a click, something else brought it
+  forward); T12 at 25.0 s for 8.1 s (input 0.2 s earlier: probably someone clicking or typing)`.
+  The cause is read from how long ago the last keyboard or mouse input was when the window came
+  forward, and whether a mouse button was down (`tests/hardware/focus_log.h`, unit-tested in
+  `tests/test_focus_log.cpp`). Input another program injects, such as a UI-automation session,
+  counts as input, so it reads as "someone".
+- **Nothing else may record meanwhile.** Every `Audior-GUI.exe` ends on the same machine-wide stop
   event (`Local\AudiorStopEvent`) and the microphone is shared, so a second instance recording or
   sending `--stop` cuts these recordings short. The tests refuse to start while another
-  `audior_gui.exe` or `hardware_tests.exe` is running and T14 notes any that appears during the
+  `Audior-GUI.exe` (or a build from before the rename, `audior_gui.exe`) or `hardware_tests.exe` is running and T14 notes any that appears during the
   run (short `--demo` or screenshot runs are harmless).
 - **Bluetooth headsets:** opening the microphone switches the headset to its hands-free
   profile, so its audio quality drops for the duration and music may stutter. That is the
@@ -73,7 +81,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T11 | Closing the window while recording | the window closes with exit 0 and both MP3 files are complete and 30 s+ |
 | T12 | The other architecture's build | mic + system, 30 s+, clock, tone captured, tracks the same length |
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
-| T14 | Focus | the foreground window never belonged to the application during the run; any other `audior_gui.exe` seen during the run is noted (they share the stop signal) |
+| T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 
 ### How the files are measured
 
@@ -110,7 +118,7 @@ the fix described in finding 1.
 | Hardware tests, after the fix | **100 checks: all pass**; the foreground window never belonged to the application in 5,951 samples |
 
 The "before" run's T13 handle check had been changed after the first attempt (finding 2) and
-its figures count T13 under the final rule. The "after" run also noted 13 other `audior_gui.exe`
+its figures count T13 under the final rule. The "after" run also noted 13 other `Audior-GUI.exe`
 processes during its 14 minutes, short runs by other sessions on the same PC; it then counted
 that as a failed check (101 checks, 100 passed), which was changed to a note because none of
 them touched a recording (every other check passed).
@@ -202,3 +210,49 @@ See "How the files are measured": a whole-file maximum is spoiled by any unrelat
   to the bottom of the stack, stays visible and never takes the focus (0 of 5,732 foreground
   samples), and `PostMessage(WM_CLOSE)` closes it exactly as the close button does.
 - A bad `-m` or `-d` value is rejected by the command line before any window opens (exit 1).
+
+### 6. Recording with a Bluetooth headset's microphone switches the headset to call mode (not a bug here; the window now says so)
+
+**Report.** With a Bluetooth headset as both the default speaker and microphone, music playing,
+and **System audio** ticked, pressing **Start recording** made the audio "jump from the
+headset to the monitor"; it jumped back on **Stop**.
+
+**What it is.** A Bluetooth headset plays music in its stereo mode. When anything opens its
+microphone, Windows switches it to the hands-free (phone call) mode, and back when the microphone
+is closed. The program does not choose this and cannot avoid it while the microphone is open.
+
+**How it was pinned down.** A throw-away probe (not in the repository) took a snapshot every
+200 ms of: the default playback and recording devices for all three roles, every playback and
+recording endpoint's state, master volume, mute flag and level meter, and the audio sessions on
+each endpoint. The same music (Chrome and a quiet test tone) played throughout.
+
+| Recording | Headset output volume | Output | Volume after Stop |
+|---|---|---|---|
+| Microphone and system audio (the report, from the window) | 40 to 45 at the start | silent for 0.4 s, then sound again | back to 40, 5 s after Stop |
+| Microphone only (command line) | 40 to 45 at the start | silent for 0.4 s, then sound again | back to 40, 5 s after Stop |
+| System audio only, microphone unticked (window) | unchanged | unchanged | unchanged |
+
+- Opening the microphone is what triggers it: the step appears with the microphone alone and not
+  with the system audio alone. The system audio capture is a loopback of the headset's playback
+  side and does not touch the headset's microphone side.
+- **Windows did not re-route anything.** In every run the default playback device stayed the
+  headset, Chrome's and the test tone's streams stayed on it, no stream ever appeared on the
+  monitor's endpoint, and the monitor's level meter stayed at silence.
+- **Not explained:** the impression that the sound moved to the monitor. The logs show the
+  headset still carrying the sound and nothing on the monitor; if it persists, note which sound
+  came out of which speaker and when.
+
+**What the program does about it.** `src/core/bluetooth.h` and the device list: each device
+carries a `bluetooth` flag, read from the bus Windows reports for its endpoint (`BTHHFENUM` for a
+headset's microphone, `BTHENUM` for its playback side, `HDAUDIO` for the PC's own and the monitor's;
+anything starting `BTH` counts). When the microphone that would be recorded is Bluetooth, the
+microphone pane shows *Bluetooth microphone: the headset switches to call mode while recording.*
+under its drop-down, with a **Record system audio only** link on the same line that unticks the
+microphone and ticks system audio in one click (`UseSystemAudioOnly`; hidden while recording,
+because the settings are locked then). Five unit tests cover the detection and the choice of
+microphone (default or a chosen one), one the link's settings change, and the `bluetooth-mic`
+screenshot scenario renders the note and the link (also in CI). Checked by clicking the link in the
+real window on the real hardware: the microphone unticked, system audio ticked, the note went.
+
+**What avoids it.** Record **System audio only** (untick **Microphone**), or use a microphone that
+is not Bluetooth (a USB or wired one) and keep the headset only for listening.

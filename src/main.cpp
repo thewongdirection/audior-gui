@@ -1,13 +1,13 @@
 /*
  * main.cpp - Entry point.
  *
- *     audior_gui.exe                      the window, recording with WASAPI
- *     audior_gui.exe --demo               the window with simulated audio (nothing is written)
- *     audior_gui.exe -o talk.mp3 -i ...   audior's options preset the window; --output also starts recording
- *     audior_gui.exe --list-devices       list the audio devices
- *     audior_gui.exe --stop               stop the recording in progress
- *     audior_gui.exe --help               the options
- *     audior_gui.exe --screenshot out.png [--scenario recording] [--size 1120x720]
+ *     Audior-GUI.exe                      the window, recording with WASAPI
+ *     Audior-GUI.exe --demo               the window with simulated audio (nothing is written)
+ *     Audior-GUI.exe -o talk.mp3 -i ...   audior's options preset the window; --output also starts recording
+ *     Audior-GUI.exe --list-devices       list the audio devices
+ *     Audior-GUI.exe --stop               stop the recording in progress
+ *     Audior-GUI.exe --help               the options
+ *     Audior-GUI.exe --screenshot out.png [--scenario recording] [--size 1120x720]
  *
  * See core/cli.h for the options.
  */
@@ -62,13 +62,13 @@ std::wstring CurrentDirectory()
     return n > 0 && n < MAX_PATH ? std::wstring(buffer, n) : std::wstring();
 }
 
-/* Documents\audior: where recordings go until the user picks a folder. */
+/* Documents\Audior-GUI: where recordings go until the user picks a folder. */
 std::wstring DefaultOutputDirectory()
 {
     PWSTR documents = nullptr;
     std::wstring dir;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_DEFAULT, nullptr, &documents)))
-        dir = std::wstring(documents) + L"\\audior";
+        dir = std::wstring(documents) + L"\\Audior-GUI";
     CoTaskMemFree(documents);
     return dir;
 }
@@ -117,7 +117,7 @@ bool ChooseDevice(const RecorderController &controller, DeviceKind kind, const s
     if (selector.empty() || ResolveDevice(controller.Devices(kind), selector, id))
         return true;
     WriteError(std::wstring(L"Error: no ") + (kind == DeviceKind::Microphone ? L"microphone" : L"playback device") +
-               L" matches '" + selector + L"'. Run audior_gui --list-devices to see them.\n");
+               L" matches '" + selector + L"'. Run Audior-GUI --list-devices to see them.\n");
     return false;
 }
 
@@ -155,7 +155,7 @@ int Run(HINSTANCE instance, int showCommand)
     settings.outputDirectory = DefaultOutputDirectory();
     const CliResult cli = ParseCommandLine(Arguments(), CurrentDirectory(), &settings);
     if (!cli.error.empty()) {
-        WriteError(L"Error: " + cli.error + L"\nRun audior_gui --help to see the options.\n");
+        WriteError(L"Error: " + cli.error + L"\nRun Audior-GUI --help to see the options.\n");
         return 1;
     }
     for (const std::wstring &warning : cli.warnings)

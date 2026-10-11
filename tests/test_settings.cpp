@@ -28,6 +28,26 @@ TEST(Settings_DefaultsMatchAudior)
     CHECK(s.systemDeviceId.empty());
 }
 
+TEST(Settings_SystemAudioOnlyTurnsTheMicrophoneOffAndTheSystemOn)
+{
+    RecordingSettings s = Valid();                       /* the default: microphone only */
+    UseSystemAudioOnly(&s);
+    CHECK(!s.includeMicrophone);
+    CHECK(s.includeSystemAudio);
+    CHECK(!RecordsBoth(s));
+    CHECK(Validate(s).empty());                  /* still something to record */
+
+    RecordingSettings both = Valid();
+    both.includeSystemAudio = true;
+    both.micAmplifyPercent = 120;
+    UseSystemAudioOnly(&both);                           /* from both streams, and nothing else changes */
+    CHECK(!both.includeMicrophone && both.includeSystemAudio);
+    CHECK_EQ(both.micAmplifyPercent, 120);
+
+    UseSystemAudioOnly(&both);                           /* doing it again changes nothing */
+    CHECK(!both.includeMicrophone && both.includeSystemAudio);
+}
+
 TEST(Settings_Mp3BitrateList)
 {
     const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};
@@ -90,9 +110,17 @@ TEST(DefaultBaseName_IsSortableAndZeroPadded)
 {
     LocalTime t;
     t.year = 2026; t.month = 3; t.day = 7; t.hour = 9; t.minute = 5; t.second = 2;
-    CHECK_EQ(DefaultBaseName(t), std::wstring(L"audior-20260307-090502"));
+    CHECK_EQ(DefaultBaseName(t), std::wstring(L"Audior-GUI-20260307-090502"));
     t.month = 12; t.day = 31; t.hour = 23; t.minute = 59; t.second = 59;
-    CHECK_EQ(DefaultBaseName(t), std::wstring(L"audior-20261231-235959"));
+    CHECK_EQ(DefaultBaseName(t), std::wstring(L"Audior-GUI-20261231-235959"));
+}
+
+TEST(DefaultBaseName_CarriesTheProgramsNameAndIsALegalFileName)
+{
+    const std::wstring name = DefaultBaseName(LocalTime{2026, 10, 10, 15, 30, 45});
+    CHECK(name.compare(0, 11, L"Audior-GUI-") == 0);
+    CHECK(FileNameProblem(name + ExtensionFor(Format::Mp3)).empty());
+    CHECK(FileNameProblem(name + L"_system" + ExtensionFor(Format::Wav)).empty());      /* the longest it becomes */
 }
 
 TEST(ExtensionFor_MatchesFormat)

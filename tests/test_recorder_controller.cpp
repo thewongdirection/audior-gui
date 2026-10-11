@@ -109,7 +109,7 @@ TEST(Controller_RecordsAndSaves)
     const Outcome &o = rig.ctl.LastOutcome();
     CHECK(o.kind == Outcome::Kind::Saved);
     CHECK_EQ(o.files.size(), std::size_t(1));
-    CHECK_EQ(o.files[0], std::wstring(L"C:\\Rec\\audior-20261010-153045.mp3"));
+    CHECK_EQ(o.files[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045.mp3"));
     CHECK_NEAR(rig.ctl.Stats().seconds, 2.0, 0.05);     /* the final figures stay */
 }
 
@@ -119,7 +119,7 @@ TEST(Controller_WavRecordingsGetAWavName)
     rig.ctl.Settings().format = Format::Wav;
     CHECK(rig.ctl.Start());
     rig.ctl.Stop();
-    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\audior-20261010-153045.wav"));
+    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045.wav"));
 }
 
 TEST(Controller_SeparateStreamsGiveTwoFiles)
@@ -131,8 +131,8 @@ TEST(Controller_SeparateStreamsGiveTwoFiles)
     rig.ctl.Stop();
     const auto &files = rig.ctl.LastOutcome().files;
     CHECK_EQ(files.size(), std::size_t(2));
-    CHECK_EQ(files[0], std::wstring(L"C:\\Rec\\audior-20261010-153045_mic.mp3"));
-    CHECK_EQ(files[1], std::wstring(L"C:\\Rec\\audior-20261010-153045_system.mp3"));
+    CHECK_EQ(files[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045_mic.mp3"));
+    CHECK_EQ(files[1], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045_system.mp3"));
 }
 
 TEST(Controller_OnlyTheMicLaneRunsWithoutSystemAudio)
@@ -245,12 +245,12 @@ TEST(Controller_AnEngineThatCannotStartLeavesTheReason)
 TEST(Controller_RestartingWithinASecondDoesNotOverwrite)
 {
     Rig rig;
-    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045.mp3"));
-    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045 (2).mp3"));
-    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153045 (3).mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045.mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 (2).mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 (3).mp3"));
 
     rig.time.second = 46;                               /* a new second: a plain name again */
-    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\audior-20261010-153046.mp3"));
+    CHECK_EQ(rig.Record(), std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153046.mp3"));
 }
 
 TEST(Controller_ATypedNameGetsTheFormatsExtension)
@@ -343,7 +343,7 @@ TEST(Controller_AFailedStartDoesNotUseUpAName)
     rig.ctl.Settings().mergeMicPercent = 65;
     CHECK(rig.ctl.Start());
     rig.ctl.Stop();
-    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\audior-20261010-153045.mp3"));
+    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045.mp3"));
 }
 
 TEST(Controller_TickWhileIdleIsHarmless)

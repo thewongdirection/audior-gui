@@ -1,7 +1,7 @@
 /*
  * stop_signal.h - Lets a second process end the recording in progress.
  *
- * While a recording runs, its process holds a named event.  `audior_gui
+ * While a recording runs, its process holds a named event.  `Audior-GUI
  * --stop` (or audior's own `--stop`: the name is the same) opens that event and
  * sets it.  No event exists when nothing is recording, which is how "No active
  * recording to stop." is told apart.

@@ -46,7 +46,7 @@ void Write(DWORD which, const std::wstring &text, UINT icon)
 {
     HANDLE target = Target(which);
     if (!target || !WriteText(target, text))
-        MessageBoxW(nullptr, text.c_str(), L"audior", MB_OK | icon);
+        MessageBoxW(nullptr, text.c_str(), L"Audior-GUI", MB_OK | icon);
 }
 
 }  // namespace

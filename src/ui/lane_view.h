@@ -40,8 +40,8 @@ struct TranscriptPane {
 
 class LaneView {
 public:
-    /* Where the waveform starts, below the pane's controls. */
-    static constexpr float kControlsHeight = 96.0f;
+    /* Where the waveform starts, below the pane's controls and the line of note under them. */
+    static constexpr float kControlsHeight = 100.0f;
 
     /* The transcript switch sits in the header, right of the title; the
      * status of the transcript follows it. */

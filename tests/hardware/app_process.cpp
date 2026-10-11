@@ -14,12 +14,16 @@ struct WindowSearch {
     HWND  found;
 };
 
-BOOL CALLBACK FindVisibleWindow(HWND window, LPARAM param)
+/* The program's main window, shown or not: started minimized, the program keeps its window hidden
+ * in the tray.  (Its class, not its visibility, tells it from the helper windows a process has.) */
+BOOL CALLBACK FindAppWindow(HWND window, LPARAM param)
 {
     WindowSearch *search = reinterpret_cast<WindowSearch *>(param);
     DWORD owner = 0;
     GetWindowThreadProcessId(window, &owner);
-    if (owner != search->pid || !IsWindowVisible(window))
+    wchar_t windowClass[32] = {};
+    if (owner != search->pid || GetClassNameW(window, windowClass, ARRAYSIZE(windowClass)) == 0 ||
+        wcscmp(windowClass, L"AudiorGuiWindow") != 0)
         return TRUE;
     search->found = window;
     return FALSE;
@@ -72,13 +76,13 @@ bool AppProcess::Start(const std::wstring &exe, const std::wstring &args, bool b
 
     for (DWORD waited = 0; waited < kWindowWaitMs && !window_ && !Exited(); waited += 10) {
         WindowSearch search = {pid_, nullptr};
-        EnumWindows(FindVisibleWindow, reinterpret_cast<LPARAM>(&search));
+        EnumWindows(FindAppWindow, reinterpret_cast<LPARAM>(&search));
         window_ = search.found;
         if (!window_)
             Sleep(10);
     }
     if (window_ && background) {
-        if (IsIconic(window_))
+        if (IsIconic(window_) || !IsWindowVisible(window_))          /* minimized, or hidden in the tray */
             ShowWindow(window_, SW_SHOWNOACTIVATE);
         SetWindowPos(window_, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
@@ -184,4 +188,17 @@ DWORD ForegroundProcessId()
     if (HWND window = GetForegroundWindow())
         GetWindowThreadProcessId(window, &pid);
     return pid;
+}
+
+long long MillisecondsSinceInput()
+{
+    LASTINPUTINFO info = {sizeof info, 0};
+    if (!GetLastInputInfo(&info))
+        return -1;
+    return static_cast<long long>(static_cast<DWORD>(GetTickCount() - info.dwTime));     /* both wrap together */
+}
+
+bool MouseButtonDown()
+{
+    return ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
 }
