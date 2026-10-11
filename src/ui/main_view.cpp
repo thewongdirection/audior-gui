@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/bluetooth.h"
 #include "../core/format.h"
 
 namespace audiorgui::ui {
@@ -10,6 +11,7 @@ namespace audiorgui::ui {
 namespace {
 
 constexpr float kPi = 3.14159265358979f;
+constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio only" at the small size */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
 const LaneStyle kSystemStyle = {L"System audio", theme::kSystem};
@@ -123,6 +125,13 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     stopButton_.glyph = Button::Glyph::Stop;
     stopButton_.onClick = [this] { StopRecording(); };
 
+    bluetoothLink_.style = Button::Style::Link;
+    bluetoothLink_.text = L"Record system audio only";
+    bluetoothLink_.onClick = [this] {                   /* the way round the headset's call mode */
+        UseSystemAudioOnly(&ctl_.Settings());
+        Refresh();
+    };
+
     showButton_.text = L"Show in folder";
     showButton_.onClick = [this] {
         const Outcome &o = ctl_.LastOutcome();
@@ -134,7 +143,8 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     ConfigureHotkey(HotkeyAction::Stop, L"Stop");
 
     Widget *const order[kWidgetCount] = {
-        &micCheck_, &micField_, &gain_[0].slider, &systemCheck_, &systemField_, &gain_[1].slider, &folderField_,
+        &micCheck_, &micField_, &bluetoothLink_, &gain_[0].slider, &systemCheck_, &systemField_, &gain_[1].slider,
+        &folderField_,
         &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
         &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
@@ -220,6 +230,8 @@ void MainView::Refresh()
     micCheck_.enabled = unlocked;
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
+    micBluetooth_ = s.includeMicrophone && MicrophoneIsBluetooth(ctl_.Devices(DeviceKind::Microphone), s.microphoneId);
+    bluetoothLink_.visible = micBluetooth_ && unlocked;     /* not while recording: the settings are locked */
     gain_[0].slider.value = s.micAmplifyPercent;
     gain_[0].slider.enabled = micField_.enabled;
     gain_[0].text = GainText(s.micAmplifyPercent);
@@ -429,7 +441,7 @@ void MainView::ListenForHotkey(HotkeyAction action)
 void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Button &device)
 {
     include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
-    device.rect = RectXYWH(card.left + 20, card.top + 48, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
+    device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
 void MainView::Layout(float w, float h)
@@ -448,11 +460,13 @@ void MainView::Layout(float w, float h)
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
     LayoutPane(micCard_, micCheck_, micField_);
     LayoutPane(systemCard_, systemCheck_, systemField_);
+    micNoteRect_ = RectF(micField_.rect.left, micField_.rect.bottom + 2, micCard_.right - 20, micField_.rect.bottom + 20);
+    bluetoothLink_.rect = RectF(micNoteRect_.right - kLinkWidth, micNoteRect_.top, micNoteRect_.right, micNoteRect_.bottom);
     const Button *const fields[kStreamCount] = {&micField_, &systemField_};
     const D2D1_RECT_F *const cards[kStreamCount] = {&micCard_, &systemCard_};
     for (int i = 0; i < kStreamCount; ++i) {            /* the gain sits right of the device drop-down */
         GainControl &gain = gain_[i];
-        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 48, cards[i]->right - 20, cards[i]->top + 84);
+        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 44, cards[i]->right - 20, cards[i]->top + 80);
         gain.slider.rect = RectF(gain.row.left + 40, gain.row.top + 6, gain.row.right - 52, gain.row.bottom - 6);
     }
 
@@ -547,9 +561,15 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
-/* Each stream's gain label and value (the slider is a widget). */
+/* Each stream's gain label and value (the slider is a widget), and the microphone's Bluetooth note. */
 void MainView::PaintPaneControls(Painter &p)
 {
+    if (micBluetooth_) {
+        D2D1_RECT_F note = micNoteRect_;
+        if (bluetoothLink_.visible)
+            note.right = bluetoothLink_.rect.left - 12.0f;   /* the note gives way to the link */
+        p.Text(BluetoothMicrophoneNote(), note, Font::Small, theme::kWarn);
+    }
     for (const GainControl &gain : gain_) {
         const bool on = gain.slider.enabled;
         const D2D1_RECT_F &row = gain.row;

@@ -28,6 +28,26 @@ TEST(Settings_DefaultsMatchAudior)
     CHECK(s.systemDeviceId.empty());
 }
 
+TEST(Settings_SystemAudioOnlyTurnsTheMicrophoneOffAndTheSystemOn)
+{
+    RecordingSettings s = Valid();                       /* the default: microphone only */
+    UseSystemAudioOnly(&s);
+    CHECK(!s.includeMicrophone);
+    CHECK(s.includeSystemAudio);
+    CHECK(!RecordsBoth(s));
+    CHECK(Validate(s).empty());                  /* still something to record */
+
+    RecordingSettings both = Valid();
+    both.includeSystemAudio = true;
+    both.micAmplifyPercent = 120;
+    UseSystemAudioOnly(&both);                           /* from both streams, and nothing else changes */
+    CHECK(!both.includeMicrophone && both.includeSystemAudio);
+    CHECK_EQ(both.micAmplifyPercent, 120);
+
+    UseSystemAudioOnly(&both);                           /* doing it again changes nothing */
+    CHECK(!both.includeMicrophone && both.includeSystemAudio);
+}
+
 TEST(Settings_Mp3BitrateList)
 {
     const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};

@@ -55,10 +55,11 @@ public:
     virtual void FocusLost() {}                                             /* the focus moved elsewhere     */
 };
 
-/* A push button, or (Style::Field) a field that opens a choice when clicked. */
+/* A push button, (Style::Field) a field that opens a choice when clicked, or (Style::Link) bare
+ * text in the system-audio accent that acts when clicked, right-aligned in its rectangle. */
 class Button : public Widget {
 public:
-    enum class Style { Primary, Prominent, Secondary, Field };
+    enum class Style { Primary, Prominent, Secondary, Field, Link };
     enum class Glyph { None, Record, Stop };
 
     std::wstring          text;

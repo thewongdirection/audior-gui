@@ -203,3 +203,49 @@ See "How the files are measured": a whole-file maximum is spoiled by any unrelat
   to the bottom of the stack, stays visible and never takes the focus (0 of 5,732 foreground
   samples), and `PostMessage(WM_CLOSE)` closes it exactly as the close button does.
 - A bad `-m` or `-d` value is rejected by the command line before any window opens (exit 1).
+
+### 6. Recording with a Bluetooth headset's microphone switches the headset to call mode (not a bug here; the window now says so)
+
+**Report.** With a Bluetooth headset as both the default speaker and microphone, music playing,
+and **System audio** ticked, pressing **Start recording** made the audio "jump from the
+headset to the monitor"; it jumped back on **Stop**.
+
+**What it is.** A Bluetooth headset plays music in its stereo mode. When anything opens its
+microphone, Windows switches it to the hands-free (phone call) mode, and back when the microphone
+is closed. The program does not choose this and cannot avoid it while the microphone is open.
+
+**How it was pinned down.** A throw-away probe (not in the repository) took a snapshot every
+200 ms of: the default playback and recording devices for all three roles, every playback and
+recording endpoint's state, master volume, mute flag and level meter, and the audio sessions on
+each endpoint. The same music (Chrome and a quiet test tone) played throughout.
+
+| Recording | Headset output volume | Output | Volume after Stop |
+|---|---|---|---|
+| Microphone and system audio (the report, from the window) | 40 to 45 at the start | silent for 0.4 s, then sound again | back to 40, 5 s after Stop |
+| Microphone only (command line) | 40 to 45 at the start | silent for 0.4 s, then sound again | back to 40, 5 s after Stop |
+| System audio only, microphone unticked (window) | unchanged | unchanged | unchanged |
+
+- Opening the microphone is what triggers it: the step appears with the microphone alone and not
+  with the system audio alone. The system audio capture is a loopback of the headset's playback
+  side and does not touch the headset's microphone side.
+- **Windows did not re-route anything.** In every run the default playback device stayed the
+  headset, Chrome's and the test tone's streams stayed on it, no stream ever appeared on the
+  monitor's endpoint, and the monitor's level meter stayed at silence.
+- **Not explained:** the impression that the sound moved to the monitor. The logs show the
+  headset still carrying the sound and nothing on the monitor; if it persists, note which sound
+  came out of which speaker and when.
+
+**What the program does about it.** `src/core/bluetooth.h` and the device list: each device
+carries a `bluetooth` flag, read from the bus Windows reports for its endpoint (`BTHHFENUM` for a
+headset's microphone, `BTHENUM` for its playback side, `HDAUDIO` for the PC's own and the monitor's;
+anything starting `BTH` counts). When the microphone that would be recorded is Bluetooth, the
+microphone pane shows *Bluetooth microphone: the headset switches to call mode while recording.*
+under its drop-down, with a **Record system audio only** link on the same line that unticks the
+microphone and ticks system audio in one click (`UseSystemAudioOnly`; hidden while recording,
+because the settings are locked then). Five unit tests cover the detection and the choice of
+microphone (default or a chosen one), one the link's settings change, and the `bluetooth-mic`
+screenshot scenario renders the note and the link (also in CI). Checked by clicking the link in the
+real window on the real hardware: the microphone unticked, system audio ticked, the note went.
+
+**What avoids it.** Record **System audio only** (untick **Microphone**), or use a microphone that
+is not Bluetooth (a USB or wired one) and keep the headset only for listening.

@@ -107,7 +107,7 @@ public:
     void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
 
 private:
-    static constexpr int kWidgetCount = 17;
+    static constexpr int kWidgetCount = 18;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -142,7 +142,7 @@ private:
     float               width_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
-    Button    micField_, systemField_, folderField_, bitrateField_;
+    Button    micField_, systemField_, folderField_, bitrateField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_;
     Segmented formatSeg_, mixSeg_;
     Slider    shareSlider_;
@@ -158,7 +158,8 @@ private:
     bool   hotkeyActive_[kHotkeyActionCount] = {true, true};    /* the system accepted it */
 
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
-    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {};
+    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {}, micNoteRect_ = {};
+    bool        micBluetooth_ = false;  /* the microphone to be recorded is a Bluetooth one: say what that does */
     Caption     captions_[5] = {};
 
     LaneView micView_, systemView_;
