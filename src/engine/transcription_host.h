@@ -68,6 +68,7 @@ class TranscriptionHost final : public ISpeechSink {
 public:
     struct Options {
         std::wstring model;                         /* what the helper should load (sent in Hello) */
+        SpeechLanguage language = SpeechLanguage::Auto;     /* and what to take the speech for (Hello) */
         int          maxRestarts    = 3;            /* in a row; then the streams are Failed       */
         int          backoffMs      = 1000;         /* before the first restart; doubles after     */
         int          healthyMs      = 60000;        /* a helper that ran this long before dying

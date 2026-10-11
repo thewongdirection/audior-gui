@@ -93,6 +93,9 @@ public:
      * after the recording until the next one starts. */
     bool CanTranscribe() const { return engine_.CanTranscribe(); }
 
+    /* The models to choose from, as of the start of the program. */
+    const std::vector<TranscriptModel> &TranscriptModels() const { return transcriptModels_; }
+
     /* Whether the stream's pane shows a transcript: the engine can make one
      * and the stream's transcript is switched on. */
     bool ShowsTranscript(StreamId stream) const { return CanTranscribe() && Transcribes(Active(), stream); }
@@ -122,6 +125,7 @@ private:
     RecordingStats     stats_;
     Outcome            outcome_;
     std::vector<DeviceInfo> devices_[2];
+    std::vector<TranscriptModel> transcriptModels_;
 };
 
 }  // namespace audiorgui

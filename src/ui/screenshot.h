@@ -9,7 +9,8 @@
  * a picture of the UI, and it is a quick way to look at a design change.
  *
  * Scenarios: idle, recording, mic-only, system-only, clipping, saved, error,
- * transcript (both live transcripts mid-sentence), named (settings changed),
+ * transcript (both live transcripts mid-sentence), model (the multilingual
+ * model chosen, idle), named (settings changed),
  * typing (a long file name being edited).
  */
 #pragma once

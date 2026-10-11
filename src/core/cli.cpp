@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "asr_models.h"
+
 namespace audiorgui {
 
 namespace {
@@ -96,6 +98,15 @@ bool ParsePercent(const std::wstring &option, const std::wstring &text, int maxi
     return true;
 }
 
+/* "a.bin or b.bin", for the message about a model nobody knows. */
+std::wstring ModelNames()
+{
+    std::wstring names;
+    for (std::size_t i = 0; i < kAsrModelCount; ++i)
+        names += (i == 0 ? L"" : i + 1 == kAsrModelCount ? L" or " : L", ") + std::wstring(kAsrModels[i].file);
+    return names;
+}
+
 }  // namespace
 
 CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wstring &workingDirectory,
@@ -171,6 +182,22 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
             s.transcribeMicrophone = true;
         } else if (option == L"--transcribe-system") {
             s.transcribeSystem = true;
+        } else if (option == L"--transcribe-model") {
+            if (!needValue())
+                continue;
+            const AsrModel *model = FindAsrModel(value);
+            if (model)
+                s.transcribeModel = model->file;
+            else
+                r.error = L"unknown --transcribe-model '" + value + L"' (use " + ModelNames() + L").";
+        } else if (option == L"--transcribe-language") {
+            if (!needValue())
+                continue;
+            const std::wstring language = Lowered(value);
+            if (language == L"auto" || language == L"en")
+                s.transcribeLanguage = language == L"en" ? SpeechLanguage::English : SpeechLanguage::Auto;
+            else
+                r.error = L"invalid --transcribe-language '" + value + L"' (use auto or en).";
         } else if (option == L"-l" || option == L"--list-devices") {
             command(CliResult::Command::ListDevices);
         } else if (option == L"-s" || option == L"--stop") {
@@ -257,7 +284,8 @@ std::wstring HelpText()
            L"\n"
            L"With no options the window opens. Options preset the window; giving --output starts\n"
            L"recording straight away. The options are audior's, plus --system-amplify,\n"
-           L"--transcribe-mic, --transcribe-system and --demo.\n"
+           L"--transcribe-mic, --transcribe-system (with --transcribe-model and --transcribe-language)\n"
+           L"and --demo.\n"
            L"\n"
            L"Recording:\n"
            L"  -o, --output <file>          File to record to (at most 247 characters). The extension\n"
@@ -279,6 +307,10 @@ std::wstring HelpText()
            L"      --transcribe-system      Show a live transcript of the system audio in its pane.\n"
            L"                               (Both need the helper audior_asr.exe and a model; see the README.\n"
            L"                               Without them the switch does not appear. --demo has its own.)\n"
+           L"      --transcribe-model <file>  Model file to transcribe with (default: the first one found).\n"
+           L"      --transcribe-language <auto|en>\n"
+           L"                               Find the language by itself, or take it to be English\n"
+           L"                               (default auto; a model that is English only always is).\n"
            L"\n"
            L"Other:\n"
            L"  -l, --list-devices           List the audio devices and exit.\n"

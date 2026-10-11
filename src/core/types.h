@@ -20,6 +20,9 @@ enum class Format     { Mp3, Wav };
 enum class MixMode    { Merge, Separate };
 enum class DeviceKind { Microphone, Playback };
 
+/* The language of the speech a transcript is made of: found by the model, or English. */
+enum class SpeechLanguage { Auto, English };
+
 struct DeviceInfo {
     std::wstring id;          /* endpoint ID; usable as a device selector */
     std::wstring name;        /* friendly name                            */

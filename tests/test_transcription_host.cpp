@@ -97,6 +97,7 @@ struct Seen {
     std::size_t   sampleCount;
     std::uint8_t  streams;
     std::wstring  text;
+    SpeechLanguage language;
 };
 
 /* One run of the fake helper: its pipes, its thread and what it saw. */
@@ -111,7 +112,7 @@ struct Instance {
     void Record(const asr::Message &m)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text});
+        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text, m.language});
     }
     std::vector<Seen> Seen_() const
     {
@@ -303,6 +304,22 @@ std::vector<TranscriptEvent> TakeAll(TranscriptionHost &host, StreamId stream)
 }
 
 }  // namespace
+
+TEST(Host_TellsTheHelperTheLanguage)
+{
+    for (SpeechLanguage language : {SpeechLanguage::Auto, SpeechLanguage::English}) {
+        FakeHelpers helpers;
+        helpers.behavior = WellBehaved;
+        TranscriptionHost::Options options = Quick();
+        options.language = language;
+        TranscriptionHost host(helpers.Factory(), options);
+        host.Start(kMic);
+        host.Stop();
+        const std::vector<Seen> seen = helpers.At(0).Seen_();
+        CHECK(!seen.empty() && seen.front().type == asr::Type::Hello);
+        CHECK(seen.front().language == language);
+    }
+}
 
 TEST(Host_SendsHelloThenTheAudioThenStop)
 {

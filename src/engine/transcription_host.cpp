@@ -283,6 +283,7 @@ bool TranscriptionHost::WriteLoop(IAsrTransport &transport)
 
     message.type = asr::Type::Hello;
     message.streams = streams_;
+    message.language = options_.language;
     message.text = options_.model;
     if (!send())
         return false;

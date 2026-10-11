@@ -101,10 +101,15 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
     Reader r(payload, size);
     m->type = type;
     switch (type) {
-    case Type::Hello:
+    case Type::Hello: {
         m->version = r.Get<std::uint16_t>();
         m->streams = r.Get<std::uint8_t>();
+        const std::uint8_t language = r.Get<std::uint8_t>();
+        if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English))
+            return false;
+        m->language = static_cast<SpeechLanguage>(language);
         return r.String(size / sizeof(wchar_t), &m->text) && r.done();
+    }
     case Type::Audio: {
         const std::uint8_t stream = r.Get<std::uint8_t>();
         m->firstSample = r.Get<std::uint64_t>();
@@ -172,6 +177,7 @@ std::size_t Encode(const Message &m, std::uint8_t *out, std::size_t capacity)
     case Type::Hello:
         w.Put(m.version);
         w.Put(m.streams);
+        w.Put(static_cast<std::uint8_t>(m.language));
         w.String(m.text.c_str(), m.text.size());
         break;
     case Type::Audio:

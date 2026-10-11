@@ -2,6 +2,8 @@
 
 #include <cwchar>
 
+#include "asr_models.h"
+
 namespace audiorgui {
 
 namespace {
@@ -35,6 +37,8 @@ std::wstring Validate(const RecordingSettings &s)
         return L"System audio gain must be between 0 and 300%.";
     if (s.mergeMicPercent < 0 || s.mergeMicPercent > 100)
         return L"The microphone's share of the mix must be between 0 and 100%.";
+    if (!s.transcribeModel.empty() && !FindAsrModel(s.transcribeModel))
+        return L"The transcription model \"" + s.transcribeModel + L"\" is not one this program knows.";
     return FileNameProblem(s.fileName);
 }
 

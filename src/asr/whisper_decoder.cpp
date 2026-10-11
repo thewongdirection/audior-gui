@@ -49,7 +49,7 @@ WhisperDecoder::~WhisperDecoder()
         whisper_free(context_);
 }
 
-bool WhisperDecoder::Load(const std::string &path, std::string *error)
+bool WhisperDecoder::Load(const std::string &path, bool english, std::string *error)
 {
     whisper_log_set(Silent, nullptr);                   /* the helper's error output goes nowhere anyway */
     whisper_context_params params = whisper_context_default_params();
@@ -59,7 +59,7 @@ bool WhisperDecoder::Load(const std::string &path, std::string *error)
         *error = "The model could not be loaded.";
         return false;
     }
-    multilingual_ = whisper_is_multilingual(context_) != 0;
+    english_ = english || whisper_is_multilingual(context_) == 0;
 
     const unsigned cores = std::thread::hardware_concurrency();     /* logical: half of them are real cores */
     threads_ = cores == 0 ? 4 : static_cast<int>(std::min(8u, std::max(2u, cores / 2)));
@@ -81,7 +81,7 @@ bool WhisperDecoder::Decode(const std::int16_t *samples, std::size_t count, std:
     p.no_timestamps = true;
     p.translate = false;
     p.print_special = p.print_progress = p.print_realtime = p.print_timestamps = false;
-    p.language = multilingual_ ? "auto" : "en";
+    p.language = english_ ? "en" : "auto";
     p.detect_language = false;
     p.suppress_blank = true;
     p.suppress_nst = true;                              /* no "[MUSIC]" and the like */

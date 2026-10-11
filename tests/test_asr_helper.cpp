@@ -140,6 +140,51 @@ TEST(Asr_NothingIsFoundWithoutEveryPiece)
     }
 }
 
+TEST(Asr_InstalledModelsAreTheWholeOnesInTheTablesOrder)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir models;
+    CHECK(InstalledModels(models.Dir(), table, 2).empty());
+    CHECK(InstalledModels(std::wstring(), table, 2).empty());
+
+    Write(models.Path(L"b.bin"), "1234");
+    std::vector<const AsrModel *> found = InstalledModels(models.Dir(), table, 2);
+    CHECK_EQ(found.size(), std::size_t(1));
+    CHECK(found.size() == 1 && found[0] == &table[1]);
+
+    Write(models.Path(L"a.bin"), "123");
+    found = InstalledModels(models.Dir(), table, 2);
+    CHECK(found.size() == 2 && found[0] == &table[0] && found[1] == &table[1]);
+
+    Write(models.Path(L"a.bin"), "12");                 /* not whole: a download in progress */
+    found = InstalledModels(models.Dir(), table, 2);
+    CHECK(found.size() == 1 && found[0] == &table[1]);
+}
+
+TEST(Asr_TheModelAskedForIsTheOneFound)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir programs, models;
+    Write(programs.Path(kHelperFile), "x");
+    Write(programs.Path(kManifestFile), "x");
+    Write(models.Path(L"a.bin"), "123");
+    Write(models.Path(L"b.bin"), "1234");
+
+    AsrSetup setup;
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* none asked for: the first */
+    CHECK(setup.model == &table[0]);
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"B.BIN"));       /* any case */
+    CHECK(setup.model == &table[1]);
+    CHECK_EQ(setup.modelPath, models.Path(L"b.bin"));
+
+    CHECK(!FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"c.bin"));      /* not a model of the table */
+    Write(models.Path(L"b.bin"), "12");
+    CHECK(!FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"b.bin"));      /* asked for, but not whole */
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* the first is still fine  */
+}
+
 TEST(Asr_TheRealTableIsNotFoundInAnEmptyFolder)
 {
     TempDir programs, models;

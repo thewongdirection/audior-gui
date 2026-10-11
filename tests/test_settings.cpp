@@ -1,3 +1,4 @@
+#include "../src/core/asr_models.h"
 #include "../src/core/settings.h"
 #include "test_support.h"
 
@@ -190,6 +191,18 @@ TEST(Settings_TranscriptsAreOffByDefault)
     CHECK(Validate(s).empty());
     s.transcribeMicrophone = s.transcribeSystem = true;
     CHECK(Validate(s).empty());
+}
+
+TEST(Settings_OnlyAKnownTranscriptionModelIsValid)
+{
+    RecordingSettings s;
+    s.outputDirectory = L"C:\\Rec";
+    CHECK(s.transcribeModel.empty() && s.transcribeLanguage == SpeechLanguage::Auto);
+    CHECK(Validate(s).empty());                         /* the first model installed */
+    s.transcribeModel = kAsrModels[0].file;
+    CHECK(Validate(s).empty());
+    s.transcribeModel = L"somebody-elses.bin";
+    CHECK(!Validate(s).empty());
 }
 
 TEST(Settings_ATranscriptNeedsTheStreamToBeRecorded)

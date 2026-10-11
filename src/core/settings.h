@@ -24,6 +24,8 @@
  *   (not in audior)         transcribeMicrophone / transcribeSystem: a live
  *                           transcript of that stream, for engines that can
  *   --transcribe-mic / --transcribe-system   make one (see IRecordingEngine)
+ *   (not in audior)         transcribeModel, transcribeLanguage: which speech
+ *   --transcribe-model / --transcribe-language   model, and English or automatic
  */
 #pragma once
 
@@ -64,6 +66,8 @@ struct RecordingSettings {
     int          mergeMicPercent    = kDefaultMergeMicPercent;
     bool         transcribeMicrophone = false;
     bool         transcribeSystem   = false;
+    std::wstring transcribeModel;                       /* a file of kAsrModels; "" = the first one installed */
+    SpeechLanguage transcribeLanguage = SpeechLanguage::Auto;
 };
 
 /* True when both streams are recorded: only then do merging and separate

@@ -20,6 +20,19 @@ bool SameName(const std::wstring &a, const std::wstring &b)
     return true;
 }
 
+}  // namespace
+
+const AsrModel *FindAsrModel(const std::wstring &file)
+{
+    for (const AsrModel &m : kAsrModels) {
+        if (SameName(file, m.file))
+            return &m;
+    }
+    return nullptr;
+}
+
+namespace {
+
 bool IsPlainFileName(const std::string &name)
 {
     if (name.empty() || name == "." || name == "..")

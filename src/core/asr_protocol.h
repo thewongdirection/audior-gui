@@ -8,7 +8,7 @@
  *     [u32 payload bytes][u8 type][payload]        little-endian throughout
  *
  *   recorder -> helper                       helper -> recorder
- *     Hello   which streams, the model         Ready   what it runs (model, device)
+ *     Hello   streams, model, language         Ready   what it runs (model, device)
  *     Audio   16 kHz mono samples of a         Status  a stream's state and lag
  *             stream, with the number of       Event   an utterance's text so far
  *             its first sample                 Problem why a stream (or all) stopped
@@ -30,7 +30,7 @@
 
 namespace audiorgui::asr {
 
-constexpr std::uint16_t kVersion = 1;
+constexpr std::uint16_t kVersion = 2;
 constexpr int           kSampleRate = 16000;            /* the audio the helper receives */
 
 /* The biggest payload either side sends; an Audio message carries at most
@@ -53,6 +53,7 @@ struct Message {
     StreamId        stream = StreamId::Microphone;      /* Audio, Status, Event, Problem (see `all`) */
     bool            all = false;                        /* Problem: about every stream               */
     std::uint8_t    streams = 0;                        /* Hello: a bit per StreamId to transcribe   */
+    SpeechLanguage  language = SpeechLanguage::Auto;    /* Hello                                     */
     std::uint16_t   version = kVersion;                 /* Hello                                     */
     std::wstring    text;                               /* Hello: the model's path; Ready: what runs;
                                                            Problem: why                              */

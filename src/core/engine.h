@@ -81,6 +81,10 @@ public:
      * recording: it only turns that stream's status into Failed. */
     virtual bool CanTranscribe() const { return false; }
 
+    /* The models it can use, the one an empty RecordingSettings::transcribeModel
+     * stands for first; empty when it cannot transcribe. */
+    virtual std::vector<TranscriptModel> TranscriptModels() const { return {}; }
+
     /* Where the stream's transcription stands.  Off for a stream that is not
      * being transcribed, and for every stream once the recording has stopped. */
     virtual TranscriptStatus Transcription(StreamId stream)

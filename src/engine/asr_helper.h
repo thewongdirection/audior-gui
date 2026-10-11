@@ -16,6 +16,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "../core/asr_models.h"
 #include "transcription_host.h"
@@ -38,11 +39,16 @@ struct AsrSetup {
 std::wstring ProgramDirectory();
 std::wstring ModelsDirectory();
 
-/* A cheap look (nothing is read, only file sizes): is the helper with its
- * manifest in `programDir`, and a model of the table, whole, in `modelsDir`?
- * (`models` is the table; the tests give it a small one.) */
+/* The models of the table that are whole in `modelsDir`, in the table's order.  A cheap look:
+ * nothing is read, only file sizes.  (`models` is the table; the tests give it a small one.) */
+std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models = kAsrModels,
+                                              std::size_t modelCount = kAsrModelCount);
+
+/* Is the helper with its manifest in `programDir`, and a whole model in `modelsDir`: the file
+ * named `preferred` (any case), or if that is empty the first one of the table that is there? */
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup,
-             const AsrModel *models = kAsrModels, std::size_t modelCount = kAsrModelCount);
+             const AsrModel *models = kAsrModels, std::size_t modelCount = kAsrModelCount,
+             const std::wstring &preferred = std::wstring());
 
 /* The SHA-256 of a whole file, read in small pieces.  False if it cannot be
  * read, or if `stopping` (when given) says so between two pieces. */

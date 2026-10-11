@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../src/core/asr_models.h"
 #include "../src/engine/simulated_engine.h"
 #include "test_support.h"
 
@@ -349,6 +350,15 @@ TEST(Sim_CanTranscribe)
 {
     Rig rig;
     CHECK(rig.engine.CanTranscribe());
+}
+
+TEST(Sim_OffersTheWholeTableOfModels)
+{
+    Rig rig;
+    const std::vector<TranscriptModel> models = rig.engine.TranscriptModels();
+    CHECK_EQ(models.size(), kAsrModelCount);
+    for (std::size_t i = 0; i < models.size() && i < kAsrModelCount; ++i)
+        CHECK_EQ(models[i].file, std::wstring(kAsrModels[i].file));
 }
 
 TEST(Sim_TranscribesOnlyWhatIsSwitchedOn)

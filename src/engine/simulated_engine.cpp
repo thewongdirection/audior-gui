@@ -5,6 +5,8 @@
 #include <cwchar>
 #include <utility>
 
+#include "../core/asr_models.h"
+
 namespace audiorgui {
 
 namespace {
@@ -154,6 +156,14 @@ std::vector<DeviceInfo> SimulatedEngine::ListDevices(DeviceKind kind)
                 {L"sim-mic-2", L"Demo USB Microphone", false}};
     return {{L"sim-out-1", L"Demo Speakers", true},
             {L"sim-out-2", L"Demo Headphones", false}};
+}
+
+std::vector<TranscriptModel> SimulatedEngine::TranscriptModels() const
+{
+    std::vector<TranscriptModel> models;
+    for (const AsrModel &m : kAsrModels)
+        models.push_back(ModelChoice(m));
+    return models;
 }
 
 bool SimulatedEngine::Start(const RecordingSettings &settings, const std::wstring &outputPath,

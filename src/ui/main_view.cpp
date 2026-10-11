@@ -114,6 +114,14 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
+    languageSeg_.options = {L"Auto", L"English"};
+    languageSeg_.onChange = [this](int i) {
+        ctl_.Settings().transcribeLanguage = i == 0 ? SpeechLanguage::Auto : SpeechLanguage::English;
+        Refresh();
+    };
+    modelField_.style = Button::Style::Field;
+    modelField_.onClick = [this] { ChooseModel(); };
+
     shareSlider_.minimum = 0;
     shareSlider_.maximum = 100;
     shareSlider_.step = 5;
@@ -150,7 +158,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     Widget *const order[kWidgetCount] = {
         &micCheck_, &micTranscript_, &micField_, &gain_[0].slider, &systemCheck_, &systemTranscript_,
         &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_,
-        &shareSlider_, &startButton_, &stopButton_, &showButton_};
+        &shareSlider_, &languageSeg_, &modelField_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     Refresh();
@@ -273,6 +281,15 @@ void MainView::Refresh()
     shareSlider_.value = s.mergeMicPercent;
     shareText_ = ShareText(s.mergeMicPercent);
 
+    /* The language is the model's own business when it knows only English. */
+    const TranscriptModel *model = SelectedModel();
+    const bool english = model && !model->multilingual;
+    languageSeg_.visible = modelField_.visible = canTranscribe && model;
+    languageSeg_.selected = english || s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
+    languageSeg_.enabled = unlocked && !english;
+    modelField_.text = model ? model->label : std::wstring();
+    modelField_.enabled = unlocked && ctl_.TranscriptModels().size() > 1;
+
     startButton_.enabled = ctl_.CanStart() && (s.includeMicrophone || s.includeSystemAudio);
     stopButton_.enabled = ctl_.CanStop();
     stopButton_.style = ctl_.CanStop() ? Button::Style::Prominent : Button::Style::Secondary;
@@ -341,6 +358,34 @@ void MainView::ChooseBitrate()
     Refresh();
 }
 
+/* The model the settings stand for: the one named, else the first one installed (null: none). */
+const TranscriptModel *MainView::SelectedModel() const
+{
+    const std::vector<TranscriptModel> &models = ctl_.TranscriptModels();
+    for (const TranscriptModel &m : models) {
+        if (m.file == ctl_.Settings().transcribeModel)
+            return &m;
+    }
+    return models.empty() ? nullptr : &models.front();
+}
+
+void MainView::ChooseModel()
+{
+    const std::vector<TranscriptModel> &models = ctl_.TranscriptModels();
+    std::vector<std::wstring> items;
+    int selected = 0;
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        items.push_back(models[i].label);
+        if (&models[i] == SelectedModel())
+            selected = static_cast<int>(i);
+    }
+    const int pick = host_ ? host_->Choose(items, selected, modelField_.rect) : -1;
+    if (pick < 0 || static_cast<std::size_t>(pick) >= models.size())
+        return;
+    ctl_.Settings().transcribeModel = models[static_cast<std::size_t>(pick)].file;
+    Refresh();
+}
+
 /* ====================================================================== */
 /* Layout                                                                  */
 /* ====================================================================== */
@@ -393,7 +438,10 @@ void MainView::Layout(float w, float h)
     mixSeg_.rect = RectXYWH(x, y, iw, 36);                          y += 36 + 6;
     mixHintRect_ = RectXYWH(x, y, iw, 18);                          y += 18 + 14;
     shareRow_ = RectXYWH(x, y, iw, 18);                             y += 18;
-    shareSlider_.rect = RectXYWH(x, y, iw, 24);
+    shareSlider_.rect = RectXYWH(x, y, iw, 24);                     y += 24 + 16;
+    captions_[4] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};    y += 18;
+    languageSeg_.rect = RectXYWH(x, y, 140, 36);
+    modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
 
     /* The transport bar. */
     const float by = transport_.top + (kTransportH - 48.0f) * 0.5f;

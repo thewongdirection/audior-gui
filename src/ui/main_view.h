@@ -20,8 +20,8 @@
  * Each stream has its own pane: a checkbox that says whether it is recorded,
  * a drop-down of every detected device, its gain and its waveform.  When the
  * engine can transcribe, a "Transcript" switch beside the title adds the live
- * text under the waveform.  MainView only reads
- * and drives a RecorderController; everything the operating system has to do
+ * text under the waveform, and the panel gets the choice of model and language.
+ * MainView only reads and drives a RecorderController; everything the operating system has to do
  * (dialogs, menus, the frame timer) goes through IViewHost, so the same view
  * renders into a window or into an offscreen bitmap for screenshots.
  */
@@ -84,7 +84,7 @@ public:
     bool Capturing() const { return pressed_ != nullptr; }
 
 private:
-    static constexpr int kWidgetCount = 17;
+    static constexpr int kWidgetCount = 19;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -97,6 +97,8 @@ private:
     void Refresh();
     void ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor);
     void ChooseBitrate();
+    void ChooseModel();
+    const TranscriptModel *SelectedModel() const;
     void ConfigureGain(StreamId stream, int RecordingSettings::*percent, const D2D1_COLOR_F &accent);
     std::wstring DeviceName(DeviceKind kind, const std::wstring &id) const;
     std::wstring DeviceFieldText(DeviceKind kind, const std::wstring &id) const;
@@ -117,9 +119,9 @@ private:
 
     Checkbox  micCheck_, systemCheck_;
     Switch    micTranscript_, systemTranscript_;
-    Button    micField_, systemField_, folderField_, bitrateField_;
+    Button    micField_, systemField_, folderField_, bitrateField_, modelField_;
     Button    startButton_, stopButton_, showButton_;
-    Segmented formatSeg_, mixSeg_;
+    Segmented formatSeg_, mixSeg_, languageSeg_;
     Slider    shareSlider_;
     TextBox   fileNameBox_;
     GainControl gain_[kStreamCount];
@@ -130,7 +132,7 @@ private:
 
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
     D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {};
-    Caption     captions_[4] = {};
+    Caption     captions_[5] = {};
 
     LaneView micView_, systemView_;
 

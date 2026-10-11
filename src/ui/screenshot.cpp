@@ -2,6 +2,7 @@
 
 #include <dxgiformat.h>
 
+#include "../core/asr_models.h"
 #include "../core/recorder_controller.h"
 #include "../engine/simulated_engine.h"
 #include "main_view.h"
@@ -39,6 +40,12 @@ bool Build(Scene &scene, const std::wstring &name)
     RecorderController &ctl = scene.ctl;
     if (name == L"idle")
         return true;
+    if (name == L"model") {                              /* idle, the multilingual model chosen, transcripts on */
+        RecordingSettings &s = ctl.Settings();
+        s.includeSystemAudio = s.transcribeMicrophone = s.transcribeSystem = true;
+        s.transcribeModel = kAsrModels[1].file;
+        return true;
+    }
     if (name == L"named" || name == L"typing") {         /* idle, with every setting changed from its default */
         RecordingSettings &s = ctl.Settings();
         s.includeSystemAudio = true;

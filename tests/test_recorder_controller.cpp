@@ -488,12 +488,23 @@ TEST(Controller_ShowsATranscriptOnlyForAStreamSwitchedOnAndRecorded)
     CHECK(rig.ctl.ShowsTranscript(StreamId::System));
 }
 
+TEST(Controller_OffersTheModelsTheEngineHas)
+{
+    Rig rig;
+    const std::vector<TranscriptModel> &models = rig.ctl.TranscriptModels();
+    CHECK(!models.empty());
+    CHECK(rig.ctl.CanTranscribe());
+    CHECK_EQ(models.size(), rig.engine.TranscriptModels().size());
+    CHECK_EQ(models[0].file, rig.engine.TranscriptModels()[0].file);
+}
+
 TEST(Controller_AnEngineThatCannotTranscribeShowsNoTranscript)
 {
     RefusingEngine engine;
     RecorderController ctl(engine, [] { return LocalTime(); });
     ctl.Settings().transcribeMicrophone = true;
     CHECK(!ctl.CanTranscribe());
+    CHECK(ctl.TranscriptModels().empty());                          /* nothing to choose from */
     CHECK(!ctl.ShowsTranscript(StreamId::Microphone));
     CHECK(ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
     CHECK_EQ(ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));

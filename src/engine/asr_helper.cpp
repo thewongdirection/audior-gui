@@ -51,22 +51,32 @@ std::wstring ModelsDirectory()
     return std::wstring(base, n) + L"\\audior-gui\\models";
 }
 
+std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models,
+                                              std::size_t modelCount)
+{
+    std::vector<const AsrModel *> found;
+    std::uint64_t bytes = 0;
+    for (std::size_t i = 0; i < modelCount && !modelsDir.empty(); ++i) {
+        if (FileSize(Join(modelsDir, models[i].file), &bytes) && bytes == models[i].bytes)
+            found.push_back(&models[i]);
+    }
+    return found;
+}
+
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
-             std::size_t modelCount)
+             std::size_t modelCount, const std::wstring &preferred)
 {
     std::uint64_t bytes = 0;
     const std::wstring helper = Join(programDir, kHelperFile);
-    if (programDir.empty() || modelsDir.empty() || !FileSize(helper, &bytes) ||
-        !FileSize(Join(programDir, kManifestFile), &bytes))
+    if (programDir.empty() || !FileSize(helper, &bytes) || !FileSize(Join(programDir, kManifestFile), &bytes))
         return false;
 
-    for (std::size_t i = 0; i < modelCount; ++i) {
-        const std::wstring path = Join(modelsDir, models[i].file);
-        if (FileSize(path, &bytes) && bytes == models[i].bytes) {
+    for (const AsrModel *model : InstalledModels(modelsDir, models, modelCount)) {
+        if (preferred.empty() || _wcsicmp(preferred.c_str(), model->file) == 0) {
             setup->directory = programDir;
             setup->helper = helper;
-            setup->model = &models[i];
-            setup->modelPath = path;
+            setup->model = model;
+            setup->modelPath = Join(modelsDir, model->file);
             return true;
         }
     }

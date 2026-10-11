@@ -50,6 +50,36 @@ TEST(Models_EveryEntryIsCompleteAndUnique)
     check(kVadModel);
 }
 
+TEST(Models_TheNameSaysWhetherAModelIsMultilingual)
+{
+    for (const AsrModel &m : kAsrModels) {              /* whisper.cpp's own naming: ".en" is English only */
+        const bool englishOnly = std::wstring(m.file).find(L".en") != std::wstring::npos;
+        CHECK_EQ(m.multilingual, !englishOnly);
+    }
+}
+
+TEST(Models_AreFoundByFileNameInAnyCase)
+{
+    for (const AsrModel &m : kAsrModels) {
+        CHECK(FindAsrModel(m.file) == &m);
+        std::wstring shouted = m.file;
+        for (wchar_t &c : shouted)
+            c = c >= L'a' && c <= L'z' ? static_cast<wchar_t>(c - L'a' + L'A') : c;
+        CHECK(FindAsrModel(shouted) == &m);
+    }
+    CHECK(FindAsrModel(L"") == nullptr);
+    CHECK(FindAsrModel(L"nonsense.bin") == nullptr);
+    CHECK(FindAsrModel(kVadModel.file) == nullptr);     /* a voice-activity model is not a speech model */
+}
+
+TEST(Models_AreListedAsTheGuiShowsThem)
+{
+    const TranscriptModel choice = ModelChoice(kAsrModels[1]);
+    CHECK_EQ(choice.file, std::wstring(kAsrModels[1].file));
+    CHECK_EQ(choice.label, std::wstring(kAsrModels[1].label));
+    CHECK_EQ(choice.multilingual, kAsrModels[1].multilingual);
+}
+
 /* ---- the manifest ---- */
 
 TEST(Manifest_ReadsOneFilePerLine)

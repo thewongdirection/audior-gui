@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace audiorgui {
 
@@ -27,6 +28,13 @@ struct TranscriptEvent {
     /* Copies `length` characters.  Text that does not fit is cut at a word
      * boundary and ends in an ellipsis. */
     void SetText(const wchar_t *source, std::size_t length);
+};
+
+/* A speech model an engine can transcribe with. */
+struct TranscriptModel {
+    std::wstring file;                      /* what RecordingSettings::transcribeModel names */
+    std::wstring label;                     /* for the user                                  */
+    bool         multilingual = false;      /* false: English only                           */
 };
 
 /* What a stream's transcription is doing.  A problem here never ends the

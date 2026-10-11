@@ -89,7 +89,21 @@ TEST(Asr_HelloRoundTrips)
     CHECK(r.type == Type::Hello);
     CHECK_EQ(r.version, kVersion);
     CHECK_EQ(int(r.streams), 3);
+    CHECK(r.language == SpeechLanguage::Auto);
     CHECK_EQ(r.text, m.text);
+
+    m.language = SpeechLanguage::English;
+    CHECK(ReadOne(Frame(m)).language == SpeechLanguage::English);
+}
+
+TEST(Asr_AnUnknownLanguageIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    CHECK(!IsInvalid(With(Frame(hello), kFrameHeader + 3, 1)));         /* after the version and the streams */
+    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 2)));
+    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 255)));
 }
 
 TEST(Asr_AudioRoundTrips)

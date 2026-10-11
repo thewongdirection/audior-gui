@@ -149,7 +149,14 @@ has a built-in script and always shows it):
    (English, 181 MiB, fast enough for two streams on an ordinary CPU) or
    `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a GPU).
    Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
-   are used; the first one found is.
+   are used.
+
+With a model in place the settings panel gets a **Transcript** section: the model
+(when more than one is installed; the first one found is the default;
+`--transcribe-model <file>`) and the language (`--transcribe-language auto|en`):
+*Auto* lets a multilingual model recognise the language of each phrase, *English*
+tells it to expect English, which is a little faster and more exact for English
+speech. An English-only model always expects English.
 
 The helper is a separate process, so a problem with it can never end or damage a
 recording: it is started at low priority inside a Windows Job object, restarted if
@@ -231,7 +238,7 @@ bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `transcript`, `named`, `typing`.
+`error`, `transcript`, `model`, `named`, `typing`.
 
 ## Architecture
 
