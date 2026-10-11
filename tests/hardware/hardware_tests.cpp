@@ -1032,6 +1032,7 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
     options.vadModel = setup.vadPath;
     options.language = audiorgui::SpeechLanguage::English;
     options.gpu = gpu;
+    options.engine = setup.model->engine;
     audiorgui::TranscriptionHost host(audiorgui::MakeProcessFactory(setup), options);
     constexpr audiorgui::StreamId kStream = audiorgui::StreamId::Microphone;
     host.Start(static_cast<std::uint8_t>(1u << audiorgui::StreamIndex(kStream)));
@@ -1150,6 +1151,55 @@ void T17()
     }
 }
 
+/* ---- T18: Parakeet at the pace of speech --------------------------------------- */
+
+void T18()
+{
+    Section("T18 Parakeet at the pace of speech");
+    const audiorgui::AsrModel *parakeet = audiorgui::FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    audiorgui::AsrSetup setup;
+    if (!parakeet || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
+                                         audiorgui::kAsrModelCount, parakeet->file)) {
+        Info("skipped: it needs the helper (build.bat asr) and the Parakeet model in the models folder (it is not offered for download)");
+        return;
+    }
+    std::vector<std::int16_t> speech;
+    if (!SpeechSamples(kLongSpeech, &speech)) {
+        Check("a voice could be synthesized into a file", false);
+        return;
+    }
+    Info(Fmt("%.0f s of speech, given at the pace of speech to Parakeet%s", static_cast<double>(speech.size()) / 16000.0,
+             setup.gpu ? ", on the processor and then on the graphics card" : ", on the processor (the helper has no graphics card backend)"));
+
+    for (const bool gpu : {false, true}) {
+        if (gpu && !setup.gpu)
+            continue;
+        const char *label = gpu ? "graphics card" : "processor";
+        const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+        const LargeRun r = RunLarge(setup, gpu, speech);
+        Info(Fmt("%s: ready after %.1f s; first text %.1f s into the speech; lag %.1f s on average, %.1f s at most; the last phrase settled "
+                 "%.1f s after the speech ended; key words %d of 5 early, %d of 5 late; %d words of the text for %d spoken",
+                 label, r.readySeconds, r.firstTextAfter, r.meanLag, r.maxLag, r.lastFinalAfterEnd, r.early, r.late, r.words,
+                 static_cast<int>(WordsIn(kLongSpeech))));
+        Check(Fmt("%s: the helper becomes ready", label), r.ready, Fmt("after %.1f s", r.readySeconds));
+        Check(Fmt("%s: the text is never far behind", label), r.ready && r.maxLag < 3.0, Fmt("at most %.1f s, on average %.1f s", r.maxLag, r.meanLag));
+        Check(Fmt("%s: the last phrase is settled soon after the speech ends", label), r.anyFinal && r.lastFinalAfterEnd < 5.0,
+              Fmt("%.1f s after", r.lastFinalAfterEnd));
+        Check(Fmt("%s: nothing is said twice", label), r.words <= static_cast<int>(WordsIn(kLongSpeech)) * 115 / 100,
+              Fmt("%d words for %d spoken", r.words, static_cast<int>(WordsIn(kLongSpeech))));
+        Check(Fmt("%s: the words that were said are in the text", label), r.early >= 4 && r.late >= 4,
+              Fmt("%d of 5 early and %d of 5 late; the end of the text: \"%s\"", r.early, r.late,
+                  Narrow(r.finals.size() > 160 ? r.finals.substr(r.finals.size() - 160) : r.finals).c_str()));
+        std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+            Sleep(100);
+            helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        }
+        Check(Fmt("%s: no helper is left running", label), helpersAfter <= helpersBefore,
+              Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+    }
+}
+
 struct TestEntry {
     const char *id;
     void      (*run)();
@@ -1159,7 +1209,7 @@ struct TestEntry {
 const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
-    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false},
+    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false}, {"T18", T18, false},
 };
 
 /* ---- start-up ------------------------------------------------------------- */

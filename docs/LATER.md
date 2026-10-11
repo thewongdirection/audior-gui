@@ -27,9 +27,19 @@ blocks using it; each item is worth doing when it starts to matter.
   (`WhisperDecoder::Decode`; the shortened window also made the large model repeat itself,
   62% extra words). An integrated GPU and the processor keep the old way, which is the
   faster one there (the full window made the small model 2.5 s behind on the Radeon iGPU
-  and the large one unusable). The f16 and large-v3 files use far more processor time on the
-  card (0.8 to 1.1 core in the same test; the card was shared with another program using
-  most of its memory at the time), so memory on the card matters.
+  and the large one unusable). Whisper large-v3 at full precision (the top-end model, offered
+  to a card with 8 GiB) used far more processor time on the card than the 5-bit turbo one
+  (1.06 core against 0.07 in the same test; the card was shared with another program using
+  most of its memory at the time), so memory on the card matters: nothing checks it yet.
+- Parakeet has one size on offer (q8_0, 638 MiB); the smaller (q4_k) and bigger (f16) files
+  of the same repository run in the same library but are not in the table, and a step down
+  from Whisper large-v3 to Parakeet, which is lighter, is not made (a step down goes to the
+  models before it in the table, of the same engine only).
+- Parakeet understands 25 European languages. It was only tried with English speech (this PC
+  has English voices only); a recording in another language is worth trying, and the Auto /
+  English switch is greyed out for it by design.
+- There is no way yet to download one more model from the window once a model is installed
+  (the start-up offer only comes when none is); a "More models" choice would do it.
 - The first use of the card takes about eight seconds (the driver builds its shader
   code); a pipeline cache kept between runs, or starting the helper earlier, would hide it.
 - The large (turbo) model on the RTX 5080 keeps up (53 s of speech in 2.2 s when given at

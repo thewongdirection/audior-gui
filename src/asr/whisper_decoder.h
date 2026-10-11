@@ -16,15 +16,17 @@
 #include <string>
 #include <vector>
 
+#include "decoder.h"
+
 struct whisper_context;
 struct whisper_state;
 
 namespace audiorasr {
 
-class WhisperDecoder {
+class WhisperDecoder final : public IDecoder {
 public:
     WhisperDecoder() = default;
-    ~WhisperDecoder();
+    ~WhisperDecoder() override;
     WhisperDecoder(const WhisperDecoder &) = delete;
     WhisperDecoder &operator=(const WhisperDecoder &) = delete;
 
@@ -33,14 +35,9 @@ public:
      * is a backend for it and a card it can use.  False, with a reason, if it cannot. */
     bool Load(const std::string &path, bool english, bool gpu, const std::string &backendDir, std::string *error);
 
-    /* What it computes on: "CPU", or the graphics card's name. */
-    const std::string &Device() const { return device_; }
-
-    /* The text (UTF-8, possibly empty) of `count` samples of 16 kHz mono audio,
-     * at most 30 s of it.  False if the engine failed. */
-    bool Decode(const std::int16_t *samples, std::size_t count, std::string *text);
-
-    int Threads() const { return threads_; }
+    const std::string &Device() const override { return device_; }
+    bool Decode(const std::int16_t *samples, std::size_t count, std::string *text) override;
+    int Threads() const override { return threads_; }
 
 private:
     whisper_context *context_ = nullptr;

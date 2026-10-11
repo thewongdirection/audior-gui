@@ -42,7 +42,7 @@ std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrMode
     for (std::ptrdiff_t i = chosen - table - 1; i >= 0; --i) {
         const AsrModel *m = table + i;
         const bool present = std::find(installed.begin(), installed.end(), m) != installed.end();
-        if (present && (m->multilingual || !keepLanguages || !chosen->multilingual))
+        if (present && m->engine == chosen->engine && (m->multilingual || !keepLanguages || !chosen->multilingual))
             smaller.push_back(m);
     }
     return smaller;

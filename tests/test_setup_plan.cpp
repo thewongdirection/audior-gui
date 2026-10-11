@@ -124,7 +124,20 @@ TEST(Plan_ThePlanOfTheRealTableAlwaysOffersAModelToAPcWithNone)
     CHECK(plan.download[0] == &kAsrModels[0]);                          /* the one that suits every PC comes first */
     CHECK(plan.download.back() == &kVadModel);
     std::uint64_t total = 0;
-    for (const AsrModel *m : plan.download)
+    for (const AsrModel *m : plan.download) {
         total += m->bytes;
+        CHECK(m == &kVadModel || m->offered);                           /* what the user has to bring is never fetched */
+    }
     CHECK_EQ(plan.bytes, total);
+}
+
+TEST(Plan_AModelThatIsNotOfferedIsNeverPlannedForDownload)
+{
+    AsrModel table[2] = {{L"a.bin", "x", 100, L"A", L"MIT", L"https://huggingface.co/x"},
+                         {L"b.bin", "x", 200, L"B", L"MIT", L"https://huggingface.co/x"}};
+    table[1].offered = false;
+    const SetupPlan plan = PlanSetup(HardwareProfile(), true, {}, true, table, 2, nullptr);
+    CHECK_EQ(plan.download.size(), std::size_t(1));
+    CHECK(plan.download.size() == 1 && plan.download[0] == &table[0]);
+    CHECK_EQ(plan.bytes, std::uint64_t(100));
 }

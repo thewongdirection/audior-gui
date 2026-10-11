@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "transcript.h"
+#include "types.h"
 
 namespace audiorgui {
 
@@ -29,6 +30,9 @@ struct AsrModel {
     bool           multilingual = false;    /* false: English only                        */
     std::uint64_t  gpuMemoryBytes = 0;      /* offered for download only to a PC whose graphics card has this
                                                much memory of its own; 0: offered on every PC */
+    AsrEngine      engine = AsrEngine::Whisper;
+    bool           offered = true;          /* false: used if the user has put it in the models folder, but never
+                                               offered for download (it is big, or a matter of taste) */
 };
 
 /* In order of preference for a machine without a GPU: the first one found is
@@ -39,7 +43,17 @@ inline constexpr AsrModel kAsrModels[] = {
      L"Small · English", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", false},
     {L"ggml-large-v3-turbo-q5_0.bin",
      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574041195,
-     L"Large v3 turbo", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", true, 4ull << 30},
+     L"Large v3 turbo", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", true, 4ull << 30, AsrEngine::Whisper, false},
+    /* The top end, offered to a PC whose card has room for it: Whisper large-v3 at full precision.  The turbo model above
+     * is not offered any more (large-v3 is the better one and Parakeet the lighter) but is used when it is there. */
+    {L"ggml-large-v3.bin",
+     "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2", 3095033483,
+     L"Large v3", L"Apache-2.0", L"https://huggingface.co/ggerganov/whisper.cpp", true, 8ull << 30},
+    /* An alternative to Whisper: NVIDIA's Parakeet TDT 0.6B v3.  It finds the language by itself (25 European languages), so
+     * there is none to choose, and it is far lighter on the processor than Whisper at the same quality. */
+    {L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin",
+     "4d64e9e96c2792186d072fde0034df0ad670cf680a2f53069052ead827fd600e", 668757119,
+     L"Parakeet v3", L"CC-BY-4.0", L"https://huggingface.co/ggml-org/parakeet-GGUF", true, 0, AsrEngine::Parakeet},
 };
 inline constexpr std::size_t kAsrModelCount = sizeof(kAsrModels) / sizeof(kAsrModels[0]);
 
@@ -52,13 +66,17 @@ const AsrModel *FindAsrModel(const std::wstring &file);
 std::wstring ModelUrl(const AsrModel &model);
 
 /* The models of `table` that come before `chosen` and are in `installed`, the nearest first: the
- * ones to change to if `chosen` is too slow.  With `keepLanguages` a multilingual `chosen` is
- * only replaced by multilingual models, so that no language stops being understood. */
+ * ones to change to if `chosen` is too slow.  Only models of the same engine count (the table is
+ * ordered by weight within an engine, not across them).  With `keepLanguages` a multilingual `chosen`
+ * is only replaced by multilingual models, so that no language stops being understood. */
 std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
                                             const std::vector<const AsrModel *> &installed, bool keepLanguages);
 
 /* A model as the GUI lists it. */
-inline TranscriptModel ModelChoice(const AsrModel &m) { return {m.file, m.label, m.multilingual}; }
+inline TranscriptModel ModelChoice(const AsrModel &m)
+{
+    return {m.file, m.label, m.multilingual, m.multilingual && m.engine == AsrEngine::Whisper};      /* Parakeet always finds the language */
+}
 
 /* The voice-activity model that cuts the audio into phrases; optional. */
 inline constexpr AsrModel kVadModel = {

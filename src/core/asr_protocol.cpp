@@ -106,10 +106,13 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         m->streams = r.Get<std::uint8_t>();
         const std::uint8_t language = r.Get<std::uint8_t>();
         const std::uint8_t gpu = r.Get<std::uint8_t>();
-        if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English) || gpu > 1)
+        const std::uint8_t engine = r.Get<std::uint8_t>();
+        if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English) || gpu > 1 ||
+            engine > static_cast<std::uint8_t>(AsrEngine::Parakeet))
             return false;
         m->language = static_cast<SpeechLanguage>(language);
         m->gpu = gpu != 0;
+        m->engine = static_cast<AsrEngine>(engine);
         return r.String(size / sizeof(wchar_t), &m->text) && r.String(size / sizeof(wchar_t), &m->vadModel) && r.done();
     }
     case Type::Audio: {
@@ -181,6 +184,7 @@ std::size_t Encode(const Message &m, std::uint8_t *out, std::size_t capacity)
         w.Put(m.streams);
         w.Put(static_cast<std::uint8_t>(m.language));
         w.Put(static_cast<std::uint8_t>(m.gpu ? 1 : 0));
+        w.Put(static_cast<std::uint8_t>(m.engine));
         w.String(m.text.c_str(), m.text.size());
         w.String(m.vadModel.c_str(), m.vadModel.size());
         break;

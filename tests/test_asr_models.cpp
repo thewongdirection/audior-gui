@@ -136,6 +136,63 @@ TEST(Models_AreListedAsTheGuiShowsThem)
     CHECK_EQ(choice.multilingual, kAsrModels[1].multilingual);
 }
 
+TEST(Models_OnlyWhisperCanBeToldWhichLanguageToExpect)
+{
+    for (const AsrModel &m : kAsrModels) {
+        const TranscriptModel choice = ModelChoice(m);
+        CHECK_EQ(choice.languageChoosable, m.multilingual && m.engine == AsrEngine::Whisper);
+    }
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(parakeet && parakeet->engine == AsrEngine::Parakeet && parakeet->multilingual);
+    CHECK(parakeet && !ModelChoice(*parakeet).languageChoosable);        /* it finds the language by itself, whatever it is told */
+    CHECK(!ModelChoice(kAsrModels[0]).languageChoosable);               /* English only */
+    CHECK(ModelChoice(kAsrModels[1]).languageChoosable);                /* large turbo */
+}
+
+TEST(Models_TheTopEndIsLargeV3AndParakeetIsTheAlternative)
+{
+    const AsrModel *top = FindAsrModel(L"ggml-large-v3.bin");
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(top && parakeet);
+    if (!top || !parakeet)
+        return;
+    CHECK(top->engine == AsrEngine::Whisper && top->multilingual && top->offered);
+    CHECK(top->gpuMemoryBytes >= (4ull << 30));                         /* only a PC with a card to match is offered it */
+    CHECK(parakeet->engine == AsrEngine::Parakeet && parakeet->multilingual && parakeet->offered);
+    CHECK_EQ(parakeet->gpuMemoryBytes, std::uint64_t(0));               /* light enough for every PC */
+    CHECK_EQ(std::wstring(parakeet->licence), std::wstring(L"CC-BY-4.0"));      /* NVIDIA's weights */
+    for (const AsrModel &m : kAsrModels) {
+        if (&m != top)
+            CHECK(m.bytes <= top->bytes || m.engine != AsrEngine::Whisper);     /* of the Whisper ones, the biggest */
+    }
+}
+
+TEST(Models_TheTurboModelIsUsedWhenItIsThereButNoLongerOffered)
+{
+    const AsrModel *turbo = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    CHECK(turbo != nullptr);
+    CHECK(turbo && !turbo->offered);
+    CHECK(kAsrModels[0].offered);                                       /* the small English one, as ever */
+}
+
+TEST(Models_AStepDownGoesToTheLighterModelsOfTheSameEngineOnly)
+{
+    std::vector<const AsrModel *> installed;
+    for (const AsrModel &m : kAsrModels)
+        installed.push_back(&m);
+    const AsrModel *top = FindAsrModel(L"ggml-large-v3.bin");
+    const AsrModel *turbo = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(top && turbo && parakeet);
+    if (!top || !turbo || !parakeet)
+        return;
+    const std::vector<const AsrModel *> keepingLanguages = SmallerModels(kAsrModels, top, installed, true);
+    CHECK(keepingLanguages.size() == 1 && keepingLanguages[0] == turbo);        /* the English-only small one would lose languages */
+    CHECK_EQ(SmallerModels(kAsrModels, top, installed, false).size(), std::size_t(2));      /* English asked for: turbo, then small */
+    CHECK(SmallerModels(kAsrModels, parakeet, installed, true).empty());       /* nothing lighter of its own kind, and Whisper weighs more */
+}
+
+
 /* ---- the manifest ---- */
 
 TEST(Manifest_ReadsOneFilePerLine)

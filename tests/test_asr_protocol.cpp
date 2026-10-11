@@ -117,6 +117,22 @@ TEST(Asr_ANonsensicalGpuFlagIsRefused)
     CHECK(IsInvalid(With(bytes, kFrameHeader + 4, 255)));
 }
 
+TEST(Asr_TheEngineOfAHelloRoundTripsAndANonsensicalOneIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    CHECK(ReadOne(Frame(hello)).engine == AsrEngine::Whisper);          /* the usual one unless told otherwise */
+    hello.engine = AsrEngine::Parakeet;
+    CHECK(ReadOne(Frame(hello)).engine == AsrEngine::Parakeet);
+
+    const std::vector<std::uint8_t> bytes = Frame(hello);
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 5, 0)));                /* after the version, streams, language and gpu */
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 5, 1)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 5, 2)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 5, 255)));
+}
+
 TEST(Asr_AHelloWithoutItsSecondPathIsRefused)
 {
     Message hello;

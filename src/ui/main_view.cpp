@@ -321,15 +321,16 @@ void MainView::Refresh()
     shareSlider_.value = s.mergeMicPercent;
     shareText_ = ShareText(s.mergeMicPercent);
 
-    /* The language is the model's own business when it knows only English. */
+    /* The language is the model's own business when it knows only English, or finds it by itself whatever it is told. */
     const TranscriptModel *model = SelectedModel();
     const bool english = model && !model->multilingual;
+    const bool fixed = model && !model->languageChoosable;
     languageSeg_.visible = modelField_.visible = canTranscribe && model;
     gpuSwitch_.visible = canTranscribe && ctl_.CanTranscribeOnGpu();
     gpuSwitch_.checked = s.transcribeGpu && !ctl_.GpuUnusable();            /* the scan found no card to use: off, and it stays off */
     gpuSwitch_.enabled = unlocked && !ctl_.GpuUnusable();
-    languageSeg_.selected = english || s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
-    languageSeg_.enabled = unlocked && !english;
+    languageSeg_.selected = fixed ? (english ? 1 : 0) : s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
+    languageSeg_.enabled = unlocked && !fixed;
     modelField_.text = model ? model->label : std::wstring();
     modelField_.enabled = unlocked && ctl_.TranscriptModels().size() > 1;
 

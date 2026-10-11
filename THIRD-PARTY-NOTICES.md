@@ -34,9 +34,21 @@ uses a model only if it is one of those below, with the size and SHA-256 listed 
 |---|---|---|
 | Whisper small, English (`ggml-small.en-q5_1.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | Whisper large-v3-turbo (`ggml-large-v3-turbo-q5_0.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
+| Whisper large-v3 (`ggml-large-v3.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
+| Parakeet TDT 0.6B v3 (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) | CC BY 4.0 | https://huggingface.co/ggml-org/parakeet-GGUF |
 
-These are OpenAI's Whisper weights (MIT) converted to the ggml format by the
-whisper.cpp project, whose repository declares the MIT licence.
+The Whisper ones are OpenAI's weights converted to the ggml format by the whisper.cpp
+project, whose repository declares the MIT licence. Those of small and turbo are
+published by OpenAI under the MIT licence; those of large-v3 under the Apache Licence
+2.0 (https://huggingface.co/openai/whisper-large-v3).
+
+Parakeet TDT 0.6B v3 is NVIDIA's model (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3),
+licensed under the Creative Commons Attribution 4.0 International licence
+(https://creativecommons.org/licenses/by/4.0/). The ggml-org project converted it to
+the format whisper.cpp reads and quantized it to 8 bits (their repository's own files
+are declared MIT; the weights stay NVIDIA's under CC BY 4.0). It is run by the parakeet
+library of whisper.cpp, which is part of the code above. The program only reads this
+file; it does not change or redistribute it.
 
 The voice-activity model of the same project (`ggml-silero-v5.1.2.bin`, MIT,
 https://huggingface.co/ggml-org/whisper-vad, the Silero VAD) is optional: if it is

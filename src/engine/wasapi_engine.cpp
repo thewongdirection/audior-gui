@@ -79,6 +79,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         options.vadModel = asr.vadPath;
         options.language = s.transcribeLanguage;
         options.gpu = s.transcribeGpu;
+        options.engine = asr.model->engine;
         for (int i = 0; i < kStreamCount; ++i) {        /* a text file for each transcript, beside the recording */
             if (plan.speech & (1u << i))
                 transcriptFiles_[i] = std::make_unique<TranscriptFile>(PlannedTranscriptFile(outputPath, static_cast<StreamId>(i)));
@@ -92,7 +93,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
                            s.transcribeLanguage == SpeechLanguage::Auto)) {
             AsrSetup fallback;
             if (FindAsr(ProgramDirectory(), ModelsDirectory(), &fallback, kAsrModels, kAsrModelCount, smaller->file))
-                options.fallbacks.push_back({fallback.modelPath, MakeProcessFactory(fallback)});
+                options.fallbacks.push_back({fallback.modelPath, MakeProcessFactory(fallback), smaller->engine});
         }
         host_ = std::make_unique<TranscriptionHost>(MakeProcessFactory(asr), options);
         host_->Start(plan.speech);

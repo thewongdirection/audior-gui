@@ -23,6 +23,9 @@ enum class DeviceKind { Microphone, Playback };
 /* The language of the speech a transcript is made of: found by the model, or English. */
 enum class SpeechLanguage { Auto, English };
 
+/* What turns speech into text: the family of the model file. */
+enum class AsrEngine { Whisper, Parakeet };
+
 struct DeviceInfo {
     std::wstring id;          /* endpoint ID; usable as a device selector */
     std::wstring name;        /* friendly name                            */

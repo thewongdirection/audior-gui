@@ -161,6 +161,23 @@ has a built-in script and always shows it):
    are used. The program downloads one for you if you let it (next section), or you
    download one yourself from <https://huggingface.co/ggerganov/whisper.cpp>.
 
+**The larger models.** `ggml-large-v3.bin` (Whisper large-v3 at full precision, 2.9 GiB) is
+the top end: the most accurate, and offered to a PC whose graphics card has 8 GiB or more
+of its own memory (to one with less it is not). `ggml-large-v3-turbo-q5_0.bin` (the turbo
+model) is still used if it is in the folder, but is not offered any more.
+
+**Parakeet, an alternative.** `ggml-parakeet-tdt-0.6b-v3-q8_0.bin` (638 MiB, from
+<https://huggingface.co/ggml-org/parakeet-GGUF>) is NVIDIA's Parakeet TDT 0.6B v3, a
+different kind of model from Whisper and, on the processor, far lighter: a minute of
+speech at the pace of speech cost the helper about 0.08 of a core, against 7 cores for
+the large Whisper turbo model, with the same words. It recognises 25 European languages
+(Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German,
+Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
+Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian) and finds the language of what
+it hears by itself, so there is no language to choose: the **Auto / English** switch is
+greyed out for it and `--transcribe-language` does not apply. Its weights are NVIDIA's,
+under CC BY 4.0 (see `THIRD-PARTY-NOTICES.md`).
+
 Optionally, `ggml-silero-v5.1.2.bin` (864 KiB, from
 <https://huggingface.co/ggml-org/whisper-vad>) in the same folder. Without it a
 phrase begins when the stream gets clearly louder than the room and ends at a
@@ -191,11 +208,12 @@ a notification above the two panes says what it is doing and what it found:
    the card and the model, and goes away by itself. Nothing is downloaded.
 3. **No model is installed:** the notification asks, naming the files, their size and
    where they come from, and nothing is downloaded until you press **Download**.
-   Every PC is offered the English model and the small voice-activity detector; a PC
-   whose card has 4 GiB or more of its own memory, and can use it for transcription (see
-   step 1), is offered the multilingual model as well.
+   Every PC is offered the English model, Parakeet (the multilingual alternative, light
+   on the processor) and the small voice-activity detector; a PC whose card has 8 GiB or
+   more of its own memory, and can use it for transcription (see step 1), is offered
+   Whisper large-v3, the most accurate model, as well.
 
-   ![The start-up notification asking whether to download a speech model: Download Small · English, Large v3 turbo and the voice-activity detector, 729.6 MB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
+   ![The start-up notification asking whether to download a speech model: Download Small · English, Large v3, Parakeet v3 and the voice-activity detector, 3.7 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
 
 4. **Downloading:** the notification shows which file, how much and a progress bar, with
    a **Cancel** button; the recording and everything else keep working. Each file is
@@ -203,7 +221,7 @@ a notification above the two panes says what it is doing and what it found:
    never used; a failed or cancelled download leaves nothing behind. When it is done the
    **Transcript** switches and the model choice appear without a restart.
 
-   ![The notification while downloading: Downloading Large v3 turbo, 2 of 3, 400.3 MB of 729.6 MB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
+   ![The notification while downloading: Downloading Large v3, 2 of 4, 1.3 GB of 3.7 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
 
 If you press **Not now** the program takes that for an answer and does not ask again
 (it is kept with the other [remembered settings](#settings-are-remembered), as the line

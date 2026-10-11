@@ -36,6 +36,7 @@ struct TranscriptModel {
     std::wstring file;                      /* what RecordingSettings::transcribeModel names */
     std::wstring label;                     /* for the user                                  */
     bool         multilingual = false;      /* false: English only                           */
+    bool         languageChoosable = false; /* can be told to expect English (else Auto, or English alone) */
 };
 
 /* What a stream's transcription is doing.  A problem here never ends the

@@ -30,7 +30,7 @@
 
 namespace audiorgui::asr {
 
-constexpr std::uint16_t kVersion = 5;                   /* 5: an event's text may be up to 511 characters (4: 255) */
+constexpr std::uint16_t kVersion = 6;                   /* 6: Hello names the engine; 5: an event's text may be up to 511 characters (4: 255) */
 constexpr int           kSampleRate = 16000;            /* the audio the helper receives */
 
 /* The biggest payload either side sends; an Audio message carries at most
@@ -55,6 +55,7 @@ struct Message {
     std::uint8_t    streams = 0;                        /* Hello: a bit per StreamId to transcribe   */
     SpeechLanguage  language = SpeechLanguage::Auto;    /* Hello                                     */
     bool            gpu = true;                         /* Hello: use the graphics card if there is one (else only the processor) */
+    AsrEngine       engine = AsrEngine::Whisper;        /* Hello: what the model file is for */
     std::uint16_t   version = kVersion;                 /* Hello                                     */
     std::wstring    text;                               /* Hello: the model's path; Ready: what runs;
                                                            Problem: why                              */
