@@ -101,6 +101,10 @@ TEST(Status_SkippedAndFailedAreFinishedWithTheirOwnWords)
     CHECK(skipped.title != cancelled.title);
     CHECK(Has(skipped.detail, L"Transcript section"));
 
+    const SetupStatus partial = SkippedStatus(true, true);                              /* a model came first and works */
+    CHECK(partial.result == SetupResult::Skipped && partial.title == cancelled.title);
+    CHECK(Has(partial.detail, L"installed") && !Has(partial.detail, L"stay off"));
+
     const SetupStatus failed = FailedStatus(L"Download failed", L"No connection.");
     CHECK(failed.phase == SetupPhase::Finished && failed.result == SetupResult::Failed);
     CHECK_EQ(failed.title, std::wstring(L"Download failed"));

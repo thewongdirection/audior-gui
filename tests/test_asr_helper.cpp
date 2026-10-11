@@ -169,6 +169,26 @@ TEST(Asr_ModelInstalledNeedsTheNamedModelWhole)
     CHECK(!ModelInstalled(std::wstring(), L"a.bin", table, 2));
 }
 
+TEST(Asr_AModelVerifiedOnceIsNotHashedAgainUntilItsFileChanges)
+{
+    TempDir dir;
+    const std::wstring path = dir.Path(L"verified.bin");
+    CHECK(!ModelVerifiedBefore(path));                  /* not there */
+    CHECK(!ModelVerifiedBefore(std::wstring()));
+    Write(path, "12345");
+    CHECK(!ModelVerifiedBefore(path));                  /* there, but never verified */
+    NoteModelVerified(path);
+    CHECK(ModelVerifiedBefore(path));                   /* the same file again: for the next recording too */
+    Write(path, "123456");                              /* another file now */
+    CHECK(!ModelVerifiedBefore(path));
+    NoteModelVerified(path);
+    CHECK(ModelVerifiedBefore(path));
+    DeleteFileW(path.c_str());
+    CHECK(!ModelVerifiedBefore(path));                  /* gone */
+    NoteModelVerified(path);                            /* nothing to note: no harm */
+    CHECK(!ModelVerifiedBefore(path));
+}
+
 TEST(Asr_TheModelAskedForIsTheOneFound)
 {
     const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},

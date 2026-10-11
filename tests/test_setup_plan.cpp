@@ -133,6 +133,39 @@ TEST(Plan_ThePlanOfTheRealTableAlwaysOffersAModelToAPcWithNone)
     CHECK_EQ(plan.bytes, total);
 }
 
+TEST(Plan_TheLightestModelComesFirstSoThatACutShortDownloadLeavesSomethingUsable)
+{
+    const AsrModel heavyFirst[2] = {{L"big.bin", kHash, 300, L"Big", L"MIT", L"https://example.test/m", nullptr, 4 * kGiB},
+                                    {L"small.bin", kHash, 100, L"Small", L"MIT", L"https://example.test/m"}};
+    const SetupPlan plan = PlanSetup(Pc(8 * kGiB), true, {}, false, heavyFirst, 2, &kVoice);
+    CHECK_EQ(plan.download.size(), std::size_t(3));
+    CHECK(plan.download[0] == &heavyFirst[1] && plan.download[1] == &heavyFirst[0]);    /* by size, not by the table's order */
+    CHECK(plan.download[2] == &kVoice);                                                 /* the voice model stays last */
+    CHECK_EQ(plan.bytes, std::uint64_t(300 + 100 + 7));
+}
+
+TEST(Plan_ACardThatReportsALittleUnderItsSizeStillCounts)
+{
+    const std::uint64_t reported = 4 * kGiB - (100ull << 20);                           /* "a 4 GB card" as DXGI says it */
+    CHECK_EQ(PlanSetup(Pc(reported), true, {}, false, kTable, 2, nullptr).download.size(), std::size_t(2));
+    CHECK_EQ(PlanSetup(Pc(3 * kGiB), true, {}, false, kTable, 2, nullptr).download.size(), std::size_t(1));    /* a smaller one does not */
+}
+
+TEST(Plan_ThePlanOfTheRealTableForAnEightGigabyteCardHasBothEngines)
+{
+    const AsrModel *large = FindAsrModel(L"ggml-large-v3.bin");
+    CHECK(large != nullptr);
+    const SetupPlan eight = PlanSetup(Pc(8 * kGiB - (200ull << 20)), true, {}, false);  /* an "8 GB" card as DXGI says it */
+    CHECK_EQ(eight.download.size(), std::size_t(3));
+    CHECK(eight.download[0]->engine == AsrEngine::Parakeet);                            /* the light one that suits every PC first */
+    CHECK(eight.download[1] == large);
+    CHECK(eight.download[2] == &kVadModel);
+
+    const SetupPlan six = PlanSetup(Pc(6 * kGiB), true, {}, false);                     /* too small for the large one */
+    CHECK_EQ(six.download.size(), std::size_t(2));
+    CHECK(six.download[0]->engine == AsrEngine::Parakeet);
+}
+
 TEST(Plan_AModelThatIsNotOfferedIsNeverPlannedForDownload)
 {
     AsrModel table[2] = {{L"a.bin", "x", 100, L"A", L"MIT", L"https://huggingface.co/x"},

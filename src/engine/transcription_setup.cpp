@@ -154,7 +154,7 @@ void TranscriptionSetup::Run(bool forced)
     bool any = false;
     for (std::size_t i = 0; i < plan.download.size(); ++i) {
         if (cancel_) {                                  /* ended between two files */
-            finish(SkippedStatus(true), any);
+            finish(SkippedStatus(true, any), any);
             return;
         }
         const AsrModel &model = *plan.download[i];
@@ -173,9 +173,9 @@ void TranscriptionSetup::Run(bool forced)
             continue;
         }
         if (cancel_)
-            finish(SkippedStatus(true), any);
+            finish(SkippedStatus(true, any), any);
         else
-            finish(FailedStatus(L"Download failed", problem), any);
+            finish(FailedStatus(L"Download failed", any ? problem + L"  A speech model that came first is installed and works." : problem), any);
         return;
     }
 

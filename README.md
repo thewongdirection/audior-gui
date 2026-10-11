@@ -226,9 +226,10 @@ a notification above the two panes says what it is doing and what it found:
    light on the processor) and the small voice-activity detector; a PC whose card has 8 GiB
    or more of its own memory, and can use it for transcription (see step 1), is offered
    Whisper large-v3, the most accurate model and the one for Chinese and the other
-   languages Parakeet does not know, as well.
+   languages Parakeet does not know, as well. The lightest file is fetched first, so that a download
+   that is cut short leaves a model that works.
 
-   ![The start-up notification asking whether to download a speech model: Download Large v3, Parakeet v3 and the Silero voice-activity detector, 3.5 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
+   ![The start-up notification asking whether to download a speech model: Download Parakeet v3, Large v3 and the Silero voice-activity detector, 3.5 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
 
 4. **Downloading:** the notification shows which file, how much and a progress bar, with
    a **Cancel** button; the recording and everything else keep working. Each file is
@@ -236,7 +237,7 @@ a notification above the two panes says what it is doing and what it found:
    never used; a failed or cancelled download leaves nothing behind. When it is done the
    **Transcript** switches and the model choice appear without a restart.
 
-   ![The notification while downloading: Downloading Parakeet v3, 2 of 3, 3.1 GB of 3.5 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
+   ![The notification while downloading: Downloading Large v3, 2 of 3, 1.8 GB of 3.5 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
 
 If you press **Not now** the program takes that for an answer and does not ask again
 (it is kept with the other [remembered settings](#settings-are-remembered), as the line
@@ -360,7 +361,7 @@ mix=merge                    merge or separate
 mixMicrophone=65             0 to 100 (percent): the microphone's share of the merged mix
 transcribeMicrophone=off
 transcribeSystem=off
-transcribeModel=             one of the two model file names above; empty: the first one found
+transcribeModel=             one of the model file names above; empty: the first one found
 transcribeLanguage=auto      auto, en, zh, zh-hant, es, fr, de, ja, ko, pt, ru, it, nl, ar, hi, tr, vi, th, pl, uk or id
 transcribeGpu=on
 startHotkey=Ctrl+Alt+R

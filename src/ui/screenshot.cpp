@@ -104,7 +104,7 @@ bool Build(Scene &scene, const std::wstring &name)
         return BuildSetup(scene, name);
     if (name == L"idle" || name == L"hotkeys" || name == L"hotkey-taken")      /* the view does the rest */
         return true;
-    if (name == L"model") {                              /* idle, a Whisper model chosen, transcripts on */
+    if (name == L"model") {                              /* idle, Whisper large-v3 chosen, transcripts on */
         RecordingSettings &s = ctl.Settings();
         s.includeSystemAudio = s.transcribeMicrophone = s.transcribeSystem = true;
         s.transcribeModel = kAsrModels[1].file;

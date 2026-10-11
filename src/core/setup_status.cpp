@@ -74,11 +74,12 @@ SetupStatus ReadyStatus(const GpuVerdict &gpu, const std::wstring &model, bool d
                 DescribeGpu(gpu) + L"  Model: " + model + L".");
 }
 
-SetupStatus SkippedStatus(bool cancelled)
+SetupStatus SkippedStatus(bool cancelled, bool modelInstalled)
 {
     return Make(SetupPhase::Finished, SetupResult::Skipped, cancelled ? L"Download cancelled" : L"Download skipped",
-                L"Live transcripts stay off until a speech model is installed. The Transcript section can download "
-                L"one later.");
+                modelInstalled ? L"A speech model came first and is installed: live transcripts work. The rest was not downloaded."
+                               : L"Live transcripts stay off until a speech model is installed. The Transcript section can download "
+                                 L"one later.");
 }
 
 SetupStatus UnavailableStatus(const std::wstring &why)
