@@ -50,7 +50,7 @@ bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
 }
 
 /* The file to record to: the name the user typed (given the format's
- * extension), else "audior-<time>", in the output folder.  A recording never
+ * extension), else "Audior-GUI-<time>", in the output folder.  A recording never
  * replaces an existing file, so a taken name gets " (2)", " (3)" ... before
  * its extension; with two tracks, a taken "_mic" or "_system" file counts. */
 std::wstring RecorderController::NextOutputPath()

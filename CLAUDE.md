@@ -53,7 +53,10 @@ the quick edit-test loop.
 same flag on the command line (see the table in `README.md`); the GUI adds a
 system-audio gain and per-stream on/off. A new audior option needs all three:
 a setting + validation (`src/core/settings`), a flag (`src/core/cli`) and a
-control (`src/ui/main_view`), with tests.
+control (`src/ui/main_view`), with tests. The one deliberate difference in
+naming: what the user sees by default carries this program's name, not audior's
+(the default folder `Documents\Audior-GUI` and the default file name
+`Audior-GUI-<date>-<time>`).
 
 **What CI cannot do.** The runners have no audio devices, so the WASAPI capture
 code itself (`wasapi_capture.cpp`, `devices.cpp`) is only exercised for its

@@ -90,7 +90,7 @@ struct LocalTime {
     int year = 1970, month = 1, day = 1, hour = 0, minute = 0, second = 0;
 };
 
-/* "audior-20261010-153045": a file name (no extension) for a recording
+/* "Audior-GUI-20261010-153045": a file name (no extension) for a recording
  * started at `t`. */
 std::wstring DefaultBaseName(const LocalTime &t);
 

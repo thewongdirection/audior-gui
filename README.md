@@ -123,7 +123,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "-
 
 | audior option | In the window | Command line |
 |---|---|---|
-| `-o, --output <file>` | **Save to** folder + **File name** box. Empty: `audior-<date>-<time>`. The extension follows the format (`meeting` becomes `meeting.mp3`, `clip.wav` with MP3 becomes `clip.mp3`). A file is never overwritten: a taken name becomes `meeting (2).mp3`. | `-o, --output <file>`, also starts recording |
+| `-o, --output <file>` | **Save to** folder + **File name** box. Empty: `Audior-GUI-<date>-<time>`. The extension follows the format (`meeting` becomes `meeting.mp3`, `clip.wav` with MP3 becomes `clip.mp3`). A file is never overwritten: a taken name becomes `meeting (2).mp3`. | `-o, --output <file>`, also starts recording |
 | `-f, --format` | **Format** MP3 / WAV | `-f wav\|mp3` |
 | `-b, --bitrate` | **Format** bitrate list (96 to 320 kbps) | `-b <kbps>` |
 | `-m, --mic` | Microphone pane drop-down: every detected input device | `-m <id\|index\|name>` |
