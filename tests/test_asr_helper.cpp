@@ -201,6 +201,22 @@ TEST(Asr_TheGraphicsCardBackendIsNotedWhenItIsThere)
     CHECK(!setup.gpu);                                  /* and it is looked for again each time */
 }
 
+TEST(Asr_AGraphicsCardBackendThatIsNotInTheFileListIsRefused)
+{
+    Pack pack;
+    AsrSetup setup;
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ pretend vulkan backend");
+    CHECK(pack.Find(&setup) && setup.gpu);
+    const std::wstring why = VerifyAsr(setup, false);               /* the helper would load it by name, unchecked */
+    CHECK(why.find(kGpuBackendFile) != std::wstring::npos);
+
+    pack.WriteManifest(Sha256Hex("MZ pretend vulkan backend", 25) + "  ggml-vulkan.dll\n");
+    CHECK(VerifyAsr(setup, false).empty());
+
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ a planted backend!!!!");
+    CHECK(!VerifyAsr(setup, false).empty());                        /* and one that is not the listed one */
+}
+
 TEST(Asr_TheVoiceActivityModelIsNotedOnlyWhenItIsWhole)
 {
     Pack pack;

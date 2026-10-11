@@ -138,9 +138,10 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
     if (!ParseManifest(text, &entries, &problem))
         return problem;
 
-    bool coversHelper = false;
+    bool coversHelper = false, coversGpu = false;
     for (const ManifestEntry &entry : entries) {
         coversHelper = coversHelper || _wcsicmp(entry.file.c_str(), kHelperFile) == 0;
+        coversGpu = coversGpu || _wcsicmp(entry.file.c_str(), kGpuBackendFile) == 0;
         std::string actual;
         if (!HashFile(Join(setup.directory, entry.file), &actual, stopping))
             return L"The transcription engine's file \"" + entry.file + L"\" is missing or cannot be read.";
@@ -149,6 +150,8 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
     }
     if (!coversHelper)
         return L"The transcription engine's file list does not cover " + std::wstring(kHelperFile) + L".";
+    if (setup.gpu && !coversGpu)                        /* the helper loads this DLL by name: only a listed one */
+        return L"The transcription engine's file list does not cover " + std::wstring(kGpuBackendFile) + L".";
 
     if (checkModel) {
         std::string actual;
