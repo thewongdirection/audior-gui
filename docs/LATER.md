@@ -26,8 +26,8 @@ blocks using it; each item is worth doing when it starts to matter.
   because the card's state is kept between decodes and the model gets its whole 30 s window
   (`WhisperDecoder::Decode`; the shortened window also made the large model repeat itself,
   62% extra words). An integrated GPU and the processor keep the old way, which is the
-  faster one there (the full window made the small model 2.5 s behind on the Radeon iGPU
-  and the large one unusable). Whisper large-v3 at full precision (the top-end model, offered
+  faster one there (the full window made the small model, which has since been dropped, 2.5 s
+  behind on the Radeon iGPU and the large one unusable). Whisper large-v3 at full precision (the top-end model, offered
   to a card with 8 GiB) used far more processor time on the card than the 5-bit turbo one
   (1.06 core against 0.07 in the same test; the card was shared with another program using
   most of its memory at the time), so memory on the card matters: nothing checks it yet.
@@ -62,9 +62,15 @@ blocks using it; each item is worth doing when it starts to matter.
   presence of `vulkan-1.dll`; whether the card really works with the helper's Vulkan backend
   is only known when the helper runs, and it then falls back to the processor by itself. A
   hybrid laptop's integrated card may be the one ggml picks (see above).
-- A model is offered only when none is installed. A PC with the small model and a strong
-  card is never offered the multilingual one; and the large model on a card has not been
-  timed, which is also why it is only offered, never made the default.
+- A model is offered only when none is installed. A PC with Parakeet and a strong card is never
+  offered Whisper large-v3 afterwards (there is no "More models" choice yet); and the large model
+  on a card has not been timed on every card, which is also why it is only offered, never made the
+  default.
+- **PCs without an 8 GiB card are offered Parakeet only** (since the small English model was dropped),
+  which has no Chinese, Japanese, Korean, Arabic or Hindi. Such a PC can use Whisper turbo if the person
+  puts the file in the models folder, but it is slow without a card (about seven cores for real-time
+  speech), and nothing lighter that understands those languages is in the table. A middle Whisper
+  model for them (a smaller multilingual one) is the open question.
 - A download that is interrupted starts again from the beginning (no resume), and a proxy
   that needs a sign-in is not supported (WinHTTP uses the system's proxy settings, but the
   download program has no way to ask for credentials).
@@ -123,7 +129,7 @@ No blocker; each is worth doing when it starts to matter.
   they can stall the recording's writer (its ring is 8 s). The free-space check (64 MiB spare) looks
   at the models folder's drive, not at what the recording needs. Background I/O priority for the
   fetcher and the hash, or holding the install while a recording runs, would cover it.
-- **A partial install.** The small model is fetched first: cancelling or failing during the large
+- **A partial install.** The first model of the offer is fetched first: cancelling or failing during a later
   one leaves it installed, but the notification still says "Live transcripts stay off", "Try again"
   finds nothing missing and says "ready", and the README's "leaves nothing behind" is not true of
   the finished files. A crash or End Task during a download leaves its `.part` (up to about
@@ -158,3 +164,41 @@ No blocker; each is worth doing when it starts to matter.
   `RememberSettings` copying the flag is not covered by a test; nor is the real DXGI call
   (`ProfileFromDesc` could be pulled out and tested).
 
+
+## Chinese and the other languages (found when Chinese was tried)
+
+- **What was wrong.** Parakeet knows 25 European languages and no Chinese: heard in Chinese it writes
+  something Dutch or German looking (`We zijn maar...`). That is its limit, not a bug, and is now said in
+  the window (the language field reads *European languages*) and the README. With *Auto*, Whisper large-v3
+  turbo (5-bit) transcribed a Chinese talk in Simplified and Traditional characters by turns, with the
+  commas written as in English; naming the language (*Chinese*) fixed the script (a Simplified sample
+  sentence starts the text), and Chinese marks after a Chinese character are written full width.
+  Checked by hand with one recording only (a talk in Mandarin, 30 s); no reference text, so no error rate.
+- **Whisper's own Chinese could be better.** The published character error rates of large-v3 (from a web
+  search for these notes, not measured here) are 5 % (AISHELL-2) to 10-19 % (WenetSpeech), and the turbo and
+  quantised models are worse. Three ways to better, none done (the figures are the models' own cards and
+  papers, not checked here):
+  1. A Chinese fine-tune of Whisper, which runs in the helper unchanged (Belle-whisper-large-v3-zh, and its
+     turbo version, Apache-2.0; 2 to 3 times lower error on AISHELL and WenetSpeech by their own tables).
+     Their ggml files are third-party conversions on Hugging Face (about 0.6 GB for the turbo one at 5 bits,
+     1.1 to 1.7 GB for large-v3), so they would need new table entries with hashes, and English quality after
+     the fine-tune is unmeasured: probably one model per language, chosen in the window.
+  2. Qwen3-ASR (Apache-2.0, January 2026; 0.6 and 1.7 billion parameters; Chinese error roughly half of
+     Whisper large-v3's, English a little better, 30 languages and 22 Chinese dialects). whisper.cpp cannot
+     run it: it needs llama.cpp (`mtmd`, build b9173 or later), `transcribe.cpp`, CrispASR or `qwenasr.cpp`,
+     each with its own ggml: a second engine behind `IDecoder` in its own folder (the DLL names clash
+     with whisper's), a bigger helper, and unknown speed on a card and on the processor. The one speed
+     figure found is 2.6 s for 6.6 s of speech on an Apple M3.
+  3. SenseVoice-Small (about 250 MB, zh/yue/en/ja/ko, very fast, under the FunASR licence, which needs a
+     notice), through CrispASR or `transcribe.cpp`.
+  No newer Whisper than large-v3 (and turbo) or Parakeet than v3 exists as of October 2026, and nothing
+  of NVIDIA's that is open covers Chinese.
+- **Auto still guesses each phrase** on its own: speech that mixes two languages can flip. A person who
+  speaks English and Mandarin could be served by comparing only those two languages' probabilities and keeping
+  the last choice when the margin is small (`whisper_lang_auto_detect`); not done.
+- **The loop guard counts a Chinese character as half a word** (a heuristic: a one-character repeat needs
+  twelve copies, a phrase of ten characters said twice counts as long). Thai, Lao, Burmese and Khmer are
+  treated alike, Japanese kana too, none of them tried.
+- **Languages of the drop-down:** the twenty of the table (`core/asr_languages.h`); the others Whisper knows
+  (about eighty) can only be had through *Auto*. Cantonese (`yue`) has no entry because its prompt has not
+  been tried.

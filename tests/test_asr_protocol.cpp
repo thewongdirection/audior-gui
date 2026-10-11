@@ -3,6 +3,7 @@
 #include <limits>
 #include <vector>
 
+#include "../src/core/asr_languages.h"
 #include "../src/core/asr_protocol.h"
 #include "test_support.h"
 
@@ -84,7 +85,7 @@ TEST(Asr_HelloRoundTrips)
     Message m;
     m.type = Type::Hello;
     m.streams = 3;
-    m.text = L"C:\\Models\\ggml-small.en-q5_1.bin";
+    m.text = L"C:\\Models\\ggml-large-v3.bin";
     const Message r = ReadOne(Frame(m));
     CHECK(r.type == Type::Hello);
     CHECK_EQ(r.version, kVersion);
@@ -150,9 +151,22 @@ TEST(Asr_AnUnknownLanguageIsRefused)
     Message hello;
     hello.type = Type::Hello;
     hello.text = L"m";
+    const std::uint8_t last = static_cast<std::uint8_t>(kSpeechLanguageCount - 1);
     CHECK(!IsInvalid(With(Frame(hello), kFrameHeader + 3, 1)));         /* after the version and the streams */
-    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 2)));
+    CHECK(!IsInvalid(With(Frame(hello), kFrameHeader + 3, last)));      /* every language of the table is allowed */
+    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, static_cast<std::uint8_t>(last + 1))));
     CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 255)));
+}
+
+TEST(Asr_EveryLanguageOfTheTableRoundTrips)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    for (std::size_t i = 0; i < kSpeechLanguageCount; ++i) {
+        hello.language = static_cast<SpeechLanguage>(i);
+        CHECK(ReadOne(Frame(hello)).language == hello.language);
+    }
 }
 
 TEST(Asr_AudioRoundTrips)
@@ -192,7 +206,7 @@ TEST(Asr_StopAndReadyRoundTrip)
 
     Message ready;
     ready.type = Type::Ready;
-    ready.text = L"small.en · Vulkan (RTX 5080)";
+    ready.text = L"large-v3 · Vulkan (RTX 5080)";
     CHECK_EQ(ReadOne(Frame(ready)).text, ready.text);
 }
 
@@ -221,6 +235,17 @@ TEST(Asr_EventRoundTrips)
     CHECK(r.event.isFinal);
     CHECK_NEAR(r.event.startSeconds, 12.5, 0.0);
     CHECK_EQ(std::wstring(r.event.text), std::wstring(L"Hello there, world."));
+}
+
+TEST(Asr_TextInAnyScriptSurvivesTheWire)
+{
+    const wchar_t *const texts[] = {
+        L"这就是因为乾隆的诗跟网络理解的诗它不一样。", L"乾隆的詩哪裡不一樣呢？", L"こんにちは、世界！", L"안녕하세요, 세계",
+        L"مرحبا بالعالم", L"Привет, мир", L"नमस्ते दुनिया", L"สวัสดีชาวโลก", L"𠮷野家 😀"};     /* the last has characters of two UTF-16 units */
+    for (const wchar_t *text : texts) {
+        const Message r = ReadOne(Frame(EventMessage(StreamId::System, 7, true, 1.5, text)));
+        CHECK_EQ(std::wstring(r.event.text), std::wstring(text));
+    }
 }
 
 TEST(Asr_ProblemRoundTrips)

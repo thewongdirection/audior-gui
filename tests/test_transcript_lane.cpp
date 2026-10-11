@@ -265,3 +265,19 @@ TEST(TranscriptEvent_TextThatJustFitsIsKept)
     e.SetText(text.c_str(), text.size());
     CHECK_EQ(std::wstring(e.text), text);
 }
+
+TEST(TranscriptEvent_ChineseWithNoSpacesIsCutHardNotInTheMiddleOfACharacter)
+{
+    std::wstring text(kTranscriptChars - 3, L'你');                  /* the cut falls on the first half of a pair */
+    text += L"\U00020BB7";
+    text += std::wstring(20, L'好');
+    TranscriptEvent e;
+    e.SetText(text.c_str(), text.size());
+    const std::wstring cut = e.text;
+    CHECK_EQ(cut.back(), L'…');
+    for (std::size_t i = 0; i + 1 < cut.size(); ++i) {
+        CHECK(!(cut[i] >= 0xD800 && cut[i] <= 0xDBFF && !(cut[i + 1] >= 0xDC00 && cut[i + 1] <= 0xDFFF)));   /* no half left alone */
+        CHECK(!(cut[i] >= 0xDC00 && cut[i] <= 0xDFFF && (i == 0 || !(cut[i - 1] >= 0xD800 && cut[i - 1] <= 0xDBFF))));
+    }
+    CHECK(cut.size() > 400);                                         /* and most of it was kept */
+}

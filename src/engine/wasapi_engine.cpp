@@ -89,8 +89,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
                 file->Add(event);
         };
         for (const AsrModel *smaller :                  /* what to change to if this model cannot keep up */
-             SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()),
-                           s.transcribeLanguage == SpeechLanguage::Auto)) {
+             SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()))) {
             AsrSetup fallback;
             if (FindAsr(ProgramDirectory(), ModelsDirectory(), &fallback, kAsrModels, kAsrModelCount, smaller->file))
                 options.fallbacks.push_back({fallback.modelPath, MakeProcessFactory(fallback), smaller->engine});

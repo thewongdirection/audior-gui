@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/asr_languages.h"
 #include "../core/bluetooth.h"
 #include "../core/format.h"
 
@@ -129,11 +130,8 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         ctl_.Settings().transcribeGpu = on;
         Refresh();
     };
-    languageSeg_.options = {L"Auto", L"English"};
-    languageSeg_.onChange = [this](int i) {
-        ctl_.Settings().transcribeLanguage = i == 0 ? SpeechLanguage::Auto : SpeechLanguage::English;
-        Refresh();
-    };
+    languageField_.style = Button::Style::Field;
+    languageField_.onClick = [this] { ChooseLanguage(); };
     modelField_.style = Button::Style::Field;
     modelField_.onClick = [this] { ChooseModel(); };
 
@@ -183,7 +181,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         &bannerPrimary_, &bannerSecondary_, &micCheck_, &micTranscript_, &micField_, &bluetoothLink_,
         &gain_[0].slider, &systemCheck_, &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_,
         &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
-        &gpuSwitch_, &languageSeg_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_};
+        &gpuSwitch_, &languageField_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     RefreshHotkeys();
@@ -321,16 +319,16 @@ void MainView::Refresh()
     shareSlider_.value = s.mergeMicPercent;
     shareText_ = ShareText(s.mergeMicPercent);
 
-    /* The language is the model's own business when it knows only English, or finds it by itself whatever it is told. */
+    /* The language is the model's own business when it finds it by itself, whatever it is told: the field then says
+     * which ones it knows. */
     const TranscriptModel *model = SelectedModel();
-    const bool english = model && !model->multilingual;
-    const bool fixed = model && !model->languageChoosable;
-    languageSeg_.visible = modelField_.visible = canTranscribe && model;
+    const bool fixed = model && !model->fixedLanguages.empty();
+    languageField_.visible = modelField_.visible = canTranscribe && model;
     gpuSwitch_.visible = canTranscribe && ctl_.CanTranscribeOnGpu();
     gpuSwitch_.checked = s.transcribeGpu && !ctl_.GpuUnusable();            /* the scan found no card to use: off, and it stays off */
     gpuSwitch_.enabled = unlocked && !ctl_.GpuUnusable();
-    languageSeg_.selected = fixed ? (english ? 1 : 0) : s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
-    languageSeg_.enabled = unlocked && !fixed;
+    languageField_.text = fixed ? model->fixedLanguages : std::wstring(InfoOf(s.transcribeLanguage).label);
+    languageField_.enabled = unlocked && !fixed;
     modelField_.text = model ? model->label : std::wstring();
     modelField_.enabled = unlocked && ctl_.TranscriptModels().size() > 1;
 
@@ -479,6 +477,18 @@ void MainView::ChooseBitrate()
     if (pick < 0 || pick >= kMp3BitrateCount)
         return;
     ctl_.Settings().mp3BitrateKbps = kMp3Bitrates[pick];
+    Refresh();
+}
+
+void MainView::ChooseLanguage()
+{
+    std::vector<std::wstring> items;
+    for (const SpeechLanguageInfo &language : kSpeechLanguages)
+        items.push_back(language.label);
+    const int pick = host_ ? host_->Choose(items, static_cast<int>(ctl_.Settings().transcribeLanguage), languageField_.rect) : -1;
+    if (pick < 0 || !ValidSpeechLanguage(static_cast<std::size_t>(pick)))
+        return;
+    ctl_.Settings().transcribeLanguage = static_cast<SpeechLanguage>(pick);
     Refresh();
 }
 
@@ -673,8 +683,8 @@ void MainView::Layout(float w, float h)
     hotkeyHintRect_ = RectXYWH(x, y, iw, 18);                       y += 18 + 14;
     captions_[5] = {sectionShown_ ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
     gpuSwitch_.rect = RectXYWH(x + iw - 84, y - 4, 84, 22);                                  y += 18;
-    languageSeg_.rect = RectXYWH(x, y, 140, 36);
-    modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
+    languageField_.rect = RectXYWH(x, y, 156, 36);
+    modelField_.rect = RectXYWH(x + 168, y, iw - 168, 36);
     transcriptNoteRect_ = RectXYWH(x, y, iw - kNoteLinkWidth, 36);
     retryLink_.rect = RectXYWH(x + iw - kNoteLinkWidth, y, kNoteLinkWidth, 36);
     PositionBanner();

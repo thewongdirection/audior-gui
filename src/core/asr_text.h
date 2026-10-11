@@ -28,7 +28,9 @@ std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found);
 
 /* Removes bracketed annotations ("[...]", "(...)" and "*...*", up to 40
  * characters each and with a letter in them: "(1)" stays), collapses white
- * space to single spaces and trims the ends.
+ * space to single spaces and trims the ends; takes out the U+FFFD that a model cut
+ * in the middle of a character leaves; writes the commas, question marks and so on that
+ * follow a Chinese character in their full-width form (Whisper uses the ASCII ones).
  * If nothing but punctuation and symbols is left, the result is empty. */
 std::wstring CleanTranscript(const std::wstring &text);
 

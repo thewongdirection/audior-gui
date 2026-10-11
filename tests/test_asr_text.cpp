@@ -219,3 +219,95 @@ TEST(AsrText_Utf8EncodingRoundTripsAndReplacesALoneSurrogate)
     CHECK_EQ(Utf8FromWide(std::wstring(L"a") + static_cast<wchar_t>(0xD83D) + L"b"),
              std::string("a") + replacement + "b");                                         /* and what is round it stays */
 }
+
+/* ---- Chinese, Japanese and the other scripts written without spaces ---- */
+
+TEST(AsrText_ChineseIsKeptAsSaidWithNoSpacesAdded)
+{
+    bool found = true;
+    const std::wstring chinese = L"这就是因为乾隆的诗跟网络理解的诗它不一样，那所谓网络理解呢，就是咱们一般认为你诗嘛。";
+    CHECK_EQ(CleanTranscript(chinese), chinese);
+    CHECK_EQ(Collapse(chinese, &found), chinese);
+    CHECK(!found);
+    const std::wstring mixed = L"我用 Windows 的 Parakeet 模型测试，OK。";                  /* spaces only where they were */
+    CHECK_EQ(Collapse(CleanTranscript(mixed), &found), mixed);
+    CHECK(!found);
+    const std::wstring japanese = L"こんにちは、世界。今日はいい天気ですね。";
+    CHECK_EQ(Collapse(CleanTranscript(japanese), &found), japanese);
+    CHECK(!found);
+    const std::wstring thai = L"สวัสดีชาวโลก";
+    CHECK_EQ(Collapse(thai, &found), thai);
+    CHECK(!found);
+}
+
+TEST(AsrText_ALoopedChinesePhraseKeepsOneCopy)
+{
+    bool found = false;
+    CHECK_EQ(Collapse(L"谢谢大家，谢谢大家，谢谢大家，谢谢大家。", &found), std::wstring(L"谢谢大家，"));
+    CHECK(found);
+    CHECK_EQ(Collapse(L"好的，" + Times(L"请不吝点赞订阅", 9), &found), std::wstring(L"好的，请不吝点赞订阅"));
+    CHECK(found);
+    CHECK_EQ(Collapse(L"你好 世界 你好 世界 你好 世界", &found), std::wstring(L"你好 世界"));     /* the spaces there were */
+    CHECK(found);
+}
+
+TEST(AsrText_PeopleDoRepeatChineseWordsALittle)
+{
+    bool found = true;
+    for (const wchar_t *text : {L"谢谢谢谢谢谢", L"好好好好好", L"对对对，对对对。", L"谢谢，谢谢，谢谢。", L"哈哈哈哈哈哈哈哈"}) {
+        CHECK_EQ(Collapse(text, &found), std::wstring(text));
+        CHECK(!found);
+    }
+    CHECK(Collapse(std::wstring(24, L'哈'), &found).size() < 24);                             /* twelve or more are the model's */
+    CHECK(found);
+}
+
+TEST(AsrText_AChineseSentenceSaidTwiceInARowKeepsOneCopyButIsNotALoop)
+{
+    bool found = true;
+    const std::wstring sentence = L"我们今天要去看看那个新开的商店";
+    CHECK_EQ(Collapse(sentence + sentence, &found), sentence);
+    CHECK(!found);
+    CHECK_EQ(Collapse(sentence + L"，" + sentence + L"。", &found), sentence + L"，");
+    CHECK(!found);
+    const std::wstring begins = L"我们今天要去看看，我们今天要去玩玩";                          /* only the start is the same */
+    CHECK_EQ(Collapse(begins, &found), begins);
+    CHECK(!found);
+}
+
+TEST(AsrText_ACharacterOfTheRarerPlanesIsOneWord)
+{
+    bool found = true;
+    const std::wstring text = L"\U00020BB7野家\U00020BB7野家\U00020BB7野家\U00020BB7野家";      /* U+20BB7 is a surrogate pair */
+    CHECK_EQ(Collapse(text, &found), std::wstring(L"\U00020BB7野家"));
+    CHECK(found);
+}
+
+TEST(AsrText_PunctuationOfEveryScriptIsNotSpeech)
+{
+    for (const wchar_t *text : {L"。", L"，。！？", L"、「」『』【】《》", L"…", L"！！！", L"・", L"،؟", L"।", L"〜"})
+        CHECK_EQ(CleanTranscript(text), std::wstring());
+    CHECK_EQ(CleanTranscript(L"好。"), std::wstring(L"好。"));
+    CHECK_EQ(CleanTranscript(L"مرحبا،"), std::wstring(L"مرحبا،"));
+    CHECK_EQ(CleanTranscript(L"ＡＢＣ１２３"), std::wstring(L"ＡＢＣ１２３"));                     /* full-width letters and digits are */
+}
+
+TEST(AsrText_FullWidthAnnotationsAreRemovedAndTheMarkOfAHalfWrittenCharacterGoesToo)
+{
+    CHECK_EQ(CleanTranscript(L"你好（笑）今天"), std::wstring(L"你好 今天"));
+    CHECK_EQ(CleanTranscript(L"【音乐】"), std::wstring());
+    CHECK_EQ(CleanTranscript(L"（1）今天"), std::wstring(L"（1）今天"));                          /* a number is not an annotation */
+    CHECK_EQ(CleanTranscript(L"你好\xFFFD"), std::wstring(L"你好"));                              /* a model cut off in the middle of a character */
+    CHECK_EQ(CleanTranscript(L"\xFFFD\xFFFD"), std::wstring());
+}
+
+TEST(AsrText_TheMarksThatFollowAChineseCharacterAreFullWidth)
+{
+    CHECK_EQ(CleanTranscript(L"所谓网络理解呢,就是咱们一般认为,你诗嘛?"), std::wstring(L"所谓网络理解呢，就是咱们一般认为，你诗嘛？"));
+    CHECK_EQ(CleanTranscript(L"真的!好:一;二"), std::wstring(L"真的！好：一；二"));
+    CHECK_EQ(CleanTranscript(L"他说好.然后走了."), std::wstring(L"他说好.然后走了。"));          /* only the full stop that ends a sentence */
+    CHECK_EQ(CleanTranscript(L"你好, OK, fine."), std::wstring(L"你好， OK, fine."));           /* what follows other letters is left */
+    CHECK_EQ(CleanTranscript(L"价格是3.5元,贵"), std::wstring(L"价格是3.5元，贵"));              /* a number's point is not a full stop */
+    const std::wstring english = L"Plain English, as before? Yes! Fine: ok; done.";
+    CHECK_EQ(CleanTranscript(english), english);
+}

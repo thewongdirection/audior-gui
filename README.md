@@ -155,17 +155,21 @@ has a built-in script and always shows it):
    processor, and the first use of the card takes several seconds longer while the
    driver prepares its code.
 2. **A speech model**, in `%LOCALAPPDATA%\audior-gui\models` (or the folder named
-   by the `AUDIOR_MODELS` environment variable): `ggml-small.en-q5_1.bin`
-   (English, 181 MiB, fast enough for two streams on an ordinary CPU) or
-   `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a GPU).
-   Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
+   by the `AUDIOR_MODELS` environment variable): `ggml-large-v3.bin` (Whisper
+   large-v3, about a hundred languages including Chinese, 2.9 GiB, needs a graphics card to keep up
+   with speech) or `ggml-parakeet-tdt-0.6b-v3-q8_0.bin` (Parakeet, 25 European languages, 638 MiB,
+   light on the processor); `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a
+   GPU) is used too if it is there. Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
    are used. The program downloads one for you if you let it (next section), or you
    download one yourself from <https://huggingface.co/ggerganov/whisper.cpp>.
 
-**The larger models.** `ggml-large-v3.bin` (Whisper large-v3 at full precision, 2.9 GiB) is
-the top end: the most accurate, and offered to a PC whose graphics card has 8 GiB or more
-of its own memory (to one with less it is not). `ggml-large-v3-turbo-q5_0.bin` (the turbo
-model) is still used if it is in the folder, but is not offered any more.
+**Whisper.** `ggml-large-v3.bin` (Whisper large-v3 at full precision, 2.9 GiB) is the top end:
+the most accurate, understanding about a hundred languages (the one to use for Chinese,
+Japanese, Korean, Arabic and the rest that Parakeet does not know), and offered to a PC
+whose graphics card has 8 GiB or more of its own memory (to one with less it is not).
+`ggml-large-v3-turbo-q5_0.bin` (the turbo model, quantised and a little weaker in
+languages other than English) is still used if it is in the folder, but is not offered
+any more. There is no English-only model: every model here also understands other languages.
 
 **Parakeet, an alternative.** `ggml-parakeet-tdt-0.6b-v3-q8_0.bin` (638 MiB, from
 <https://huggingface.co/ggml-org/parakeet-GGUF>) is NVIDIA's Parakeet TDT 0.6B v3, a
@@ -175,8 +179,10 @@ the large Whisper turbo model, with the same words. It recognises 25 European la
 (Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German,
 Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
 Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian) and finds the language of what
-it hears by itself, so there is no language to choose: the **Auto / English** switch is
-greyed out for it and `--transcribe-language` does not apply. Its weights are NVIDIA's,
+it hears by itself, so there is no language to choose: the language field says *European
+languages* and is greyed out for it, and `--transcribe-language` does not apply. **It does
+not know Chinese, Japanese, Korean, Arabic or Hindi** (heard in one of those it writes
+something that looks like a European language); choose Whisper for them. Its weights are NVIDIA's,
 under CC BY 4.0 (see `THIRD-PARTY-NOTICES.md`).
 
 Optionally, `ggml-silero-v5.1.2.bin` (864 KiB, from
@@ -187,10 +193,17 @@ better with a fan, music or a keyboard in the background.
 
 With a model in place the settings panel gets a **Transcript** section: the model
 (when more than one is installed; the first one found is the default;
-`--transcribe-model <file>`) and the language (`--transcribe-language auto|en`):
-*Auto* lets a multilingual model recognise the language of each phrase, *English*
-tells it to expect English, which is a little faster and more exact for English
-speech. An English-only model always expects English.
+`--transcribe-model <file>`) and the language (`--transcribe-language <language>`):
+*Auto* lets Whisper recognise the language of each phrase; naming the language tells
+it what to expect, which is more exact (a short phrase is sometimes taken for the wrong
+language otherwise) and a little faster. The choice is English, Chinese, Traditional Chinese,
+Spanish, French, German, Japanese, Korean, Portuguese, Russian, Italian, Dutch, Arabic, Hindi,
+Turkish, Vietnamese, Thai, Polish, Ukrainian and Indonesian (on the command line `auto`,
+`en`, `zh`, `zh-hant`, `es`, `fr`, `de`, `ja`, `ko`, `pt`, `ru`, `it`, `nl`, `ar`, `hi`, `tr`,
+`vi`, `th`, `pl`, `uk`, `id`). *Chinese* also asks for Simplified characters and *Traditional
+Chinese* for Traditional ones; with *Auto*, Whisper may write some phrases one way and some the
+other. Text in any script is shown as it comes and saved as it is (the transcript files are UTF-8
+with a byte-order mark, which Notepad and Excel read right).
 
 ### At start-up: the PC is scanned, and a model is offered
 
@@ -209,12 +222,13 @@ a notification above the two panes says what it is doing and what it found:
    the card and the model, and goes away by itself. Nothing is downloaded.
 3. **No model is installed:** the notification asks, naming the files, their size and
    where they come from, and nothing is downloaded until you press **Download**.
-   Every PC is offered the English model, Parakeet (the multilingual alternative, light
-   on the processor) and the small voice-activity detector; a PC whose card has 8 GiB or
-   more of its own memory, and can use it for transcription (see step 1), is offered
-   Whisper large-v3, the most accurate model, as well.
+   Every PC is offered Parakeet (the alternative to Whisper, for European languages and
+   light on the processor) and the small voice-activity detector; a PC whose card has 8 GiB
+   or more of its own memory, and can use it for transcription (see step 1), is offered
+   Whisper large-v3, the most accurate model and the one for Chinese and the other
+   languages Parakeet does not know, as well.
 
-   ![The start-up notification asking whether to download a speech model: Download Small · English, Large v3, Parakeet v3 and the voice-activity detector, 3.7 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
+   ![The start-up notification asking whether to download a speech model: Download Large v3, Parakeet v3 and the Silero voice-activity detector, 3.5 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
 
 4. **Downloading:** the notification shows which file, how much and a progress bar, with
    a **Cancel** button; the recording and everything else keep working. Each file is
@@ -222,7 +236,7 @@ a notification above the two panes says what it is doing and what it found:
    never used; a failed or cancelled download leaves nothing behind. When it is done the
    **Transcript** switches and the model choice appear without a restart.
 
-   ![The notification while downloading: Downloading Large v3, 2 of 4, 1.3 GB of 3.7 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
+   ![The notification while downloading: Downloading Parakeet v3, 2 of 3, 3.1 GB of 3.5 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
 
 If you press **Not now** the program takes that for an answer and does not ask again
 (it is kept with the other [remembered settings](#settings-are-remembered), as the line
@@ -245,8 +259,8 @@ says *Catching up* with how far behind the text is. Settled phrases always come
 before drafts of the phrase being spoken, so drafts are what gets skipped first. If
 a stream stays six seconds or more behind for ten seconds, a smaller installed
 model takes over by itself (*smaller model* shows in the pane) and the recording is
-not touched; with *Auto* chosen only another multilingual model may take over, so no
-language stops being understood. A phrase that was still not decoded in time is shown
+not touched (a model of the same kind, Whisper or Parakeet, and one that understands the
+same languages: every Whisper model here does). A phrase that was still not decoded in time is shown
 as `…` instead of being left out silently.
 
 **Saved transcripts.** Each pane's text is also saved, phrase by phrase as it settles, in a
@@ -264,6 +278,12 @@ and its transcripts take the next free number together (`meeting (2).mp3`,
 300). If a file cannot be written the status says so and the recording is not affected.
 
 ![The window after a recording with both transcripts on: the status says Saved, with the file name and 2 transcripts](docs/screenshots/transcript-saved.png)
+
+Any script works: Chinese, Japanese, Korean, Arabic, Hindi, Thai and the rest are shown as they
+are said, in the panes and in the files (with Chinese, Whisper large-v3 told the language is
+*Chinese*; Parakeet does not know it):
+
+![Both live transcripts in Chinese, mid-sentence, with the language field of the Transcript section set to Chinese and the model Large v3](docs/screenshots/transcript-chinese.png)
 
 
 The helper is a separate process, so a problem with it can never end or damage a
@@ -341,7 +361,7 @@ mixMicrophone=65             0 to 100 (percent): the microphone's share of the m
 transcribeMicrophone=off
 transcribeSystem=off
 transcribeModel=             one of the two model file names above; empty: the first one found
-transcribeLanguage=auto      auto or en
+transcribeLanguage=auto      auto, en, zh, zh-hant, es, fr, de, ja, ko, pt, ru, it, nl, ar, hi, tr, vi, th, pl, uk or id
 transcribeGpu=on
 startHotkey=Ctrl+Alt+R
 stopHotkey=Ctrl+Alt+S
@@ -459,8 +479,8 @@ bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
-headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `transcript-saved`, `catching-up` (the transcription has fallen behind), `model` (the
-multilingual model chosen), `named`, `typing`,
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `transcript-saved`, `transcript-chinese` (the same in Chinese), `catching-up` (the transcription has fallen behind), `model` (a
+Whisper model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
 program owns), and the start-up notification of transcription: `setup-scan`,
 `setup-ask`, `setup-download`, `setup-done`, `setup-failed`, `setup-declined`.

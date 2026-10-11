@@ -19,8 +19,9 @@ constexpr int kEncoderMargin = 64;                      /* frames to spare, so t
 constexpr int kMinEncoderFrames = 256;
 constexpr int kMaxEncoderFrames = 1500;                 /* 30 s */
 
-/* Fast speech is about four words, six tokens, a second; a decode that wants more than this is stuck. */
-constexpr int kMaxTokensPerSecond = 10;
+/* Fast speech is about four words, six tokens, a second, and Chinese five characters of one to three tokens each; a
+ * decode that wants more than this is stuck. */
+constexpr int kMaxTokensPerSecond = 16;
 constexpr int kTokenAllowance = 12;
 constexpr int kSampleRate = 16000;
 
@@ -53,8 +54,8 @@ WhisperDecoder::~WhisperDecoder()
         whisper_free(context_);
 }
 
-bool WhisperDecoder::Load(const std::string &path, bool english, bool gpu, const std::string &backendDir,
-                          std::string *error)
+bool WhisperDecoder::Load(const std::string &path, audiorgui::SpeechLanguage language, bool gpu,
+                          const std::string &backendDir, std::string *error)
 {
     whisper_log_set(Silent, nullptr);                   /* the helper's error output goes nowhere anyway */
     const BackendInfo backends = LoadBackends(backendDir, gpu);
@@ -69,7 +70,7 @@ bool WhisperDecoder::Load(const std::string &path, bool english, bool gpu, const
         *error = "The model could not be loaded.";
         return false;
     }
-    english_ = english || whisper_is_multilingual(context_) == 0;
+    language_ = &audiorgui::InfoOf(language);
     return true;
 }
 
@@ -88,7 +89,8 @@ bool WhisperDecoder::Decode(const std::int16_t *samples, std::size_t count, std:
     p.no_timestamps = true;
     p.translate = false;
     p.print_special = p.print_progress = p.print_realtime = p.print_timestamps = false;
-    p.language = english_ ? "en" : "auto";
+    p.language = language_->code;
+    p.initial_prompt = language_->prompt;               /* the script wanted (Chinese: not a mix of Simplified and Traditional) */
     p.detect_language = false;
     p.suppress_blank = true;
     p.suppress_nst = true;                              /* no "[MUSIC]" and the like */

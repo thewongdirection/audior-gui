@@ -32,13 +32,12 @@ uses a model only if it is one of those below, with the size and SHA-256 listed 
 
 | Model | Licence | Source |
 |---|---|---|
-| Whisper small, English (`ggml-small.en-q5_1.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | Whisper large-v3-turbo (`ggml-large-v3-turbo-q5_0.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | Whisper large-v3 (`ggml-large-v3.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
 | Parakeet TDT 0.6B v3 (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) | CC BY 4.0 | https://huggingface.co/ggml-org/parakeet-GGUF |
 
 The Whisper ones are OpenAI's weights converted to the ggml format by the whisper.cpp
-project, whose repository declares the MIT licence. Those of small and turbo are
+project, whose repository declares the MIT licence. That of turbo is
 published by OpenAI under the MIT licence; those of large-v3 under the Apache Licence
 2.0 (https://huggingface.co/openai/whisper-large-v3).
 

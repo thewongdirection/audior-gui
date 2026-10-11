@@ -94,7 +94,7 @@ if not exist "bin\x64\Audior-GUI.exe" (
     exit /b 1
 )
 if not exist "docs\screenshots" mkdir "docs\screenshots"
-for %%s in (recording idle saved error clipping hotkeys bluetooth-mic transcript-saved setup-ask setup-download setup-declined) do (
+for %%s in (recording idle saved error clipping hotkeys bluetooth-mic transcript-saved transcript-chinese setup-ask setup-download setup-declined) do (
     start "" /wait "bin\x64\Audior-GUI.exe" --screenshot "docs\screenshots\%%s.png" --scenario %%s
     if errorlevel 1 (
         echo Scenario %%s failed.

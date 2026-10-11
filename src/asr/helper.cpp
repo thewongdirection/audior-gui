@@ -4,9 +4,9 @@
  *     audior_asr.exe                          the recorder's helper: speaks the protocol of
  *                                             core/asr_protocol.h on standard input and output
  *     audior_asr.exe --file x.wav --model m   transcribes a 16 kHz mono 16-bit WAV through the same
- *       [--vad v] [--english] [--cpu]         pipeline and prints what the recorder would be told
+ *       [--vad v] [--language l] [--cpu]      pipeline and prints what the recorder would be told
  *       [--realtime]                          (--vad: the Silero model, to cut phrases with it;
- *                                             --english: take the speech for English;
+ *                                             --language: en, zh, ... as --transcribe-language (default auto);
  *                                             --cpu: not on the graphics card;
  *                                             --parakeet: the model is a Parakeet one, not a Whisper one;
  *                                             --realtime gives the audio at the pace of speech)
@@ -34,6 +34,7 @@
 #include <thread>
 #include <vector>
 
+#include "../core/asr_languages.h"
 #include "../core/asr_protocol.h"
 #include "../core/asr_text.h"
 #include "../core/decode_queue.h"
@@ -345,7 +346,7 @@ bool Begin(const asr::Message &hello, IEvents &events, std::unique_ptr<IDecoder>
         *decoder = std::move(parakeet);
     } else {
         auto whisper = std::make_unique<WhisperDecoder>();
-        loaded = whisper->Load(model, hello.language == SpeechLanguage::English, hello.gpu, directory, &error);
+        loaded = whisper->Load(model, hello.language, hello.gpu, directory, &error);
         *decoder = std::move(whisper);
     }
     if (!loaded) {
@@ -534,8 +535,8 @@ int wmain(int argc, wchar_t **argv)
             engine = AsrEngine::Parakeet;
         else if (option == L"--cpu")
             gpu = false;
-        else if (option == L"--english")
-            language = SpeechLanguage::English;
+        else if (i + 1 < argc && option == L"--language")
+            understood = FindSpeechLanguage(argv[++i], &language);
         else if (i + 1 < argc && option == L"--file")
             wav = argv[++i];
         else if (i + 1 < argc && option == L"--model")
@@ -546,7 +547,7 @@ int wmain(int argc, wchar_t **argv)
             understood = false;
     }
     if (!understood || wav.empty() || model.empty()) {
-        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--english] [--cpu] [--parakeet] [--realtime]\r\n"
+        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--language <en|zh|...>] [--cpu] [--parakeet] [--realtime]\r\n"
                              "(without arguments it is the recorder's helper and speaks on standard input and output)\r\n";
         DWORD written = 0;
         WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), usage, sizeof(usage) - 1, &written, nullptr);

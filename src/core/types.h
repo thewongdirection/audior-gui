@@ -20,8 +20,9 @@ enum class Format     { Mp3, Wav };
 enum class MixMode    { Merge, Separate };
 enum class DeviceKind { Microphone, Playback };
 
-/* The language of the speech a transcript is made of: found by the model, or English. */
-enum class SpeechLanguage { Auto, English };
+/* The language of the speech a transcript is made of: found by the model (Auto), or one of the table in
+ * asr_languages.h, whose index it is (English is the second; the others are not named here). */
+enum class SpeechLanguage : std::uint8_t { Auto = 0, English = 1 };
 
 /* What turns speech into text: the family of the model file. */
 enum class AsrEngine { Whisper, Parakeet };

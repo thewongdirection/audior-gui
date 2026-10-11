@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "asr_languages.h"
+
 namespace audiorgui::asr {
 
 namespace {
@@ -107,7 +109,7 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         const std::uint8_t language = r.Get<std::uint8_t>();
         const std::uint8_t gpu = r.Get<std::uint8_t>();
         const std::uint8_t engine = r.Get<std::uint8_t>();
-        if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English) || gpu > 1 ||
+        if (!r.ok() || !ValidSpeechLanguage(language) || gpu > 1 ||
             engine > static_cast<std::uint8_t>(AsrEngine::Parakeet))
             return false;
         m->language = static_cast<SpeechLanguage>(language);

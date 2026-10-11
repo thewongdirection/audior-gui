@@ -897,14 +897,14 @@ int CountWords(const std::wstring &text, const wchar_t *const *words, std::size_
 
 void T16()
 {
-    Section("T16 a busy PC: the transcript changes to a smaller model");
-    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
-    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-small.en-q5_1.bin");
+    Section("T16 a busy PC: the transcript changes to a lighter model");
+    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3.bin");
+    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
     audiorgui::AsrSetup setup, fallback;
     const std::wstring programs = audiorgui::ProgramDirectory(), models = audiorgui::ModelsDirectory();
     if (!big || !lesser || !audiorgui::FindAsr(programs, models, &setup, audiorgui::kAsrModels, audiorgui::kAsrModelCount, big->file) ||
         !audiorgui::FindAsr(programs, models, &fallback, audiorgui::kAsrModels, audiorgui::kAsrModelCount, lesser->file)) {
-        Info("skipped: it needs the helper (build.bat asr) and both the large (turbo) and the small English model");
+        Info("skipped: it needs the helper (build.bat asr) and both Whisper large-v3 and its turbo model");
         return;
     }
 

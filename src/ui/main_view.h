@@ -141,6 +141,7 @@ private:
     void ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor);
     void ChooseBitrate();
     void ChooseModel();
+    void ChooseLanguage();
     const TranscriptModel *SelectedModel() const;
     void ConfigureGain(StreamId stream, int RecordingSettings::*percent, const D2D1_COLOR_F &accent);
     void ConfigureHotkey(HotkeyAction action, const wchar_t *label);
@@ -167,10 +168,10 @@ private:
 
     Checkbox  micCheck_, systemCheck_;
     Switch    micTranscript_, systemTranscript_, gpuSwitch_;
-    Button    micField_, systemField_, folderField_, bitrateField_, modelField_, bluetoothLink_;
+    Button    micField_, systemField_, folderField_, bitrateField_, languageField_, modelField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_;
     Button    bannerPrimary_, bannerSecondary_, retryLink_;
-    Segmented formatSeg_, mixSeg_, languageSeg_;
+    Segmented formatSeg_, mixSeg_;
     Slider    shareSlider_;
     TextBox   fileNameBox_;
     KeyBox    keyBox_[kHotkeyActionCount];

@@ -36,13 +36,13 @@ const AsrModel *FindAsrModel(const std::wstring &file)
 std::wstring ModelUrl(const AsrModel &model) { return std::wstring(model.source) + L"/resolve/main/" + model.file; }
 
 std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
-                                            const std::vector<const AsrModel *> &installed, bool keepLanguages)
+                                            const std::vector<const AsrModel *> &installed)
 {
     std::vector<const AsrModel *> smaller;
     for (std::ptrdiff_t i = chosen - table - 1; i >= 0; --i) {
         const AsrModel *m = table + i;
         const bool present = std::find(installed.begin(), installed.end(), m) != installed.end();
-        if (present && m->engine == chosen->engine && (m->multilingual || !keepLanguages || !chosen->multilingual))
+        if (present && m->engine == chosen->engine)
             smaller.push_back(m);
     }
     return smaller;

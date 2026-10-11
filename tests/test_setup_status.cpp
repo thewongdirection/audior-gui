@@ -12,7 +12,7 @@ constexpr std::uint64_t kMiB = 1ull << 20;
 const char kHash[] = "0000000000000000000000000000000000000000000000000000000000000000";
 
 const AsrModel kSmall = {L"small.bin", kHash, 100 * kMiB, L"Small", L"MIT", L"https://example.test/m"};
-const AsrModel kBig   = {L"big.bin", kHash, 300 * kMiB, L"Big", L"MIT", L"https://example.test/m", true};
+const AsrModel kBig   = {L"big.bin", kHash, 300 * kMiB, L"Big", L"MIT", L"https://example.test/m"};
 const AsrModel kVoice = {L"voice.bin", kHash, 1 * kMiB, L"Voice", L"MIT", L"https://example.test/v"};
 
 SetupPlan ThreeFiles()

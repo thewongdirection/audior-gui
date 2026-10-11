@@ -101,8 +101,8 @@ TEST(SavedSettings_ABadValueKeepsTheDefaultAndSpoilsNothingElse)
         L"microphone=",         L"microphoneGain=301",  L"microphoneGain=-5",   L"microphoneGain=1x",
         L"systemGain=9999999999", L"systemGain=",       L"mixMicrophone=101",   L"mixMicrophone=one",
         L"mix=blend",           L"systemAudio=1",       L"transcribeSystem=",   L"transcribeGpu=gpu",
-        L"transcribeMicrophone=yes", L"transcribeLanguage=fr", L"transcribeModel=unknown.bin",
-        L"transcribeModel=..\\ggml-small.en-q5_1.bin",
+        L"transcribeMicrophone=yes", L"transcribeLanguage=klingon", L"transcribeModel=unknown.bin",
+        L"transcribeModel=..\\ggml-large-v3.bin",
         L"fileName=a:b",        L"fileName=CON.mp3",    L"fileName=.mp3",       L"folder=",
         L"startHotkey=Ctrl+Banana", L"startHotkey=",    L"stopHotkey=S",        L"stopHotkey=Ctrl",
     };
@@ -135,7 +135,7 @@ TEST(SavedSettings_AFolderMayBeAsLongAsWindowsAllows)
 
 TEST(SavedSettings_ATranscriptionModelIsKeptUnderItsNameInTheTable)
 {
-    CHECK_EQ(Read(L"transcribeModel=GGML-SMALL.EN-Q5_1.BIN\r\n").recording.transcribeModel,
+    CHECK_EQ(Read(L"transcribeModel=GGML-LARGE-V3-TURBO-Q5_0.BIN\r\n").recording.transcribeModel,
              std::wstring(kAsrModels[0].file));
     SavedSettings s = UnusualSettings();
     ParseSavedSettings(L"transcribeModel=\r\n", &s);                            /* "the first one installed" */

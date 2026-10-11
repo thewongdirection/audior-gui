@@ -9,7 +9,7 @@
  * a picture of the UI, and it is a quick way to look at a design change.
  *
  * Scenarios: idle, recording, mic-only, system-only, bluetooth-mic (a headset microphone chosen), clipping,
- * saved, error, transcript (both live transcripts mid-sentence), catching-up (the same, but the transcription
+ * saved, error, transcript (both live transcripts mid-sentence), transcript-chinese (the same in Chinese), catching-up (the same, but the transcription
  * has fallen behind), model (the multilingual model chosen, idle), named (settings changed), typing (a long
  * file name being edited), hotkeys (a shortcut box waiting for keys), hotkey-taken (a hotkey another program
  * already owns), and the start-up set-up's setup-scan, setup-ask, setup-download, setup-done, setup-failed and
