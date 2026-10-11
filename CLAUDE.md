@@ -44,7 +44,7 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 | `src/ui` | Win32 + Direct2D window and widgets, the tray icon, the system-wide hotkeys. |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
 | `src/preferences.*` | What is remembered between runs (only the two hotkeys, in the registry). Built into the unit tests with `src/core` and `src/engine`. |
-| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
+| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. `tests/hardware` holds `hardware_tests.exe` (native C++, built by `build.bat hardware`): it records with the real exe on real devices and checks the files; see `docs/HARDWARE-TESTS.md`. |
 
 `build.bat` builds x86 + x64 and runs the tests. Use `build.bat x64 tests` for
 the quick edit-test loop.

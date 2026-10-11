@@ -6,11 +6,15 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 in the tray while minimized and records from **system-wide hotkeys** (Ctrl+Alt+R and
 Ctrl+Alt+S, yours to change).
 
-> **Status: first hardware test.** The WASAPI recording engine is complete and
-> covered by tests that run on generated audio, but the build machines have no
-> microphone, so the capture path itself has not yet run on real hardware. Follow
-> [docs/FIRST-TEST.md](docs/FIRST-TEST.md) to try it. `--demo` runs the window
-> with simulated audio and needs no devices.
+> **Status: verified on real hardware.** The WASAPI recording engine is covered by
+> tests that run on generated audio, and `hardware_tests.exe` has recorded with the
+> real application on a real PC (100 checks, all pass): microphone and system audio,
+> MP3 and WAV, gains, device selection, long-recording stability. The first run found
+> that a Bluetooth microphone, which takes most of a second to start, left the system
+> track about 0.6 s ahead of the microphone track; that is fixed (see
+> [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md)). To try it yourself follow
+> [docs/FIRST-TEST.md](docs/FIRST-TEST.md). `--demo` runs the window with simulated
+> audio and needs no devices.
 
 ```
 +----------------------------------------------------------------+
@@ -93,6 +97,7 @@ dependency-free. A transcription problem never stops or damages a recording.
 build.bat              :: x64 + x86: the app and the unit tests, then runs the tests
 build.bat x64          :: one architecture
 build.bat x64 tests    :: just the unit tests (the quick edit-test loop)
+build.bat hardware     :: also builds bin\<arch>\hardware_tests.exe (not run: it records)
 
 bin\x64\audior_gui.exe
 ```
@@ -103,6 +108,16 @@ in-box Universal CRT).
 
 No Visual Studio? Every push is built by CI on a Windows machine; download
 `audior-gui-windows` from the run's *Artifacts* and unzip it.
+
+**Setting up the compiler** (once, from any prompt; it asks for administrator
+approval and downloads a few GB). This installs the Build Tools with the *Desktop
+development with C++* workload: MSVC for x86 and x64 and the Windows SDK, which is
+everything the project needs. Built and tested this way with Build Tools 17.14,
+MSVC 14.44 and Windows SDK 10.0.26100.
+
+```bat
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
 
 ## Every audior option, in the window and on the command line
 
@@ -145,8 +160,11 @@ the program, or to the file or pipe it was redirected to
   Foundation encoder.
 - **Merge.** Both streams are mixed with weights that add up to 1, so a merged
   file cannot clip at any split. **Separate** writes two files that span the
-  whole recording and stay aligned: while nothing is playing, the system track is
-  filled with silence instead of ending short.
+  whole recording and stay aligned. All streams share one clock, which starts when
+  the first device is running; a stream that is not delivering is filled with
+  silence up to it, both while nothing is playing (a playback device sends nothing
+  when idle) and while a device is still starting (a Bluetooth microphone needs most
+  of a second), so the tracks begin together and end together.
 - **Gain** is applied before the 16-bit clamp, and the waveform shows the stream
   after its gain, so clipping is visible. Merging weights come afterwards.
 - **Memory stays bounded.** Audio is written to disk as it is recorded; each
@@ -237,7 +255,7 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the saved hotkeys (registry). |
-| `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. |
+| `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. `tests/hardware`: the native hardware tests (`hardware_tests.exe`), which record on real devices. |
 
 ### The recording engine
 
@@ -269,13 +287,22 @@ in-memory files. The GUI sees audio only as peak bins through
 - **UI smoke test** (`tests\ui_smoke.ps1`): launches the real executable, drives
   the command line, clicks Start and Stop in the simulated and the real engine,
   checks the status light and saves screenshots.
+- **Hardware tests** (`hardware_tests.exe`, built by `build.bat hardware`, run by hand on a
+  PC with a microphone and a playback device): about 100 checks over 14 scenarios, with
+  recordings of at least 30 s each, on the real devices. Native C++ like the rest of the
+  project; see [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md).
 - **CI** (`.github/workflows/ci.yml`): all of the above, warnings as errors, on a
   Windows runner for every push; screenshots and the executables are published
   as artifacts.
 
 ## Known limitations
 
-- The WASAPI capture code has not run on real hardware yet (see the top).
+- A microphone whose clock runs faster than the PC's is not trimmed, so a very long
+  recording could show a small difference between separate tracks.
+- Every `audior_gui.exe` ends on one machine-wide stop event, so a second recording
+  program instance, or `--stop` from another one, stops them all.
+- The hardware tests have run on one PC (a Bluetooth headset and two digital outputs);
+  other devices, sample rates and wired microphones are untested.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
 - The recording settings are not remembered between runs (only the two hotkeys are).

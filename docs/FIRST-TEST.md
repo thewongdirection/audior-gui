@@ -1,8 +1,36 @@
 # First test on real hardware
 
-The automated tests cover everything after the capture and the failure paths of
-the capture, but the build machines have no microphone. These checks are the part
-only a PC with audio hardware can do. They take about ten minutes.
+The unit tests cover everything after the capture and the failure paths of the
+capture, but the build machines have no microphone. The checks below are the part
+only a PC with audio hardware can do.
+
+## Run the automated hardware tests first
+
+`hardware_tests.exe` does most of this list for you, on your devices, and checks the
+files it records (length, format, bit rate, levels, track alignment, gain, device
+selection, memory and CPU). Build and run it; it takes about 12 minutes and every
+recording lasts at least 30 s:
+
+```bat
+build.bat x64 hardware
+bin\x64\hardware_tests.exe
+```
+
+It plays a quiet test tone on the default playback device, records the microphone,
+and keeps the application windows behind your other windows without taking the
+focus. See [HARDWARE-TESTS.md](HARDWARE-TESTS.md) for what each test checks, the
+results on the reference PC and the findings. Covered there: MP3 and WAV from the
+microphone (section 1, steps 3 and 4, and the WAV row), merged and separate
+recordings with silence kept in step, both gains, naming and collisions, device
+choice by id, name and index, closing the window while recording, the other
+architecture, the command-line modes (`--list-devices`, `--stop`, bad options).
+
+Still manual, because they need a person or a look at the screen: section 1 steps 1
+and 2 (the lists and the resting waveforms), watching the waveforms move, the CLIP
+flag with a loud voice, unplugging the USB microphone while recording, unticking
+**Microphone**, and the check that other programs' volume does not drop.
+
+The rest of this page is the manual version of everything.
 
 ## Get the program
 
