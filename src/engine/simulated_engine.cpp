@@ -30,7 +30,8 @@ std::vector<DeviceInfo> SimulatedEngine::ListDevices(DeviceKind kind)
 {
     if (kind == DeviceKind::Microphone)
         return {{L"sim-mic-1", L"Demo Microphone Array", true},
-                {L"sim-mic-2", L"Demo USB Microphone", false}};
+                {L"sim-mic-2", L"Demo USB Microphone", false},
+                {L"sim-mic-3", L"Demo Bluetooth Headset Microphone", false, true}};
     return {{L"sim-out-1", L"Demo Speakers", true},
             {L"sim-out-2", L"Demo Headphones", false}};
 }

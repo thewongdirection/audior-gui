@@ -58,6 +58,9 @@ bool Build(Scene &scene, const std::wstring &name)
     } else if (name == L"system-only") {
         ctl.Settings().includeMicrophone = false;
         ctl.Settings().includeSystemAudio = true;
+    } else if (name == L"bluetooth-mic") {              /* idle, with a Bluetooth headset's microphone chosen */
+        ctl.Settings().microphoneId = L"sim-mic-3";
+        return true;
     } else if (name != L"mic-only") {
         return false;
     }

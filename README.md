@@ -173,6 +173,15 @@ the program, or to the file or pipe it was redirected to
   WAV is limited to 4 GiB, about 6 h 12 min.
 - **Other programs keep their volume.** The recorder opts out of Windows'
   "communications activity" ducking.
+- **Bluetooth headsets switch to call mode.** Opening a headset's microphone makes
+  Windows switch it from stereo music mode to its hands-free (phone call) mode, and
+  back when the recording ends: while recording, the headset's output drops out for
+  about half a second, its volume steps (40 to 45 on the one tested) and the sound is
+  thinner. That is the headset and Windows, not this program, and it cannot be avoided
+  while the microphone is open, so the microphone pane says so when the chosen
+  microphone is Bluetooth. Recording **system audio only** (untick **Microphone**) does
+  not trigger it, nor does a microphone that is not Bluetooth. Measurements in
+  [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
 - **Closing the window, `--stop`, or Stop** all finalise the files and release
   the devices (a Bluetooth headset returns to normal playback).
 - **Stopping from outside.** While recording, the program holds the named event
@@ -262,6 +271,8 @@ in-memory files. The GUI sees audio only as peak bins through
 
 ## Known limitations
 
+- Recording from a Bluetooth headset's microphone switches the headset to call mode for
+  the duration (see *How a recording behaves*).
 - A microphone whose clock runs faster than the PC's is not trimmed, so a very long
   recording could show a small difference between separate tracks.
 - Every `audior_gui.exe` ends on one machine-wide stop event, so a second recording
