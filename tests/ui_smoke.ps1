@@ -12,8 +12,10 @@
      must report the problem instead of crashing.
 
   The window is custom-drawn, so it is checked by the colour of its status dot and
-  by screenshots (PNG files in -Out).  Written for Windows PowerShell 5.1 and
-  PowerShell 7; assumes the 100% display scale of a CI runner.
+  by screenshots (PNG files in -Out).  Written for Windows PowerShell 5.1, which is
+  what CI runs (PowerShell 7 cannot compile the System.Drawing helper below).  It
+  works at any display scale: the script is per-monitor DPI aware, like the program,
+  and places its clicks and its pixel probe from the window's DPI.
 #>
 param(
     [string]$Exe = 'bin\x64\audior_gui.exe',
@@ -39,6 +41,15 @@ public static class Win {
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+    [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    // Without this, Windows hands a script on a scaled display virtual coordinates: the client size
+    // is reported smaller than it is, and a capture would cover only the top left of the window.
+    public static void MakeDpiAware() { SetProcessDpiAwarenessContext((IntPtr)(-4)); }      // per-monitor v2
+
+    // How many pixels a DIP (the unit the program lays out in) is on this window's monitor: 1.5 at 150%.
+    public static double Scale(IntPtr hwnd) { return GetDpiForWindow(hwnd) / 96.0; }
 
     public static int[] ClientSize(IntPtr hwnd) {
         RECT r; GetClientRect(hwnd, out r);
@@ -60,9 +71,11 @@ public static class Win {
 
     // The window's client area as it is composed (PW_CLIENTONLY | PW_RENDERFULLCONTENT).  If that
     // comes back empty, the pixels are read off the screen instead (the window must be visible).
+    // The picture carries the window's scale in its Tag.
     public static Bitmap Capture(IntPtr hwnd) {
         int[] size = ClientSize(hwnd);
         Bitmap bmp = new Bitmap(size[0], size[1], System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+        bmp.Tag = Scale(hwnd);
         using (Graphics g = Graphics.FromImage(bmp)) {
             IntPtr hdc = g.GetHdc();
             PrintWindow(hwnd, hdc, 3);
@@ -85,6 +98,7 @@ public static class Win {
     }
 }
 '@
+[Win]::MakeDpiAware()
 
 $failures = New-Object System.Collections.Generic.List[string]
 function Check([bool]$ok, [string]$what) {
@@ -136,23 +150,27 @@ try {
     }
 
     # The status pill's dot, top right: green when ready, red while recording or after a problem.
-    function Dot($bmp) { $bmp.GetPixel($bmp.Width - 138, 32) }
+    # It sits 138 DIPs from the right edge and 32 from the top; the picture carries the scale.
+    function Dot($bmp) {
+        $k = $bmp.Tag
+        $bmp.GetPixel([int]($bmp.Width - 138 * $k), [int](32 * $k))
+    }
     function IsRed($c)   { $c.R -ge 120 -and $c.R -gt ($c.G + 40) }
     function IsGreen($c) { $c.G -ge 120 -and $c.G -gt ($c.R + 60) }
 
-    function Click-Start($p) {
-        $s = [Win]::ClientSize($p.MainWindowHandle)
-        [Win]::Click($p.MainWindowHandle, $s[0] - 119, $s[1] - 48)
+    # A click at a place given in DIPs: `right` from the window's right edge, and `y` from its top
+    # edge, or from its bottom edge when `fromBottom`.
+    function Click-At($p, [double]$right, [double]$y, [bool]$fromBottom) {
+        $h = $p.MainWindowHandle
+        $k = [Win]::Scale($h)
+        $s = [Win]::ClientSize($h)
+        $yPixels = if ($fromBottom) { $s[1] - $y * $k } else { $y * $k }
+        [Win]::Click($h, [int]($s[0] - $right * $k), [int]$yPixels)
     }
-    function Click-Stop($p) {
-        $s = [Win]::ClientSize($p.MainWindowHandle)
-        [Win]::Click($p.MainWindowHandle, $s[0] - 281, $s[1] - 48)
-    }
+    function Click-Start($p) { Click-At $p 119 48 $true }
+    function Click-Stop($p)  { Click-At $p 281 48 $true }
     # The file name box: in the settings panel, 152 DIPs from the panel's left edge, 188 from the top.
-    function Click-FileName($p) {
-        $s = [Win]::ClientSize($p.MainWindowHandle)
-        [Win]::Click($p.MainWindowHandle, $s[0] - 194, 188)
-    }
+    function Click-FileName($p) { Click-At $p 194 188 $false }
     function Close-Window($p) {
         [void]$p.CloseMainWindow()
         if (-not $p.WaitForExit(10000)) { $p.Kill(); $failures.Add('the window did not close'); return }
