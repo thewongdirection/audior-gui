@@ -99,6 +99,11 @@ const wchar_t *ExtensionFor(Format format)
     return format == Format::Wav ? L".wav" : L".mp3";
 }
 
+bool IsAbsolutePath(const std::wstring &path)
+{
+    return (path.size() >= 2 && path[1] == L':') || (!path.empty() && IsSeparator(path[0]));
+}
+
 std::wstring JoinPath(const std::wstring &dir, const std::wstring &name)
 {
     if (dir.empty() || IsSeparator(dir.back()))

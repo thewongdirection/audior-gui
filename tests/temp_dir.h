@@ -91,3 +91,16 @@ inline std::vector<std::uint8_t> ReadFileBytes(const std::wstring &path)
     CloseHandle(h);
     return bytes;
 }
+
+/* Writes `content` to the file, replacing what was there; false if that fails. */
+inline bool WriteFileBytes(const std::wstring &path, const std::string &content)
+{
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    DWORD written = 0;
+    const bool ok = WriteFile(h, content.data(), static_cast<DWORD>(content.size()), &written, nullptr) &&
+                    written == content.size();
+    CloseHandle(h);
+    return ok;
+}

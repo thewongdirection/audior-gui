@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "asr_models.h"
+#include "format.h"
 
 namespace audiorgui {
 
@@ -18,26 +19,6 @@ std::wstring Lowered(std::wstring text)
     for (wchar_t &c : text)
         c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
     return text;
-}
-
-/* A run of ASCII digits that fits in an int; false for anything else. */
-bool ToInt(const std::wstring &text, int *value)
-{
-    if (text.empty() || text.size() > 9)
-        return false;
-    int v = 0;
-    for (wchar_t c : text) {
-        if (c < L'0' || c > L'9')
-            return false;
-        v = v * 10 + (c - L'0');
-    }
-    *value = v;
-    return true;
-}
-
-bool IsAbsolute(const std::wstring &path)
-{
-    return (path.size() >= 2 && path[1] == L':') || (!path.empty() && IsSeparator(path[0]));
 }
 
 /* "folder\name" into the settings.  False, with *error, if it cannot be used. */
@@ -61,7 +42,7 @@ bool SetOutput(const std::wstring &path, const std::wstring &workingDirectory, R
     std::wstring dir = slash == std::wstring::npos ? workingDirectory : path.substr(0, slash + 1);
     while (dir.size() > 1 && IsSeparator(dir.back()) && !(dir.size() == 3 && dir[1] == L':'))
         dir.pop_back();                                 /* "C:\rec\" -> "C:\rec", but "C:\" stays */
-    s->outputDirectory = IsAbsolute(dir) ? dir : JoinPath(workingDirectory, dir);
+    s->outputDirectory = IsAbsolutePath(dir) ? dir : JoinPath(workingDirectory, dir);
     s->fileName = name;
     return true;
 }
@@ -71,7 +52,8 @@ bool ParseSize(const std::wstring &text, unsigned *width, unsigned *height)
 {
     const std::size_t x = text.find_first_of(L"xX");
     int w = 0, h = 0;
-    if (x == std::wstring::npos || !ToInt(text.substr(0, x), &w) || !ToInt(text.substr(x + 1), &h))
+    if (x == std::wstring::npos || !ParseWholeNumber(text.substr(0, x), &w) ||
+        !ParseWholeNumber(text.substr(x + 1), &h))
         return false;
     if (w < static_cast<int>(kMinShotSize) || w > static_cast<int>(kMaxShotSize) ||
         h < static_cast<int>(kMinShotSize) || h > static_cast<int>(kMaxShotSize))
@@ -85,7 +67,7 @@ bool ParseSize(const std::wstring &text, unsigned *width, unsigned *height)
 bool ParsePercent(const std::wstring &option, const std::wstring &text, int maximum, int *value, CliResult *r)
 {
     int v = 0;
-    if (!ToInt(text, &v)) {
+    if (!ParseWholeNumber(text, &v)) {
         r->error = L"invalid " + option + L" '" + text + L"' (use 0-" + std::to_wstring(maximum) + L").";
         return false;
     }
@@ -149,7 +131,7 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
             if (!needValue())
                 continue;
             int kbps = 0;
-            if (ToInt(value, &kbps) && IsValidMp3Bitrate(kbps))
+            if (ParseWholeNumber(value, &kbps) && IsValidMp3Bitrate(kbps))
                 s.mp3BitrateKbps = kbps;
             else
                 r.error = L"invalid --bitrate '" + value + L"' (use 96, 112, 128, 160, 192, 224, 256 or 320).";
@@ -158,7 +140,7 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
         } else if (option == L"--merge") {
             s.mixMode = MixMode::Merge;
             int ignored = 0;
-            if (i + 1 < args.size() && ToInt(args[i + 1], &ignored)) {      /* the optional percentage */
+            if (i + 1 < args.size() && ParseWholeNumber(args[i + 1], &ignored)) {    /* the optional percentage */
                 ++i;
                 int percent = 0;
                 if (ParsePercent(shown, args[i], 100, &percent, &r))
@@ -206,6 +188,8 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
             command(CliResult::Command::Stop);
         } else if (option == L"-h" || option == L"--help" || option == L"/?") {
             command(CliResult::Command::Help);
+        } else if (option == L"--defaults") {
+            r.defaults = true;
         } else if (option == L"--demo") {
             r.demo = true;
         } else if (option == L"--screenshot") {
@@ -224,10 +208,22 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
     return r;
 }
 
+CliResult ParseOverSavedSettings(const std::vector<std::wstring> &args, const std::wstring &workingDirectory,
+                                 const SavedSettings &saved, const SavedSettings &builtIn, SavedSettings *start)
+{
+    *start = saved;
+    CliResult r = ParseCommandLine(args, workingDirectory, &start->recording);
+    if (r.defaults) {                                   /* the same options again, now over the built-in settings */
+        *start = builtIn;
+        r = ParseCommandLine(args, workingDirectory, &start->recording);
+    }
+    return r;
+}
+
 bool ResolveDevice(const std::vector<DeviceInfo> &devices, const std::wstring &selector, std::wstring *id)
 {
     int index = 0;
-    const bool numeric = ToInt(selector, &index);
+    const bool numeric = ParseWholeNumber(selector, &index);
     if (numeric && static_cast<std::size_t>(index) < devices.size()) {
         *id = devices[static_cast<std::size_t>(index)].id;
         return true;
@@ -287,8 +283,11 @@ std::wstring HelpText()
            L"With no options the window opens. Options preset the window; giving --output starts\n"
            L"recording straight away. The options are audior's, plus --system-amplify,\n"
            L"--transcribe-mic, --transcribe-system (with --transcribe-model, --transcribe-language\n"
-           L"and --transcribe-cpu)\n"
-           L"and --demo.\n"
+           L"and --transcribe-cpu), --defaults and --demo.\n"
+           L"\n"
+           L"The window starts from the settings of the last run (kept in Audior-GUI.ini, next to the\n"
+           L"program) and the options given here change them. An option that switches something on\n"
+           L"(-i, --transcribe-mic, ...) cannot switch it off again: use --defaults for that.\n"
            L"\n"
            L"Recording:\n"
            L"  -o, --output <file>          File to record to (at most 247 characters). The extension\n"
@@ -320,7 +319,9 @@ std::wstring HelpText()
            L"Other:\n"
            L"  -l, --list-devices           List the audio devices and exit.\n"
            L"  -s, --stop                   Stop the recording in progress and exit.\n"
-           L"      --demo                   Simulated audio: nothing is recorded or written.\n"
+           L"      --defaults               Start from the built-in defaults, not the saved settings, and\n"
+           L"                               leave the saved settings alone (for scripts).\n"
+           L"      --demo                   Simulated audio: nothing is recorded, and nothing is saved.\n"
            L"  -h, --help                   Show this help and exit.\n";
 }
 

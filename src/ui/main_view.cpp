@@ -424,8 +424,11 @@ void MainView::StartRecording()
     if (!CanStart())
         return;
     ctl_.Start();
-    if (host_)
+    if (host_) {
         host_->Wake();
+        if (ctl_.GetPhase() == Phase::Recording)
+            host_->RememberSettings();
+    }
     Refresh();
 }
 

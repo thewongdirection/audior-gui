@@ -53,6 +53,7 @@ inline constexpr std::size_t kMaxOutputPathChars = 259;
 
 bool IsValidMp3Bitrate(int kbps);
 
+/* Every field is also remembered between runs: a new one needs a line in saved_settings.cpp. */
 struct RecordingSettings {
     std::wstring outputDirectory;
     std::wstring fileName;                              /* "" = a timestamped name */
@@ -121,6 +122,10 @@ struct LocalTime {
 std::wstring DefaultBaseName(const LocalTime &t);
 
 const wchar_t *ExtensionFor(Format format);                 /* L".mp3" / L".wav" */
+
+/* Whether `path` starts at a drive ("C:\...") or the root of one ("\\server\share", "\...") rather than at
+ * the current folder. */
+bool IsAbsolutePath(const std::wstring &path);
 
 /* `dir` + `\` + `name`, without doubling a trailing separator. */
 std::wstring JoinPath(const std::wstring &dir, const std::wstring &name);

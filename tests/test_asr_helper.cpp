@@ -10,16 +10,7 @@ using namespace audiorgui;
 
 namespace {
 
-void Write(const std::wstring &path, const std::string &content)
-{
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    CHECK(h != INVALID_HANDLE_VALUE);
-    if (h == INVALID_HANDLE_VALUE)
-        return;
-    DWORD written = 0;
-    WriteFile(h, content.data(), static_cast<DWORD>(content.size()), &written, nullptr);
-    CloseHandle(h);
-}
+void Write(const std::wstring &path, const std::string &content) { CHECK(WriteFileBytes(path, content)); }
 
 /* A stand-in model: a few bytes with their real hash. */
 struct StandIn {

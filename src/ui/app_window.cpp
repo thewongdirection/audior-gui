@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cwchar>
+#include <iterator>
 
 #include "../core/format.h"
 
@@ -40,10 +41,12 @@ UINT TaskbarCreatedMessage()
 
 }  // namespace
 
-AppWindow::AppWindow(Gfx &gfx, RecorderController &controller)
-    : gfx_(gfx), ctl_(controller), painter_(gfx), view_(controller, this)
+AppWindow::AppWindow(Gfx &gfx, RecorderController &controller, const Hotkey (&hotkeys)[kHotkeyActionCount],
+                     const Preferences *prefs)
+    : gfx_(gfx), ctl_(controller), painter_(gfx), view_(controller, this), prefs_(prefs)
 {
     QueryPerformanceFrequency(&frequency_);
+    std::copy(std::begin(hotkeys), std::end(hotkeys), keys_);
 }
 
 AppWindow::~AppWindow()
@@ -93,7 +96,7 @@ bool AppWindow::Create(HINSTANCE instance, int showCommand)
     SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(windowIcons_[0]));
     SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(windowIcons_[1]));
 
-    RegisterSavedHotkeys();
+    RegisterStartingHotkeys();
     ShowWindow(hwnd_, showCommand);                 /* a minimized start goes straight to the tray */
     UpdateWindow(hwnd_);
     return true;
@@ -337,14 +340,13 @@ bool AppWindow::RegisterHotkey(int index, const Hotkey &hotkey)
     return false;
 }
 
-/* Registers what was saved last time (Ctrl+Alt+R and Ctrl+Alt+S the first time) and tells the view. */
-void AppWindow::RegisterSavedHotkeys()
+/* Registers the hotkeys the window was given (what was saved last time, Ctrl+Alt+R and Ctrl+Alt+S the
+ * first time) and tells the view. */
+void AppWindow::RegisterStartingHotkeys()
 {
     for (int i = 0; i < kHotkeyActionCount; ++i) {
-        const HotkeyAction action = static_cast<HotkeyAction>(i);
-        keys_[i] = prefs_.LoadHotkey(action);
         RegisterHotkey(i, keys_[i]);
-        view_.SetHotkey(action, keys_[i], registered_[i]);
+        view_.SetHotkey(static_cast<HotkeyAction>(i), keys_[i], registered_[i]);
     }
 }
 
@@ -352,7 +354,7 @@ bool AppWindow::SetHotkey(HotkeyAction action, const Hotkey &hotkey)
 {
     if (!RegisterHotkey(HotkeyIndex(action), hotkey))
         return false;
-    prefs_.SaveHotkey(action, hotkey);
+    RememberSettings();
     return true;
 }
 
@@ -560,12 +562,15 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_CLOSE:
-        ctl_.Stop();                        /* never leave a recording half-written */
+        ctl_.Stop();                        /* never leave a recording half-written: before anything that can be slow */
+        RememberSettings();
         break;
 
     case WM_ENDSESSION:
-        if (wParam)                         /* the session really is ending */
+        if (wParam) {                       /* the session really is ending */
             ctl_.Stop();
+            RememberSettings();
+        }
         break;
 
     case WM_DESTROY:
@@ -580,6 +585,16 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 /* ====================================================================== */
 /* Operating-system services for the view                                  */
 /* ====================================================================== */
+
+void AppWindow::RememberSettings()
+{
+    if (!prefs_)
+        return;
+    SavedSettings saved;
+    saved.recording = ctl_.Settings();
+    std::copy(std::begin(keys_), std::end(keys_), saved.hotkeys);
+    prefs_->Save(saved);
+}
 
 std::wstring AppWindow::PickFolder(const std::wstring &current)
 {
