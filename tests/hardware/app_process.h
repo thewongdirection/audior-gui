@@ -60,5 +60,12 @@ CliResult RunCli(const std::wstring &exe, const std::wstring &args, DWORD timeou
 /* The process that owns the window the keyboard is going to (0 if none). */
 DWORD ForegroundProcessId();
 
+/* Milliseconds since the last keyboard or mouse input anywhere on the desktop (input another
+ * program injects counts too), or -1 if Windows does not say. */
+long long MillisecondsSinceInput();
+
+/* Whether the left or the right mouse button is held down right now. */
+bool MouseButtonDown();
+
 /* The ids of the running processes whose program file is called `exeName` (any folder). */
 std::vector<DWORD> FindProcesses(const wchar_t *exeName);

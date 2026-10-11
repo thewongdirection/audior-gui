@@ -189,3 +189,16 @@ DWORD ForegroundProcessId()
         GetWindowThreadProcessId(window, &pid);
     return pid;
 }
+
+long long MillisecondsSinceInput()
+{
+    LASTINPUTINFO info = {sizeof info, 0};
+    if (!GetLastInputInfo(&info))
+        return -1;
+    return static_cast<long long>(static_cast<DWORD>(GetTickCount() - info.dwTime));     /* both wrap together */
+}
+
+bool MouseButtonDown()
+{
+    return ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
+}

@@ -42,7 +42,14 @@ puts them there). T12 also uses the other architecture's build if it is built.
   (which sends a window to the tray, hidden: the test program finds it by its window class, not
   by visibility), restores it with `SW_SHOWNOACTIVATE` and sends it to the bottom of the window stack
   (`tests/hardware/app_process.cpp`). T14 samples the foreground window every 100 ms and fails
-  if it ever belongs to the application; clicking a window yourself counts as stolen focus.
+  if it ever belongs to the application; clicking a window yourself counts as stolen focus. A
+  failure says when it happened and how it began, for example `308 of 5885 samples, in 2
+  episodes: T1 at 3.4 s for 29.6 s (no input for 6.1 s: not a click, something else brought it
+  forward); T12 at 25.0 s for 8.1 s (input 0.2 s earlier: probably someone clicking or typing)`.
+  The cause is read from how long ago the last keyboard or mouse input was when the window came
+  forward, and whether a mouse button was down (`tests/hardware/focus_log.h`, unit-tested in
+  `tests/test_focus_log.cpp`). Input another program injects, such as a UI-automation session,
+  counts as input, so it reads as "someone".
 - **Nothing else may record meanwhile.** Every `Audior-GUI.exe` ends on the same machine-wide stop
   event (`Local\AudiorStopEvent`) and the microphone is shared, so a second instance recording or
   sending `--stop` cuts these recordings short. The tests refuse to start while another

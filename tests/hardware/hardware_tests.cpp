@@ -15,7 +15,9 @@
  *   * The application windows open visibly but behind every other window, without taking the
  *     keyboard focus (see app_process.h), so the PC stays usable and a window can be brought up
  *     from the taskbar to watch.  --foreground opens them normally.  T14 counts how often the
- *     foreground window belonged to the application: clicking one yourself shows up there.
+ *     foreground window belonged to the application: clicking one yourself shows up there.  When it
+ *     fails it says when, for how long, and how long after the last keyboard or mouse input
+ *     (focus_log.h), which tells a click from a window that came forward by itself.
  *   * Nothing else may use the program, the microphone or the stop signal meanwhile: every
  *     instance of Audior-GUI.exe ends on the same machine-wide stop event, so a second one (or a
  *     second run of these tests) cuts the recordings short.  The tests refuse to start while
@@ -50,6 +52,7 @@
 #include "../temp_dir.h"
 #include "app_process.h"
 #include "audio_probe.h"
+#include "focus_log.h"
 
 namespace {
 
@@ -72,8 +75,7 @@ struct Outcome {
 
 std::vector<Outcome> g_outcomes;
 std::string          g_section;
-int                  g_focusSamples = 0;
-int                  g_focusStolen = 0;
+FocusLog             g_focus;                           /* when the application's window held the foreground (T14) */
 std::vector<DWORD>   g_strangers;                       /* other copies of the program seen while recording */
 
 std::string Fmt(const char *format, ...)
@@ -298,13 +300,13 @@ Take Record(const std::wstring &exe, const std::wstring &args, const std::vector
             take.usageAt.push_back(now);
             nextSample += 5.0;
         }
-        ++g_focusSamples;
-        if (ForegroundProcessId() == app.Id())
-            ++g_focusStolen;
-        if (g_focusSamples % 10 == 0)
+        g_focus.Sample(g_section.substr(0, g_section.find(' ')), now, ForegroundProcessId() == app.Id(), MillisecondsSinceInput(),
+                       MouseButtonDown());
+        if (g_focus.Samples() % 10 == 0)
             NoteStrangers(app.Id());
         Sleep(100);
     }
+    g_focus.EndRecording();
     take.elapsed = static_cast<double>(GetTickCount64() - begin) / 1000.0;
     if (sampleUsage) {
         take.usage.push_back(app.Sample());
@@ -586,15 +588,15 @@ void T13()
 void T14()
 {
     Section("T14 background windows kept the focus");
-    if (g_focusSamples == 0) {
+    if (g_focus.Samples() == 0) {
         Info("no recording ran, so nothing was observed");
         return;
     }
     if (g_options.foreground)
         Info("--foreground: the windows open normally, so the focus is not checked");
     else
-        Check("the foreground window never belonged to the application during the run", g_focusStolen == 0,
-              Fmt("%d of %d samples; clicking a window yourself counts", g_focusStolen, g_focusSamples));
+        Check("the foreground window never belonged to the application during the run", g_focus.Held() == 0,
+              g_focus.Summary() + (g_focus.Held() ? "; clicking a window yourself counts" : ""));
     if (!g_strangers.empty())
         Info(Fmt("%d other copy(ies) of the program ran during the run; they share the stop signal, so if a check above failed "
                  "unexpectedly (a recording that ended early), run the tests again",
