@@ -323,6 +323,56 @@ TEST(Controller_AnOverlongPathIsRefused)
     CHECK(rig.ctl.Start());
 }
 
+TEST(Controller_ATranscriptFileThatWouldBeTooLongIsRefusedBeforeRecording)
+{
+    Rig rig;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    rig.ctl.Settings().fileName = std::wstring(8, L'n');        /* the recording fits: 256 */
+    rig.ctl.Settings().transcribeMicrophone = true;             /* but " - microphone.txt" makes 269 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(rig.ctl.LastOutcome().message.find(L"transcript") != std::wstring::npos);     /* and says it is the transcript */
+    CHECK(rig.ctl.LastOutcome().message.find(L"too long") != std::wstring::npos);
+
+    rig.ctl.Settings().transcribeMicrophone = false;            /* without the transcript there is nothing too long */
+    CHECK(rig.ctl.Start());
+}
+
+TEST(Controller_TheSystemTranscriptsLongerNameCanBeTheOnlyOneOverTheLimit)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(233, L'd');
+    rig.ctl.Settings().fileName = std::wstring(5, L'n');        /* the recording is 246; " - microphone.txt" makes 259: just fits */
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+
+    rig.ctl.Settings().transcribeSystem = true;                 /* " - system audio.txt" is 2 longer: 261 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().message.find(L"transcript") != std::wstring::npos);
+}
+
+TEST(Controller_ARecordingAndItsTranscriptsAreNumberedAlike)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"meeting";
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.existing.insert(L"C:\\Rec\\meeting - microphone.txt");      /* an earlier transcript is there; its audio (a WAV, say) is not */
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    const Outcome &o = rig.ctl.LastOutcome();
+    CHECK_EQ(o.files[0], std::wstring(L"C:\\Rec\\meeting (2).mp3"));                        /* the recording takes the next number... */
+    CHECK_EQ(o.transcripts[0], std::wstring(L"C:\\Rec\\meeting (2) - microphone.txt"));      /* ...and its transcript has it too */
+
+    Rig without;                                                /* the same files, but no transcript: the name is free */
+    without.ctl.Settings().fileName = L"meeting";
+    without.existing.insert(L"C:\\Rec\\meeting - microphone.txt");
+    CHECK(without.ctl.Start());
+    without.ctl.Stop();
+    CHECK_EQ(without.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\meeting.mp3"));
+}
+
 TEST(Controller_TheLongestOfTheTwoTracksCountsTowardsTheLimit)
 {
     Rig rig;
@@ -472,6 +522,62 @@ TEST(Controller_ATranscriptFlowsIntoItsLane)
     CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
     CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Live);
     CHECK(rig.ctl.TranscriptionStatus(StreamId::System).state == TranscriptState::Off);
+}
+
+TEST(Controller_TheOutcomeNamesTheTranscriptFilesOfTheTranscribedStreams)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().transcribeMicrophone = rig.ctl.Settings().transcribeSystem = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(1.0);
+    rig.ctl.Stop();
+
+    const Outcome &o = rig.ctl.LastOutcome();
+    CHECK(o.kind == Outcome::Kind::Saved);
+    CHECK_EQ(o.transcripts.size(), std::size_t(2));
+    CHECK_EQ(o.transcripts[0], PlannedTranscriptFile(o.files[0], StreamId::Microphone));    /* beside the recording */
+    CHECK_EQ(o.transcripts[1], PlannedTranscriptFile(o.files[0], StreamId::System));
+    CHECK(o.transcriptProblem.empty());
+
+    Rig onlyOne;                                                    /* a pane without a transcript has no file */
+    onlyOne.ctl.Settings().includeSystemAudio = true;
+    onlyOne.ctl.Settings().transcribeSystem = true;
+    CHECK(onlyOne.ctl.Start());
+    onlyOne.Run(1.0);
+    onlyOne.ctl.Stop();
+    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts.size(), std::size_t(1));
+    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts[0], PlannedTranscriptFile(onlyOne.ctl.LastOutcome().files[0], StreamId::System));
+
+    Rig none;                                                       /* no transcript asked for: none saved */
+    none.Record();
+    CHECK(none.ctl.LastOutcome().transcripts.empty());
+}
+
+namespace {
+
+class UnsavedTranscript : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    std::wstring TranscriptFileProblem() override { return L"transcript not saved (Windows error 112)"; }
+};
+
+}  // namespace
+
+TEST(Controller_ATranscriptThatCouldNotBeSavedIsReportedWithoutFailingTheRecording)
+{
+    double now = 0.0;
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10; time.hour = 15; time.minute = 30; time.second = 45;
+    UnsavedTranscript engine([&] { return now; });
+    RecorderController ctl(engine, [&] { return time; }, [](const std::wstring &) { return false; });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(ctl.Start());
+    ctl.Stop();
+
+    CHECK(ctl.LastOutcome().kind == Outcome::Kind::Saved);          /* the audio is fine */
+    CHECK_EQ(ctl.LastOutcome().transcriptProblem, std::wstring(L"transcript not saved (Windows error 112)"));
 }
 
 TEST(Controller_ShowsATranscriptOnlyForAStreamSwitchedOnAndRecorded)

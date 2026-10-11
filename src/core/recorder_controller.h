@@ -39,6 +39,8 @@ struct Outcome {
     Kind                      kind = Kind::None;
     std::wstring              message;      /* Failed: what went wrong          */
     std::vector<std::wstring> files;        /* what was written, even if Failed */
+    std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcribed stream that was spoken on */
+    std::wstring              transcriptProblem;    /* a transcript file that could not be saved, in a few words */
 };
 
 class RecorderController {

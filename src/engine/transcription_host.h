@@ -88,6 +88,11 @@ public:
         int          readyTimeoutMs = 60000;        /* a helper that is not Ready by then is stuck */
         int          flushMs        = 3000;         /* how long Stop() waits for the last words    */
         double       stepDownHoldSeconds = StepDownPolicy::kHoldSeconds;    /* how long "hopeless" lasts  */
+        std::function<void(StreamId, const TranscriptEvent &)> onEvent;    /* told of every event, in order, on
+                                                       the thread that reads the helper: whoever keeps a
+                                                       transcript file gets all of them, even if the
+                                                       window does not take its events fast enough (the
+                                                       queue below keeps only the newest)           */
     };
 
     TranscriptionHost(TransportFactory factory, Options options);

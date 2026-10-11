@@ -84,11 +84,13 @@ inline bool Transcribes(const RecordingSettings &s, StreamId stream)
                                           : s.includeSystemAudio && s.transcribeSystem;
 }
 
-/* Record only what the PC plays: the microphone off, the system audio on. */
+/* Record only what the PC plays: the microphone off, the system audio on.  A live transcript asked for
+ * on the microphone carries over to the system audio (one that is already on stays on). */
 inline void UseSystemAudioOnly(RecordingSettings *s)
 {
     s->includeMicrophone = false;
     s->includeSystemAudio = true;
+    s->transcribeSystem = s->transcribeSystem || s->transcribeMicrophone;
 }
 
 /* An empty string when the settings are valid, else a message for the user. */
@@ -133,5 +135,13 @@ std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix);
  * "_system" pair when the two streams are kept separate. */
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &settings,
                                              const std::wstring &outputPath);
+
+/* Where a stream's live transcript is saved: beside the recording, named like it, one text file for each
+ * stream that has one: ("a\rec.mp3", Microphone) -> "a\rec - microphone.txt", and "a\rec - system audio.txt". */
+std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream);
+
+/* The transcript files of a recording to `outputPath`: one for each stream whose transcript is on, the
+ * microphone's first. */
+std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &settings, const std::wstring &outputPath);
 
 }  // namespace audiorgui

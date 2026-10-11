@@ -248,9 +248,10 @@ headset's microphone, `BTHENUM` for its playback side, `HDAUDIO` for the PC's ow
 anything starting `BTH` counts). When the microphone that would be recorded is Bluetooth, the
 microphone pane shows *Bluetooth microphone: the headset switches to call mode while recording.*
 under its drop-down, with a **Record system audio only** link on the same line that unticks the
-microphone and ticks system audio in one click (`UseSystemAudioOnly`; hidden while recording,
-because the settings are locked then). Five unit tests cover the detection and the choice of
-microphone (default or a chosen one), one the link's settings change, and the `bluetooth-mic`
+microphone and ticks system audio in one click (`UseSystemAudioOnly`, which also switches the system
+audio's **Transcript** on when the microphone's is on; hidden while recording, because the settings
+are locked then). Five unit tests cover the detection and the choice of microphone (default or a
+chosen one), two the link's settings change, and the `bluetooth-mic`
 screenshot scenario renders the note and the link (also in CI). Checked by clicking the link in the
 real window on the real hardware: the microphone unticked, system audio ticked, the note went.
 

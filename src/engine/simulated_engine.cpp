@@ -183,6 +183,7 @@ bool SimulatedEngine::Start(const RecordingSettings &settings, const std::wstrin
     }
     settings_ = settings;
     files_ = PlannedOutputFiles(settings, outputPath);
+    transcriptFiles_ = PlannedTranscriptFiles(settings, outputPath);
     failure_.clear();
     produced_[0] = produced_[1] = 0;
     startTime_ = endTime_ = now_();

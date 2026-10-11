@@ -16,8 +16,9 @@
 namespace audiorgui {
 
 /* The text of one utterance, terminator included.  Engines end an utterance
- * (at a pause, or after about 15 s of speech) well before it can fill this. */
-constexpr std::size_t kTranscriptChars = 256;
+ * (at a pause, or after about 15 s of speech) well before it can fill this: 15 s of
+ * fast, unbroken speech is about 300 characters, and the transcript files must not lose any. */
+constexpr std::size_t kTranscriptChars = 512;
 
 struct TranscriptEvent {
     std::uint32_t utterance    = 0;         /* 0, 1, 2 ... for each recording                  */

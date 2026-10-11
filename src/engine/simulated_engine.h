@@ -61,6 +61,7 @@ public:
     TranscriptStatus Transcription(StreamId stream) override;
     std::wstring TranscriptionProblem(StreamId) override { return transcriptFailMessage_; }
     std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override;
+    std::vector<std::wstring> TranscriptFiles() override { return transcriptFiles_; }     /* the names; nothing is written */
 
 private:
     double Elapsed();
@@ -77,6 +78,7 @@ private:
     std::uint64_t produced_[kStreamCount] = {0, 0};
     RecordingSettings settings_;
     std::vector<std::wstring> files_;
+    std::vector<std::wstring> transcriptFiles_;         /* of the streams transcribed */
     std::wstring  failure_;
 
     double        failAfter_ = -1.0;        /* armed for the next Start(); < 0: none */
