@@ -8,10 +8,12 @@ REM    build.bat tests           build only the unit tests (fast edit-test loop)
 REM    build.bat notest          build, but do not run the unit tests
 REM    build.bat asr             also build the transcription helper, audior_asr.exe (x64 only; it
 REM                              compiles whisper.cpp with CMake, so it takes a few minutes the first time)
+REM    build.bat hardware        also build the hardware tests (they record, so they are not run)
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
 REM    audior_gui.exe     the application
 REM    run_tests.exe      the unit tests (run by this script)
+REM    hardware_tests.exe the tests that record on this PC's audio devices (hardware option only)
 REM  Intermediate files go to build\<arch>.
 REM
 REM  Finds Visual Studio 2022 / Build Tools itself (via vswhere), so it runs
@@ -28,6 +30,7 @@ set "ARCHS="
 set "WANT_APP=1"
 set "RUN_TESTS=1"
 set "WANT_ASR=0"
+set "WANT_HW=0"
 :parse
 if "%~1"=="" goto :parsed
 if /i "%~1"=="x64"    ( set "ARCHS=!ARCHS! x64"    & shift & goto :parse )
@@ -35,8 +38,9 @@ if /i "%~1"=="x86"    ( set "ARCHS=!ARCHS! x86"    & shift & goto :parse )
 if /i "%~1"=="tests"  ( set "WANT_APP=0"           & shift & goto :parse )
 if /i "%~1"=="notest" ( set "RUN_TESTS=0"          & shift & goto :parse )
 if /i "%~1"=="asr"    ( set "WANT_ASR=1"           & shift & goto :parse )
+if /i "%~1"=="hardware" ( set "WANT_HW=1"          & shift & goto :parse )
 echo Unknown option: %~1
-echo Usage: build.bat [x64] [x86] [tests] [notest] [asr]
+echo Usage: build.bat [x64] [x86] [tests] [notest] [asr] [hardware]
 exit /b 2
 :parsed
 if not defined ARCHS set "ARCHS=x86 x64"
@@ -103,12 +107,19 @@ if not "%RUN_TESTS%"=="1" goto :build_app
 "%OUT%\run_tests.exe" || goto :buildfail
 
 :build_app
-if not "%WANT_APP%"=="1" goto :builddone
+if not "%WANT_APP%"=="1" goto :build_hardware
 set "UI_SRC=src\main.cpp src\console.cpp"
 for %%f in (src\ui\*.cpp) do set "UI_SRC=!UI_SRC! %%f"
 cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_gui.exe" !UI_SRC! !CORE_OBJ! ^
     /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% %ENGLIBS% || goto :buildfail
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\audior_gui.exe || goto :buildfail
+
+:build_hardware
+if not "%WANT_HW%"=="1" goto :builddone
+set "HW_SRC="
+for %%f in (tests\hardware\*.cpp) do set "HW_SRC=!HW_SRC! %%f"
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\hardware_tests.exe" !HW_SRC! ^
+    /link %LFLAGS% /SUBSYSTEM:CONSOLE user32.lib ole32.lib mfplat.lib mfreadwrite.lib mfuuid.lib winmm.lib || goto :buildfail
 
 :builddone
 endlocal & exit /b 0

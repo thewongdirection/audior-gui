@@ -54,7 +54,7 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 | `src/ui` | Win32 + Direct2D window and widgets. |
 | `src/asr`, `third_party` | The transcription helper `audior_asr.exe`: protocol loop, phrase cutting (`core/utterance_tracker`), decode scheduling (`core/decode_queue`) and whisper.cpp behind `WhisperDecoder`; whisper.cpp is a trimmed, unedited copy (see `third_party/README.md`). Every library and model licence is in `THIRD-PARTY-NOTICES.md`. Checked by hand with `audior_asr.exe --file x.wav --model m --realtime`, and by `tests/test_real_helper.cpp` (skipped without the helper and a model). |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
-| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
+| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. `tests/hardware` holds `hardware_tests.exe` (native C++, built by `build.bat hardware`): it records with the real exe on real devices and checks the files; see `docs/HARDWARE-TESTS.md`. |
 
 `build.bat` builds x86 + x64 and runs the tests. Use `build.bat x64 tests` for
 the quick edit-test loop.
