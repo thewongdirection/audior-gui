@@ -37,7 +37,29 @@ signed), choose *More info*, then *Run anyway*.
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
 | Close the window while recording | The file is complete and plays. |
 
-## 3. From a command prompt
+## 3. The tray and the hotkeys
+
+These are done by hand: the build machines have no desktop shell to check them on.
+
+| Try | Expect |
+|---|---|
+| Minimize the window | It leaves the taskbar and an Audior-GUI icon (a ring) appears in the notification area, possibly under the `^` overflow arrow. |
+| Click the icon | The window comes back and the icon goes. |
+| Press **Ctrl+Alt+R** with the window in the tray, then look at the icon | A red dot, and the tooltip shows `Audior-GUI · recording 00:00:05` counting up. |
+| Press **Ctrl+Alt+S** | The icon returns to a ring. Restore the window: *Saved*, and the file is complete. |
+| Right-click the icon | *Show Audior-GUI*, *Start recording*, *Stop*, *Exit*, with the hotkeys shown. Only the one that applies is enabled. *Exit* while recording leaves a complete file. |
+| Press **Ctrl+Alt+R** in another program (Notepad, a browser) | It starts a recording there too, and Ctrl+S and Ctrl+R still work in that program. |
+| Unplug the microphone while recording with the window in the tray | A balloon names the problem. |
+| In *Hotkeys*, click **Start**, press **Ctrl+Alt+M** | The box shows `Ctrl+Alt+M`; Ctrl+Alt+R no longer starts a recording and Ctrl+Alt+M does. Close and reopen the program: it is still `Ctrl+Alt+M`. |
+| Click **Start**, press **R** alone | Refused: *Add Ctrl or Alt*. The box keeps listening; **Esc** gives up. |
+| Choose the other box's shortcut | Refused: *... is already the Stop shortcut*. |
+| Run a second copy | Its hotkey boxes are outlined in red: the first copy owns the shortcuts. |
+| Start with a shortcut set to *Run: Minimized* | The window never shows; the icon is in the tray. |
+
+The saved shortcuts are two text values in `HKEY_CURRENT_USER\Software\Audior-GUI`
+(`StartHotkey`, `StopHotkey`); delete the key to go back to Ctrl+Alt+R and Ctrl+Alt+S.
+
+## 4. From a command prompt
 
 ```bat
 audior_gui --list-devices

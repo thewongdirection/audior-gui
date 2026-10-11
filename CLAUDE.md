@@ -39,10 +39,11 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 
 | Path | What |
 |------|------|
-| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
+| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the hotkey rules (`hotkey`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
 | `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks) and `SimulatedEngine` (`--demo`, tests). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
-| `src/ui` | Win32 + Direct2D window and widgets. |
+| `src/ui` | Win32 + Direct2D window and widgets, the tray icon, the system-wide hotkeys. |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
+| `src/preferences.*` | What is remembered between runs (only the two hotkeys, in the registry). Built into the unit tests with `src/core` and `src/engine`. |
 | `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
 
 `build.bat` builds x86 + x64 and runs the tests. Use `build.bat x64 tests` for

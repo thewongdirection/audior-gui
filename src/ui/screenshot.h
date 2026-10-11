@@ -9,7 +9,8 @@
  * a picture of the UI, and it is a quick way to look at a design change.
  *
  * Scenarios: idle, recording, mic-only, system-only, clipping, saved, error, named (settings changed),
- * typing (a long file name being edited).
+ * typing (a long file name being edited), hotkeys (a shortcut box waiting for keys),
+ * hotkey-taken (a hotkey another program already owns).
  */
 #pragma once
 

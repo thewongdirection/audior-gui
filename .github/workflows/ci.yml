@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path shots | Out-Null
-          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'clipping', 'saved', 'error', 'named', 'typing') {
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'clipping', 'saved', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken') {
             $run = Start-Process -FilePath bin\x64\audior_gui.exe -Wait -PassThru `
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }

@@ -2,7 +2,7 @@
  * main_view.h - The application window's content: layout, painting and input.
  *
  *   +----------------------------------------------------------------+
- *   |  audior  [DEMO]                                      * Ready   |  header
+ *   |  Audior-GUI  [DEMO]                                  * Ready   |  header
  *   +------------------------------------------+---------------------+
  *   |  [x] Microphone                  -12 dB  |  SAVE TO            |
  *   |  [device v]        Gain ---o--- +0%      |  [folder        v]  |
@@ -13,6 +13,9 @@
  *   |  ||| |||||| |||| |||||| ||||||||          |  OUTPUT             |
  *   +------------------------------------------+  [merged|separate]  |
  *                                              |  Mic 65% . Sys 35%  |
+ *                                              |  HOTKEYS            |
+ *                                              |  [Start Ctrl+Alt+R] |
+ *                                              |  [Stop  Ctrl+Alt+S] |
  *                                              +---------------------+
  *   |  00:00:12   Recording             [ Stop ] [ Start recording ] |
  *   +----------------------------------------------------------------+
@@ -20,14 +23,16 @@
  * Each stream has its own pane: a checkbox that says whether it is recorded,
  * a drop-down of every detected device, its gain and its waveform.  MainView only reads
  * and drives a RecorderController; everything the operating system has to do
- * (dialogs, menus, the frame timer) goes through IViewHost, so the same view
- * renders into a window or into an offscreen bitmap for screenshots.
+ * (dialogs, menus, the frame timer, the system-wide hotkeys) goes through
+ * IViewHost, so the same view renders into a window or into an offscreen
+ * bitmap for screenshots.
  */
 #pragma once
 
 #include <string>
 #include <vector>
 
+#include "../core/hotkey.h"
 #include "../core/recorder_controller.h"
 #include "lane_view.h"
 #include "widgets.h"
@@ -52,6 +57,11 @@ public:
 
     /* Something may be animating: make sure frames keep coming. */
     virtual void Wake() = 0;
+
+    /* Makes `hotkey` the system-wide shortcut for `action` and remembers it for
+     * the next run.  False, with the old shortcut still in force, if another
+     * program already owns it. */
+    virtual bool SetHotkey(HotkeyAction action, const Hotkey &hotkey) = 0;
 };
 
 class MainView {
@@ -76,13 +86,28 @@ public:
     bool Char(wchar_t c);                           /* a typed character, for the text box */
 
     void FocusFileName() { focus_ = &fileNameBox_; }       /* for screenshots */
+    void ListenForHotkey(HotkeyAction action);             /* for screenshots */
 
     bool HandCursor() const { return hot_ && hot_->Interactive() && !hot_->WantsText(); }
     bool TextCursor() const { return hot_ && hot_->Interactive() && hot_->WantsText(); }
     bool Capturing() const { return pressed_ != nullptr; }
 
+    /* What the Start and Stop buttons do (also for the hotkeys and the tray menu). */
+    bool CanStart() const { return startButton_.Interactive(); }
+    void StartRecording();
+    void StopRecording();
+
+    /* The hotkeys in force, and whether the system accepted each one. */
+    void SetHotkey(HotkeyAction action, const Hotkey &hotkey, bool registered);
+
+    /* A shortcut box is waiting for a key combination, which then belongs to
+     * it, however it arrived (typed, or caught by the system as a hotkey). */
+    bool ListeningForHotkey() const;
+    void OfferHotkey(const Hotkey &hotkey);
+    void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
+
 private:
-    static constexpr int kWidgetCount = 15;
+    static constexpr int kWidgetCount = 17;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -96,6 +121,10 @@ private:
     void ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor);
     void ChooseBitrate();
     void ConfigureGain(StreamId stream, int RecordingSettings::*percent, const D2D1_COLOR_F &accent);
+    void ConfigureHotkey(HotkeyAction action, const wchar_t *label);
+    bool ChangeHotkey(HotkeyAction action, const Hotkey &candidate);
+    void RefreshHotkeys();
+    void FocusOn(Widget *widget);
     std::wstring DeviceName(DeviceKind kind, const std::wstring &id) const;
     std::wstring DeviceFieldText(DeviceKind kind, const std::wstring &id) const;
     std::wstring Summarize(const RecordingSettings &settings) const;
@@ -118,21 +147,25 @@ private:
     Segmented formatSeg_, mixSeg_;
     Slider    shareSlider_;
     TextBox   fileNameBox_;
+    KeyBox    keyBox_[kHotkeyActionCount];
     GainControl gain_[kStreamCount];
     Widget   *all_[kWidgetCount];       /* tab order */
 
     Widget *hot_ = nullptr, *pressed_ = nullptr, *focus_ = nullptr;
     bool    focusVisible_ = false;      /* the focus ring shows only for keyboard use */
 
+    Hotkey hotkeys_[kHotkeyActionCount] = {kDefaultStartHotkey, kDefaultStopHotkey};
+    bool   hotkeyActive_[kHotkeyActionCount] = {true, true};    /* the system accepted it */
+
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
-    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {};
-    Caption     captions_[4] = {};
+    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {};
+    Caption     captions_[5] = {};
 
     LaneView micView_, systemView_;
 
     /* Text that changes rarely is built when it changes, not every frame. */
-    std::wstring shareText_, mixHint_, nameHint_, summary_, savedName_;
-    bool         nameHintIsError_ = false;
+    std::wstring shareText_, mixHint_, nameHint_, summary_, savedName_, hotkeyProblem_, hotkeyHint_;
+    bool         nameHintIsError_ = false, hotkeyHintIsError_ = false;
     std::wstring timeText_, sizeText_;
     long long          timeKey_ = -1;
     unsigned long long sizeKey_ = ~0ULL;

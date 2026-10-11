@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "../core/hotkey.h"
 #include "../core/line_editor.h"
 #include "geometry.h"
 #include "painter.h"
@@ -50,6 +51,8 @@ public:
     virtual bool Key(UINT virtualKey) { (void)virtualKey; return false; }   /* true if it used the key */
     virtual bool Char(wchar_t c) { (void)c; return false; }                 /* a typed character       */
     virtual bool WantsText() const { return false; }                        /* edits text: I-beam cursor */
+    virtual bool CapturesKeys() const { return false; }                     /* wants every key, Tab included */
+    virtual void FocusLost() {}                                             /* the focus moved elsewhere     */
 };
 
 /* A push button, or (Style::Field) a field that opens a choice when clicked. */
@@ -150,6 +153,33 @@ private:
     mutable ComPtr<IDWriteTextLayout> layout_;      /* of layoutText_, rebuilt when the text changes */
     mutable std::wstring              layoutText_;
     mutable float                     scroll_ = 0.0f;       /* how far the text is scrolled left */
+};
+
+/* A keyboard shortcut: what it does, and the keys.  Activating it (click, Enter
+ * or Space) makes it listen; the next key combination typed is offered to
+ * onCapture, which says whether it took it (else the box keeps listening, so a
+ * refused combination can be replaced at once).  Escape gives up. */
+class KeyBox : public Widget {
+public:
+    std::wstring label;                         /* what the shortcut does: "Start"          */
+    std::wstring text;                          /* the keys: "Ctrl+Alt+R"                   */
+    bool         invalid = false;               /* outline the box as a problem             */
+    std::function<void()>               onBegin;        /* it started listening             */
+    std::function<bool(const Hotkey &)> onCapture;
+
+    bool Capturing() const { return capturing_; }
+    void Capture(const Hotkey &hotkey);         /* a combination typed (or caught by the system) while listening */
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Release(float x, float y, bool inside) override;
+    bool Key(UINT virtualKey) override;
+    bool CapturesKeys() const override { return capturing_; }
+    void FocusLost() override { capturing_ = false; }
+
+private:
+    void Begin();
+
+    bool capturing_ = false;
 };
 
 }  // namespace audiorgui::ui

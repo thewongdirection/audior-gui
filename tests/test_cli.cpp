@@ -249,6 +249,7 @@ TEST(FormatDeviceList_MarksDefaultsAndShowsIds)
 TEST(HelpText_MentionsEveryOption)
 {
     const std::wstring help = HelpText();
+    CHECK(help.find(L"Audior-GUI") != std::wstring::npos);              /* the program's name */
     const wchar_t *const options[] = {L"--output", L"--format", L"--bitrate", L"--mic", L"--amplify",
                                       L"--include-output", L"--output-device", L"--merge", L"--separate",
                                       L"--list-devices", L"--stop", L"--help", L"--system-amplify", L"--demo",

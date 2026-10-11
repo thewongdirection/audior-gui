@@ -1,8 +1,10 @@
-# audior-gui
+# Audior-GUI
 
 A native Windows 10 / 11 recorder with a clean, modern UI: **one live waveform
 for every audio stream being recorded**, big **Start** and **Stop** buttons, and
-**every option of the `audior` command-line recorder** in a side panel.
+**every option of the `audior` command-line recorder** in a side panel. It lives
+in the tray while minimized and records from **system-wide hotkeys** (Ctrl+Alt+R and
+Ctrl+Alt+S, yours to change).
 
 > **Status: first hardware test.** The WASAPI recording engine is complete and
 > covered by tests that run on generated audio, but the build machines have no
@@ -12,7 +14,7 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 
 ```
 +----------------------------------------------------------------+
-|  audior                                                * Ready  |
+|  Audior-GUI                                            * Ready  |
 +------------------------------------------+---------------------+
 |  [x] Microphone                  -12 dB  |  SAVE TO            |
 |  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\audior      v]|
@@ -23,6 +25,8 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 |  ||| |||||  |||||| ||||  |||||| ||| ||   |  [MP3|WAV] [128 kbps]|
 |                                          |  OUTPUT             |
 |                                          |  [merged|2 tracks]  |
+|                                          |  HOTKEYS            |
+|                                          |  [Start Ctrl+Alt+R] [Stop ...]
 +------------------------------------------+---------------------+
 |  00:00:12   Recording              [ Stop ] [ * Start recording ]|
 +----------------------------------------------------------------+
@@ -161,6 +165,34 @@ the program, or to the file or pipe it was redirected to
   `Local\AudiorStopEvent`, the same one audior uses, so `audior_gui --stop` and
   `audior --stop` each end a recording started by either.
 
+## Tray and hotkeys
+
+- **Minimizing goes to the tray.** The window leaves the taskbar and the Audior-GUI
+  icon appears in the notification area: a ring while idle, a red dot while
+  recording, with the elapsed time in its tooltip. Click the icon to bring the
+  window back; right-click it for *Show*, *Start recording*, *Stop* and *Exit*. A
+  recording carries on while the window is in the tray, and a balloon says so if
+  one ends with a problem there. A program started minimized (a shortcut set to
+  *Run: Minimized*) goes straight to the tray. Closing the window with the X still
+  stops the recording and exits.
+- **System-wide hotkeys.** **Ctrl+Alt+R** starts a recording and **Ctrl+Alt+S** stops it,
+  in whatever program has the focus, with the window open or in the tray. They do
+  what the buttons do, so Start is ignored while recording and Stop while idle.
+- **Yours to change.** In the *Hotkeys* section of the settings panel click a box
+  and press the new shortcut (Esc cancels, and a shortcut that cannot be used says
+  why and keeps listening). A shortcut is a letter, digit, function key (F1 to
+  F24), Space or a navigation key, with Ctrl and/or Alt (and Shift if you like);
+  a function key may stand alone. Start and Stop must differ, and a shortcut that
+  another program already owns is refused. The pair is remembered for the next run
+  (`HKEY_CURRENT_USER\Software\Audior-GUI`); if a remembered shortcut cannot be
+  taken at start-up, for instance because a second copy of the program is running,
+  its box is outlined in red and it stays off.
+- **A global shortcut is taken from every other program** while Audior-GUI runs.
+  The defaults avoid Ctrl+R and Ctrl+S, which other programs use for *reload* and
+  *save*. On a keyboard layout where AltGr (which Windows treats as Ctrl+Alt) types
+  letters, though, Ctrl+Alt+S or Ctrl+Alt+R may be a character you need (the Polish
+  layout types ś with AltGr+S); choose another pair, such as two function keys.
+
 ## Design
 
 - **One pane per stream**, each with its own **checkbox** (is this stream
@@ -178,7 +210,8 @@ the program, or to the file or pipe it was redirected to
 - **Sharp everywhere.** Everything is laid out in DIPs; the window is
   per-monitor DPI aware.
 - **Idle means idle.** The frame timer runs only while a recording or a waveform
-  is moving.
+  is moving, and a window hidden in the tray draws nothing and ticks only five
+  times a second.
 
 Colours, sizes and the type scale live in `src/ui/theme.h` and `src/ui/gfx.cpp`.
 To see the UI without opening it, render a scenario to a PNG:
@@ -188,7 +221,8 @@ bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `named`, `typing`.
+`error`, `named`, `typing`, `hotkeys` (a shortcut box waiting for keys),
+`hotkey-taken` (a shortcut another program owns).
 
 ## Architecture
 
@@ -199,10 +233,10 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. |
-| `src/ui` | `AppWindow` (Win32, DPI, frame timer, dialogs, clipboard), `MainView`, `LaneView`, widgets, `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
-| `src/main.cpp`, `src/console.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`. |
+| `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
+| `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the saved hotkeys (registry). |
 | `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. |
 
 ### The recording engine
@@ -225,7 +259,8 @@ in-memory files. The GUI sees audio only as peak bins through
 ## Testing
 
 - **Unit tests** (`run_tests.exe`, run by `build.bat`): settings and file-name
-  rules, the command line, the text-box model, formatting, peak history and
+  rules, the command line, the hotkey rules (which combinations are allowed, their
+  text form) and their saving, the text-box model, formatting, peak history and
   meter, waveform alignment, the controller state machine, the simulated engine,
   sample-format conversion and resampling, ring buffers, the mixer, the WAV and
   MP3 sinks, the recording session (merge, separate, device and disk failures,
@@ -243,5 +278,7 @@ in-memory files. The GUI sees audio only as peak bins through
 - The WASAPI capture code has not run on real hardware yet (see the top).
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
-- Settings are not remembered between runs.
+- The recording settings are not remembered between runs (only the two hotkeys are).
+- The tray and the hotkeys are exercised by hand (see
+  [docs/FIRST-TEST.md](docs/FIRST-TEST.md)); `ui_smoke.ps1` does not cover them.
 - Shared mode only: a device another program holds exclusively cannot be recorded.

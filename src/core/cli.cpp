@@ -247,7 +247,7 @@ std::wstring FormatDeviceList(const std::vector<DeviceInfo> &microphones, const 
 
 std::wstring HelpText()
 {
-    return L"audior_gui - record the microphone and/or the sound your PC plays\n"
+    return L"Audior-GUI - record the microphone and/or the sound your PC plays\n"
            L"\n"
            L"Usage: audior_gui [options]\n"
            L"\n"
