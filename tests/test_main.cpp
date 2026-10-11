@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "fake_asr_helper.h"
 #include "test_support.h"
 
 namespace testing {
@@ -39,6 +40,8 @@ void ReportFailure(const char *file, int line, const std::string &message)
 int main(int argc, char **argv)
 {
     using namespace testing;
+    if (argc > 2 && std::strcmp(argv[1], kFakeAsrHelperFlag) == 0)      /* started by a test, to play the helper */
+        return RunFakeAsrHelper(argv[2]);
     const char *filter = argc > 1 ? argv[1] : nullptr;
 
     if (filter && std::strcmp(filter, "--list") == 0) {

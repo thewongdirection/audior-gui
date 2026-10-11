@@ -197,6 +197,12 @@ void TranscriptionHost::SetAllOff()
         SetStatus(static_cast<StreamId>(s), TranscriptStatus());
 }
 
+bool TranscriptionHost::StopRequested()
+{
+    std::lock_guard<std::mutex> lock(controlMutex_);
+    return stop_;
+}
+
 /* True if the time passed, false if Stop() came first. */
 bool TranscriptionHost::SleepUnlessStopped(int milliseconds)
 {
@@ -211,9 +217,10 @@ void TranscriptionHost::Run()
     int restarts = 0;
     for (;;) {
         std::wstring problem;
-        std::unique_ptr<IAsrTransport> transport = factory_(&problem);
+        std::unique_ptr<IAsrTransport> transport = factory_(&problem, [this] { return StopRequested(); });
         if (!transport) {
-            FailAll(problem);
+            if (!StopRequested())                       /* (a start given up on because of Stop() is not a failure) */
+                FailAll(problem);
             break;
         }
         const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
@@ -237,12 +244,7 @@ void TranscriptionHost::Run()
         }
         transport.reset();
 
-        bool stopped;
-        {
-            std::lock_guard<std::mutex> lock(controlMutex_);
-            stopped = stop_;
-        }
-        if (finished || stopped)
+        if (finished || StopRequested())
             break;
 
         /* The helper went away on its own.  One that had been running well is not a helper that keeps
@@ -288,11 +290,7 @@ bool TranscriptionHost::WriteLoop(IAsrTransport &transport)
     message.type = asr::Type::Audio;
     const auto began = std::chrono::steady_clock::now();
     for (;;) {
-        bool stopping;
-        {
-            std::lock_guard<std::mutex> lock(controlMutex_);
-            stopping = stop_;
-        }
+        const bool stopping = StopRequested();
         bool sent = false;
         for (int s = 0; s < kStreamCount; ++s) {        /* what is queued, 100 ms at a time */
             if (!Wanted(static_cast<StreamId>(s)))

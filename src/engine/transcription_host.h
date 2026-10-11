@@ -56,8 +56,13 @@ public:
     virtual void Close() = 0;
 };
 
-/* Starts a helper; null (with `*problem` saying why) if it cannot. */
-using TransportFactory = std::function<std::unique_ptr<IAsrTransport>(std::wstring *problem)>;
+/* True once the host has been asked to stop. */
+using StopCheck = std::function<bool()>;
+
+/* Starts a helper; null (with `*problem` saying why) if it cannot.  It runs on
+ * the host's own thread and may take a while (checking a model reads all of it),
+ * so it should give up, returning null, as soon as `stopping()` is true. */
+using TransportFactory = std::function<std::unique_ptr<IAsrTransport>(std::wstring *problem, const StopCheck &stopping)>;
 
 class TranscriptionHost final : public ISpeechSink {
 public:
@@ -141,6 +146,7 @@ private:
     void SetAllStarting();
     void SetAllOff();
     bool SleepUnlessStopped(int milliseconds);
+    bool StopRequested();
 
     TransportFactory factory_;
     Options          options_;

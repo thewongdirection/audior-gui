@@ -230,7 +230,7 @@ public:
 
     TransportFactory Factory()
     {
-        return [this](std::wstring *problem) -> std::unique_ptr<IAsrTransport> {
+        return [this](std::wstring *problem, const StopCheck &) -> std::unique_ptr<IAsrTransport> {
             if (cannotStart) {
                 *problem = L"audior_asr.exe was not found.";
                 return nullptr;
@@ -640,6 +640,27 @@ TEST(Host_AHelperThatRanWellHasItsRestartsBack)
     CHECK(WaitUntil([&] { return helpers.Started() >= 5; }));           /* more than 1 + maxRestarts runs */
     CHECK(host.Status(StreamId::Microphone).state != TranscriptState::Failed);
     host.Stop();
+}
+
+TEST(Host_StopDuringASlowStartIsPromptAndNotAFailure)
+{
+    std::atomic<bool> factoryRunning{false};
+    TranscriptionHost host(
+        [&](std::wstring *problem, const StopCheck &stopping) -> std::unique_ptr<IAsrTransport> {
+            factoryRunning = true;
+            for (int i = 0; i < 5000 && !stopping(); ++i)               /* "hashing a model" */
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            *problem = L"given up";
+            return nullptr;
+        },
+        Quick());
+    host.Start(kMic);
+    CHECK(WaitUntil([&] { return factoryRunning.load(); }));
+
+    const Clock::time_point began = Clock::now();
+    host.Stop();
+    CHECK(Clock::now() - began < std::chrono::seconds(2));
+    CHECK(host.Status(StreamId::Microphone).state == TranscriptState::Off);       /* asked to stop, not failed */
 }
 
 TEST(Host_FailsAtOnceWhenThereIsNoHelper)

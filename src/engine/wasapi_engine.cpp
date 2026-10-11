@@ -29,6 +29,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
     }
 
     session_.reset();                                   /* the previous recording's threads and results */
+    host_.reset();
     stopSignal_.Close();
     if (!stopSignal_.Create()) {
         *error = L"The recording could not be started.";
@@ -47,10 +48,19 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         return s.format == Format::Wav ? WavSink::Create(path, hr) : Mp3Sink::Create(path, s.mp3BitrateKbps, hr);
     };
 
-    session_ = std::make_unique<RecordingSession>(sources, sinks, stopSignal_.Handle());
+    const SessionPlan plan = MakePlan(s, outputPath);
+    if (transcribes_ && plan.speech != 0) {             /* the transcriber is told first, so it misses none of the audio */
+        TranscriptionHost::Options options;
+        options.model = asr_.modelPath;
+        host_ = std::make_unique<TranscriptionHost>(MakeProcessFactory(asr_), options);
+        host_->Start(plan.speech);
+    }
+
+    session_ = std::make_unique<RecordingSession>(sources, sinks, stopSignal_.Handle(), host_.get());
     OptOutOfDucking();
-    if (!session_->Start(MakePlan(s, outputPath), error)) {
+    if (!session_->Start(plan, error)) {
         session_.reset();
+        host_.reset();                                  /* stops it */
         stopSignal_.Close();
         return false;
     }
@@ -60,7 +70,9 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
 void WasapiEngine::Stop()
 {
     if (session_)
-        session_->Stop();
+        session_->Stop();                               /* the captures end first: no more audio for... */
+    if (host_)
+        host_->Stop();                                  /* ...the transcriber, which says its last words */
     stopSignal_.Close();                                /* `--stop` finds nothing to stop from now on */
 }
 
