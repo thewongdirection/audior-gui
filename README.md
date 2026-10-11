@@ -4,11 +4,15 @@ A native Windows 10 / 11 recorder with a clean, modern UI: **one live waveform
 for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 **every option of the `audior` command-line recorder** in a side panel.
 
-> **Status: first hardware test.** The WASAPI recording engine is complete and
-> covered by tests that run on generated audio, but the build machines have no
-> microphone, so the capture path itself has not yet run on real hardware. Follow
-> [docs/FIRST-TEST.md](docs/FIRST-TEST.md) to try it. `--demo` runs the window
-> with simulated audio and needs no devices.
+> **Status: first hardware results are in.** The WASAPI recording engine is covered by
+> tests that run on generated audio, and `hardware_tests.exe` has now recorded with the
+> real application on a real PC (100 checks, 95 pass): microphone and system audio, MP3
+> and WAV, gains, device selection, long-recording stability. One engine problem is
+> open: the system-audio track comes out longer than the microphone track and the
+> clock, by about 0.6 s after half a minute and 1 s after a minute (see
+> [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md)). To try it yourself follow
+> [docs/FIRST-TEST.md](docs/FIRST-TEST.md). `--demo` runs the window with simulated
+> audio and needs no devices.
 
 ```
 +----------------------------------------------------------------+
@@ -49,6 +53,7 @@ loaded on demand, so the program also starts on a Windows N edition without it
 build.bat              :: x64 + x86: the app and the unit tests, then runs the tests
 build.bat x64          :: one architecture
 build.bat x64 tests    :: just the unit tests (the quick edit-test loop)
+build.bat hardware     :: also builds bin\<arch>\hardware_tests.exe (not run: it records)
 
 bin\x64\audior_gui.exe
 ```
@@ -59,6 +64,16 @@ in-box Universal CRT).
 
 No Visual Studio? Every push is built by CI on a Windows machine; download
 `audior-gui-windows` from the run's *Artifacts* and unzip it.
+
+**Setting up the compiler** (once, from any prompt; it asks for administrator
+approval and downloads a few GB). This installs the Build Tools with the *Desktop
+development with C++* workload: MSVC for x86 and x64 and the Windows SDK, which is
+everything the project needs. Built and tested this way with Build Tools 17.14,
+MSVC 14.44 and Windows SDK 10.0.26100.
+
+```bat
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
 
 ## Every audior option, in the window and on the command line
 
@@ -163,7 +178,7 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, dialogs, clipboard), `MainView`, `LaneView`, widgets, `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`. |
-| `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. |
+| `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. `tests/hardware`: the native hardware tests (`hardware_tests.exe`), which record on real devices. |
 
 ### The recording engine
 
@@ -194,13 +209,23 @@ in-memory files. The GUI sees audio only as peak bins through
 - **UI smoke test** (`tests\ui_smoke.ps1`): launches the real executable, drives
   the command line, clicks Start and Stop in the simulated and the real engine,
   checks the status light and saves screenshots.
+- **Hardware tests** (`hardware_tests.exe`, built by `build.bat hardware`, run by hand on a
+  PC with a microphone and a playback device): about 100 checks over 14 scenarios, with
+  recordings of at least 30 s each, on the real devices. Native C++ like the rest of the
+  project; see [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md).
 - **CI** (`.github/workflows/ci.yml`): all of the above, warnings as errors, on a
   Windows runner for every push; screenshots and the executables are published
   as artifacts.
 
 ## Known limitations
 
-- The WASAPI capture code has not run on real hardware yet (see the top).
+- The system-audio track is longer than the microphone track, and the difference grows
+  with the recording (about 0.6 s after 30 s, 1 s after a minute): separate tracks
+  differ in length, and a merged file has the microphone early against the system audio.
+  Found by the hardware tests, not fixed yet; details in
+  [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md).
+- The hardware tests have run on one PC (a Bluetooth headset and two digital outputs);
+  other devices, sample rates and wired microphones are untested.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
 - Settings are not remembered between runs.
