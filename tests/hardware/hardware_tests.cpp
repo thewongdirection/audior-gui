@@ -871,6 +871,19 @@ const wchar_t kLongSpeech[] =
 const wchar_t *const kEarlyWords[] = {L"river", L"mountain", L"station", L"market", L"honey"};
 const wchar_t *const kLateWords[] = {L"purple", L"banana", L"window", L"coast", L"schedule"};
 
+/* How many words (runs of non-blanks) there are in `text`. */
+std::size_t WordsIn(const std::wstring &text)
+{
+    std::size_t words = 0;
+    bool inWord = false;
+    for (const wchar_t c : text) {
+        const bool blank = std::iswspace(c) != 0;
+        words += !blank && !inWord ? 1 : 0;
+        inWord = !blank;
+    }
+    return words;
+}
+
 int CountWords(const std::wstring &text, const wchar_t *const *words, std::size_t count)
 {
     std::wstring lowered = text;
@@ -884,14 +897,14 @@ int CountWords(const std::wstring &text, const wchar_t *const *words, std::size_
 
 void T16()
 {
-    Section("T16 a busy PC: the transcript changes to a smaller model");
-    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
-    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-small.en-q5_1.bin");
+    Section("T16 a busy PC: the transcript changes to a lighter model");
+    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3.bin");
+    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
     audiorgui::AsrSetup setup, fallback;
     const std::wstring programs = audiorgui::ProgramDirectory(), models = audiorgui::ModelsDirectory();
     if (!big || !lesser || !audiorgui::FindAsr(programs, models, &setup, audiorgui::kAsrModels, audiorgui::kAsrModelCount, big->file) ||
         !audiorgui::FindAsr(programs, models, &fallback, audiorgui::kAsrModels, audiorgui::kAsrModelCount, lesser->file)) {
-        Info("skipped: it needs the helper (build.bat asr) and both the large (turbo) and the small English model");
+        Info("skipped: it needs the helper (build.bat asr) and both Whisper large-v3 and its turbo model");
         return;
     }
 
@@ -1002,9 +1015,11 @@ struct LargeRun {
     bool         ready = false;
     double       readySeconds = 0.0;
     double       firstTextAfter = -1.0;                 /* seconds after the speech began; < 0: no text */
-    double       lastFinalAfterEnd = -1.0;              /* seconds after the speech ended (< 0: before it ended or none) */
+    bool         anyFinal = false;
+    double       lastFinalAfterEnd = 0.0;               /* seconds after the speech ended that the last phrase was settled (< 0: before) */
     double       maxLag = 0.0, meanLag = 0.0;
     int          early = 0, late = 0;                   /* key words found, of the early and of the last sentences */
+    int          words = 0;                             /* all the words of the settled text */
     std::wstring finals;
 };
 
@@ -1017,6 +1032,7 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
     options.vadModel = setup.vadPath;
     options.language = audiorgui::SpeechLanguage::English;
     options.gpu = gpu;
+    options.engine = setup.model->engine;
     audiorgui::TranscriptionHost host(audiorgui::MakeProcessFactory(setup), options);
     constexpr audiorgui::StreamId kStream = audiorgui::StreamId::Microphone;
     host.Start(static_cast<std::uint8_t>(1u << audiorgui::StreamIndex(kStream)));
@@ -1049,6 +1065,7 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
                 if (events[i].isFinal) {
                     run.finals += std::wstring(events[i].text) + L" ";
                     run.lastFinalAfterEnd = now() - started - speechSeconds;
+                    run.anyFinal = true;
                 }
             }
         }
@@ -1079,6 +1096,7 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
     run.meanLag = lagCount ? lagSum / lagCount : 0.0;
     run.early = CountWords(run.finals, kEarlyWords, sizeof(kEarlyWords) / sizeof(kEarlyWords[0]));
     run.late = CountWords(run.finals, kLateWords, sizeof(kLateWords) / sizeof(kLateWords[0]));
+    run.words = static_cast<int>(WordsIn(run.finals));
     return run;
 }
 
@@ -1105,8 +1123,9 @@ void T17()
         const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
         const LargeRun r = RunLarge(setup, gpu, speech);
         Info(Fmt("%s: ready after %.1f s; first text %.1f s into the speech; lag %.1f s on average, %.1f s at most; the last phrase settled "
-                 "%.1f s after the speech ended; key words %d of 5 early, %d of 5 late",
-                 label, r.readySeconds, r.firstTextAfter, r.meanLag, r.maxLag, r.lastFinalAfterEnd, r.early, r.late));
+                 "%.1f s after the speech ended; key words %d of 5 early, %d of 5 late; %d words of the text for %d spoken",
+                 label, r.readySeconds, r.firstTextAfter, r.meanLag, r.maxLag, r.lastFinalAfterEnd, r.early, r.late, r.words,
+                 static_cast<int>(WordsIn(kLongSpeech))));
         if (!gpu) {
             Check("processor: the helper becomes ready and gives text", r.ready && r.firstTextAfter >= 0.0);       /* the numbers above are for comparison */
         } else {
@@ -1114,12 +1133,63 @@ void T17()
             Check("graphics card: text begins soon after the speech does", r.firstTextAfter >= 0.0 && r.firstTextAfter < 10.0,
                   r.firstTextAfter < 0.0 ? "no text at all" : Fmt("%.1f s (the first use of the card takes a few seconds longer)", r.firstTextAfter));
             Check("graphics card: the text is never far behind", r.ready && r.maxLag < 3.0, Fmt("at most %.1f s, on average %.1f s", r.maxLag, r.meanLag));
-            Check("graphics card: the last phrase is settled soon after the speech ends", r.lastFinalAfterEnd >= 0.0 && r.lastFinalAfterEnd < 5.0,
+            Check("graphics card: the last phrase is settled soon after the speech ends", r.anyFinal && r.lastFinalAfterEnd < 5.0,
                   Fmt("%.1f s after", r.lastFinalAfterEnd));
+            Check("graphics card: nothing is said twice", r.words <= static_cast<int>(WordsIn(kLongSpeech)) * 115 / 100,
+                  Fmt("%d words for %d spoken", r.words, static_cast<int>(WordsIn(kLongSpeech))));
             Check("graphics card: the words that were said are in the text", r.early >= 4 && r.late >= 4,
                   Fmt("%d of 5 early and %d of 5 late; the end of the text: \"%s\"", r.early, r.late,
                       Narrow(r.finals.size() > 160 ? r.finals.substr(r.finals.size() - 160) : r.finals).c_str()));
         }
+        std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+            Sleep(100);
+            helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        }
+        Check(Fmt("%s: no helper is left running", label), helpersAfter <= helpersBefore,
+              Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+    }
+}
+
+/* ---- T18: Parakeet at the pace of speech --------------------------------------- */
+
+void T18()
+{
+    Section("T18 Parakeet at the pace of speech");
+    const audiorgui::AsrModel *parakeet = audiorgui::FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    audiorgui::AsrSetup setup;
+    if (!parakeet || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
+                                         audiorgui::kAsrModelCount, parakeet->file)) {
+        Info("skipped: it needs the helper (build.bat asr) and the Parakeet model in the models folder (it is not offered for download)");
+        return;
+    }
+    std::vector<std::int16_t> speech;
+    if (!SpeechSamples(kLongSpeech, &speech)) {
+        Check("a voice could be synthesized into a file", false);
+        return;
+    }
+    Info(Fmt("%.0f s of speech, given at the pace of speech to Parakeet%s", static_cast<double>(speech.size()) / 16000.0,
+             setup.gpu ? ", on the processor and then on the graphics card" : ", on the processor (the helper has no graphics card backend)"));
+
+    for (const bool gpu : {false, true}) {
+        if (gpu && !setup.gpu)
+            continue;
+        const char *label = gpu ? "graphics card" : "processor";
+        const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+        const LargeRun r = RunLarge(setup, gpu, speech);
+        Info(Fmt("%s: ready after %.1f s; first text %.1f s into the speech; lag %.1f s on average, %.1f s at most; the last phrase settled "
+                 "%.1f s after the speech ended; key words %d of 5 early, %d of 5 late; %d words of the text for %d spoken",
+                 label, r.readySeconds, r.firstTextAfter, r.meanLag, r.maxLag, r.lastFinalAfterEnd, r.early, r.late, r.words,
+                 static_cast<int>(WordsIn(kLongSpeech))));
+        Check(Fmt("%s: the helper becomes ready", label), r.ready, Fmt("after %.1f s", r.readySeconds));
+        Check(Fmt("%s: the text is never far behind", label), r.ready && r.maxLag < 3.0, Fmt("at most %.1f s, on average %.1f s", r.maxLag, r.meanLag));
+        Check(Fmt("%s: the last phrase is settled soon after the speech ends", label), r.anyFinal && r.lastFinalAfterEnd < 5.0,
+              Fmt("%.1f s after", r.lastFinalAfterEnd));
+        Check(Fmt("%s: nothing is said twice", label), r.words <= static_cast<int>(WordsIn(kLongSpeech)) * 115 / 100,
+              Fmt("%d words for %d spoken", r.words, static_cast<int>(WordsIn(kLongSpeech))));
+        Check(Fmt("%s: the words that were said are in the text", label), r.early >= 4 && r.late >= 4,
+              Fmt("%d of 5 early and %d of 5 late; the end of the text: \"%s\"", r.early, r.late,
+                  Narrow(r.finals.size() > 160 ? r.finals.substr(r.finals.size() - 160) : r.finals).c_str()));
         std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
         for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
             Sleep(100);
@@ -1139,7 +1209,7 @@ struct TestEntry {
 const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
-    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false},
+    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false}, {"T18", T18, false},
 };
 
 /* ---- start-up ------------------------------------------------------------- */

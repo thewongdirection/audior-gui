@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cwchar>
 #include <utility>
 
+#include "../core/asr_languages.h"
 #include "../core/asr_models.h"
 
 namespace audiorgui {
@@ -52,22 +54,58 @@ constexpr Utterance kSystemScript[] = {
     {35.0, L"I'll chase them again today.", -1, nullptr},
 };
 
+/* The same meeting in Chinese, which has no spaces: it is "heard" two characters at a time. */
+constexpr Utterance kMicScriptChinese[] = {
+    {0.8,  L"好的，我们开始吧。感谢大家这么快就赶过来。", -1, nullptr},
+    {5.0,  L"今天的议程是第四季度的发布时间表和遗留的风险。", -1, nullptr},
+    {9.0,  L"小玛，你能给我们讲讲构建现在进展到哪里了吗？", -1, nullptr},
+    {22.5, L"明白了，卡住我们的是安装程序的签名，不是代码。", -1, nullptr},
+    {32.0, L"我们周五之前把日期定下来。", -1, nullptr},
+};
+
+constexpr Utterance kSystemScriptChinese[] = {
+    {13.0, L"可以。核心功能已经完成，质量检查周二已经通过了。", -1, nullptr},
+    {17.5, L"还没完成的是安装程序的代码签名，我们正在等 IT 部门的证书。", -1, nullptr},
+    {26.5, L"如果证书这周能到，我们还赶得上发布日期，否则要推迟大约五天。", -1, nullptr},
+    {35.0, L"我今天再去催一催。", -1, nullptr},
+};
+
 struct Script {
     const Utterance *items;
     std::size_t      count;
 };
 
-Script ScriptOf(StreamId stream)
+Script ScriptOf(StreamId stream, bool chinese)
 {
-    return stream == StreamId::Microphone ? Script{kMicScript, sizeof(kMicScript) / sizeof(kMicScript[0])}
-                                          : Script{kSystemScript, sizeof(kSystemScript) / sizeof(kSystemScript[0])};
+    const bool mic = stream == StreamId::Microphone;
+    if (chinese)
+        return mic ? Script{kMicScriptChinese, sizeof(kMicScriptChinese) / sizeof(kMicScriptChinese[0])}
+                   : Script{kSystemScriptChinese, sizeof(kSystemScriptChinese) / sizeof(kSystemScriptChinese[0])};
+    return mic ? Script{kMicScript, sizeof(kMicScript) / sizeof(kMicScript[0])}
+               : Script{kSystemScript, sizeof(kSystemScript) / sizeof(kSystemScript[0])};
+}
+
+/* The end of the word at `word`: the next space or, in Chinese, two characters on. */
+const wchar_t *WordEnd(const wchar_t *word)
+{
+    const wchar_t *end = word;
+    if (*end >= 0x2E80) {
+        for (int i = 0; i < 2 && *end >= 0x2E80; ++i)
+            ++end;
+    } else {
+        while (*end && *end != L' ')
+            ++end;
+    }
+    return end;
 }
 
 int WordCount(const wchar_t *text)
 {
-    int words = 1;
-    for (; *text; ++text)
-        words += *text == L' ';
+    int words = 0;
+    for (const wchar_t *word = text; *word; ++words) {
+        word = WordEnd(word);
+        word += *word == L' ';
+    }
     return words;
 }
 
@@ -114,19 +152,17 @@ void PartialText(const Utterance &u, int shown, TranscriptEvent *e)
     std::size_t length = 0;
     const wchar_t *word = u.text;
     for (int i = 0; i < shown && *word; ++i) {
-        const wchar_t *end = word;
-        while (*end && *end != L' ')
-            ++end;
+        const wchar_t *end = WordEnd(word);
         const bool misheard = i == u.fixWord && shown > i && shown <= i + 2;
         const wchar_t *from = misheard ? u.wrongText : word;
         const std::size_t n = misheard ? std::wcslen(u.wrongText) : static_cast<std::size_t>(end - word);
         if (length + n + 2 >= kTranscriptChars)
             break;
-        if (length)
+        if (length && word[-1] == L' ')                 /* the space there was before this word, if any */
             text[length++] = L' ';
         std::wmemcpy(text + length, from, n);
         length += n;
-        word = *end ? end + 1 : end;
+        word = end + (*end == L' ');
     }
     e->SetText(text, length);
 }
@@ -285,7 +321,7 @@ std::size_t SimulatedEngine::TakeTranscript(StreamId stream, TranscriptEvent *ou
     if (!Transcribes(settings_, stream))
         return 0;
 
-    const Script script = ScriptOf(stream);
+    const Script script = ScriptOf(stream, std::strcmp(InfoOf(settings_.transcribeLanguage).code, "zh") == 0);
     const double elapsed = TranscriptElapsed();
     std::uint64_t &next = transcriptNext_[StreamIndex(stream)];
     std::size_t n = 0;

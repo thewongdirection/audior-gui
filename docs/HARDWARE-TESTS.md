@@ -89,8 +89,9 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
 | T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 | T15 | Live transcript of the system audio | skipped (with a note) unless the helper and a model are in place. Runs the recording engine in the test process with the system stream's transcript on, once on the processor and, if the helper has the Vulkan backend, once on the graphics card, while a voice speaks a sentence: the helper becomes ready; the transcript does not fail; text appears *while* the voice is still speaking; at least 4 of the 5 key words (quick, brown, fox, lazy, dog) are in the settled text; the text is never 3 s or more behind; no `audior_asr.exe` is left after the recording ends |
-| T16 | A busy PC: the step to a smaller model | skipped (with a note) unless the helper and both the large (turbo) and the small English model are in place. Windows' voice says about a minute of speech into a file (silently); the large model reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the small model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
+| T16 | A busy PC: the step to a lighter model | skipped (with a note) unless the helper and both Whisper large-v3 and its turbo model are in place. Windows' voice says about a minute of speech into a file (silently); large-v3 reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the turbo model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
 | T17 | The large model on the graphics card | skipped (with a note) unless the helper has the Vulkan backend (`build.bat vulkan`) and the large (turbo) model is installed. About a minute of speech (a voice, into a file, silently) goes at the pace of speech to a helper with the large model: first on the graphics card (checked: ready; first text within 10 s of the speech beginning, which takes in the card's first use; never 3 s or more behind; the last phrase settled within 5 s of the end; at least 4 of 5 key words from the early and from the late sentences), then on the processor (only reported, for comparison; it must give text). Takes about three minutes |
+| T18 | Parakeet at the pace of speech | skipped (with a note) unless the helper and the Parakeet model (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) are in place. The same minute of speech as T17, on the processor and, if the helper has the Vulkan backend, on the card. Checked on each: ready; never 3 s or more behind; the last phrase settled within 5 s of the end; nothing said twice; at least 4 of 5 key words from the early and from the late sentences; no helper left. Takes about two minutes |
 
 ### How the files are measured
 
@@ -172,6 +173,21 @@ pace of speech, large (turbo) model, English fixed. On the card: ready after 4.2
 after the speech ended, all ten key words found. On the processor, for comparison: ready after
 2.4 s, first text at 3.0 s, 1.7 s behind on average and 4.3 s at most (it would say *catching up*),
 the last phrase settled 2.2 s after the end, all ten key words found.
+
+That run also showed the text had 238 words for 146 spoken: with the shortened audio window the
+large model repeats sentences. The helper now gives a card of its own the whole window and one kept
+state (processor time over the minute: 3.9 s instead of 11 to 12 s) and cuts a repeated sentence on
+the processor; T17 now checks "nothing is said twice" (146 words for 146 spoken, on the card, with
+0.1 s lag on average; on the processor 146 words, 1.3 s behind on average and 3.7 s at most).
+
+**T18 (Parakeet), 2026-10-11, x64, RTX 5080:** the same 54 s of speech, Parakeet TDT 0.6B v3 (q8_0), all
+12 checks pass. On the processor: ready after 3.2 s, first text 0.9 s into the speech, 0.3 s behind on
+average and 1.0 s at most, the last phrase settled 0.7 s after the end, 146 words for 146 spoken, all
+ten key words; the helper used 4.2 s of processor time over the minute (0.08 of a core), where the large
+Whisper turbo model used 459 s (7.35 cores, 1.7 s behind on average). On the card: 0.1 s behind on
+average and 0.2 s at most, 3.9 s of processor time. The same sample with Whisper large-v3 at full
+precision on the card (not a test): 146 words, 0.75 s behind on average and 2.3 s at most, but 62.6 s of
+processor time (1.06 core) while another program held most of the card's memory.
 
 ## Findings
 

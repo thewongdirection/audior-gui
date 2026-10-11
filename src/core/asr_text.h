@@ -18,15 +18,19 @@ std::wstring WideFromUtf8(const std::string &utf8);
 std::string Utf8FromWide(const std::wstring &text);
 
 /* A speech model sometimes gets stuck and repeats a phrase until it runs out
- * of room.  Keeps one copy of any run of a phrase (up to 12 words, compared
+ * of room.  Keeps one copy of any run of a phrase (up to 30 words, compared
  * without case or punctuation) that repeats three times or more in a row (six
  * for a single word, which people do say twice or thrice); *found tells whether
- * anything was removed. */
+ * such a loop was removed.  A phrase of five words or more that merely comes twice
+ * in a row is cut to one copy too, but is not called a loop, and neither is a
+ * last copy of a long phrase that was cut off at the end of the text. */
 std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found);
 
 /* Removes bracketed annotations ("[...]", "(...)" and "*...*", up to 40
  * characters each and with a letter in them: "(1)" stays), collapses white
- * space to single spaces and trims the ends.
+ * space to single spaces and trims the ends; takes out the U+FFFD that a model cut
+ * in the middle of a character leaves; writes the commas, question marks and so on that
+ * follow a Chinese character in their full-width form (Whisper uses the ASCII ones).
  * If nothing but punctuation and symbols is left, the result is empty. */
 std::wstring CleanTranscript(const std::wstring &text);
 

@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "asr_languages.h"
 #include "asr_models.h"
 #include "format.h"
 
@@ -177,11 +178,8 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
         } else if (option == L"--transcribe-language") {
             if (!needValue())
                 continue;
-            const std::wstring language = Lowered(value);
-            if (language == L"auto" || language == L"en")
-                s.transcribeLanguage = language == L"en" ? SpeechLanguage::English : SpeechLanguage::Auto;
-            else
-                r.error = L"invalid --transcribe-language '" + value + L"' (use auto or en).";
+            if (!FindSpeechLanguage(Lowered(value), &s.transcribeLanguage))
+                r.error = L"invalid --transcribe-language '" + value + L"' (use " + SpeechLanguageWords() + L").";
         } else if (option == L"-l" || option == L"--list-devices") {
             command(CliResult::Command::ListDevices);
         } else if (option == L"-s" || option == L"--stop") {
@@ -310,9 +308,10 @@ std::wstring HelpText()
            L"                               (Both need the helper audior_asr.exe and a model; see the README.\n"
            L"                               Without them the switch does not appear. --demo has its own.)\n"
            L"      --transcribe-model <file>  Model file to transcribe with (default: the first one found).\n"
-           L"      --transcribe-language <auto|en>\n"
-           L"                               Find the language by itself, or take it to be English\n"
-           L"                               (default auto; a model that is English only always is).\n"
+           L"      --transcribe-language <language>\n"
+           L"                               The language spoken: auto (default, the model finds it), en,\n"
+           L"                               zh (Chinese), zh-hant (Traditional), es, fr, de, ja, ko, ... (see\n"
+           L"                               the README). Parakeet finds the language itself whatever it is told.\n"
            L"      --transcribe-cpu         Transcribe on the processor only, not on the graphics card\n"
            L"                               (which is used by default if the engine has support for it).\n"
            L"\n"

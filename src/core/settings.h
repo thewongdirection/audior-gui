@@ -25,7 +25,7 @@
  *                           transcript of that stream, for engines that can
  *   --transcribe-mic / --transcribe-system   make one (see IRecordingEngine)
  *   (not in audior)         transcribeModel, transcribeLanguage: which speech
- *   --transcribe-model / --transcribe-language   model, and English or automatic
+ *   --transcribe-model / --transcribe-language   model, and the language spoken (or automatic)
  *   (not in audior)         transcribeGpu: on the graphics card or the processor only
  *   --transcribe-cpu        (the card is used by default, when the engine can)
  */

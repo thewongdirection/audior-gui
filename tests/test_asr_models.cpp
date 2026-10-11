@@ -53,7 +53,7 @@ TEST(Models_EveryEntryIsCompleteAndUnique)
 TEST(Models_ADownloadComesFromTheFilesPageOnHuggingFace)
 {
     CHECK_EQ(ModelUrl(kAsrModels[0]),
-             std::wstring(L"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"));
+             std::wstring(L"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"));
     CHECK_EQ(ModelUrl(kVadModel),
              std::wstring(L"https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"));
     for (const AsrModel &m : kAsrModels)                /* the download program takes only this host (src/fetch) */
@@ -64,18 +64,16 @@ TEST(Models_AtLeastOneModelIsOfferedToEveryPc)
 {
     bool forEveryPc = false;                            /* or a PC without a good card would be offered nothing */
     for (const AsrModel &m : kAsrModels)
-        forEveryPc = forEveryPc || m.gpuMemoryBytes == 0;
+        forEveryPc = forEveryPc || (m.gpuMemoryBytes == 0 && m.offered);
     CHECK(forEveryPc);
-    CHECK_EQ(kAsrModels[0].gpuMemoryBytes, std::uint64_t(0));       /* the one that comes first: it is what is used by default */
     CHECK_EQ(kVadModel.gpuMemoryBytes, std::uint64_t(0));
 }
 
-TEST(Models_TheNameSaysWhetherAModelIsMultilingual)
+TEST(Models_NoneIsEnglishOnly)
 {
-    for (const AsrModel &m : kAsrModels) {              /* whisper.cpp's own naming: ".en" is English only */
-        const bool englishOnly = std::wstring(m.file).find(L".en") != std::wstring::npos;
-        CHECK_EQ(m.multilingual, !englishOnly);
-    }
+    for (const AsrModel &m : kAsrModels)                /* whisper.cpp's own naming: ".en" is English only, and a person who speaks
+                                                           another language gets nothing from such a model */
+        CHECK(std::wstring(m.file).find(L".en.") == std::wstring::npos);
 }
 
 TEST(Models_AreFoundByFileNameInAnyCase)
@@ -94,10 +92,10 @@ TEST(Models_AreFoundByFileNameInAnyCase)
 
 TEST(Models_OnlyEarlierInstalledOnesCanTakeOver)
 {
-    const AsrModel table[4] = {{L"a.en.bin", "x", 1, L"A", L"MIT", L"https://x", false},
-                               {L"b.bin", "x", 1, L"B", L"MIT", L"https://x", true},
-                               {L"c.bin", "x", 1, L"C", L"MIT", L"https://x", true},
-                               {L"d.bin", "x", 1, L"D", L"MIT", L"https://x", true}};
+    const AsrModel table[4] = {{L"a.bin", "x", 1, L"A", L"MIT", L"https://x"},
+                               {L"b.bin", "x", 1, L"B", L"MIT", L"https://x"},
+                               {L"c.bin", "x", 1, L"C", L"MIT", L"https://x"},
+                               {L"d.bin", "x", 1, L"D", L"MIT", L"https://x"}};
     const std::vector<const AsrModel *> all = {&table[0], &table[1], &table[2], &table[3]};
 
     auto names = [](const std::vector<const AsrModel *> &models) {
@@ -106,26 +104,10 @@ TEST(Models_OnlyEarlierInstalledOnesCanTakeOver)
             text += std::wstring(m->label);
         return text;
     };
-    CHECK_EQ(names(SmallerModels(table, &table[3], all, false)), std::wstring(L"CBA"));      /* nearest first */
-    CHECK_EQ(names(SmallerModels(table, &table[3], all, true)), std::wstring(L"CB"));        /* keeps every language */
-    CHECK_EQ(names(SmallerModels(table, &table[0], all, false)), std::wstring());            /* nothing before the first */
-    CHECK_EQ(names(SmallerModels(table, &table[2], {&table[0], &table[2], &table[3]}, false)),
+    CHECK_EQ(names(SmallerModels(table, &table[3], all)), std::wstring(L"CBA"));             /* nearest first */
+    CHECK_EQ(names(SmallerModels(table, &table[0], all)), std::wstring());                   /* nothing before the first */
+    CHECK_EQ(names(SmallerModels(table, &table[2], {&table[0], &table[2], &table[3]})),
              std::wstring(L"A"));                                                            /* only those installed */
-    CHECK_EQ(names(SmallerModels(table, &table[1], all, true)), std::wstring());             /* English only: not for a language-keeping choice */
-    CHECK_EQ(names(SmallerModels(table, &table[0], all, true)), std::wstring());
-}
-
-TEST(Models_TheRealTableOffersTheEnglishModelInPlaceOfTheBigOne)
-{
-    std::vector<const AsrModel *> installed;
-    for (const AsrModel &m : kAsrModels)
-        installed.push_back(&m);
-    const AsrModel *big = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
-    const AsrModel *small = FindAsrModel(L"ggml-small.en-q5_1.bin");
-    CHECK(big && small);
-    CHECK_EQ(SmallerModels(kAsrModels, big, installed, false).size(), std::size_t(1));      /* English was asked for */
-    CHECK(SmallerModels(kAsrModels, big, installed, true).empty());                          /* automatic: it must keep its languages */
-    CHECK(SmallerModels(kAsrModels, small, installed, false).empty());
 }
 
 TEST(Models_AreListedAsTheGuiShowsThem)
@@ -133,8 +115,64 @@ TEST(Models_AreListedAsTheGuiShowsThem)
     const TranscriptModel choice = ModelChoice(kAsrModels[1]);
     CHECK_EQ(choice.file, std::wstring(kAsrModels[1].file));
     CHECK_EQ(choice.label, std::wstring(kAsrModels[1].label));
-    CHECK_EQ(choice.multilingual, kAsrModels[1].multilingual);
+    CHECK(choice.fixedLanguages.empty());
 }
+
+TEST(Models_OnlyWhisperCanBeToldWhichLanguageToExpect)
+{
+    for (const AsrModel &m : kAsrModels)                /* Whisper is told what to expect; Parakeet finds it, among the ones it knows */
+        CHECK_EQ(ModelChoice(m).fixedLanguages.empty(), m.engine == AsrEngine::Whisper);
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(parakeet && parakeet->engine == AsrEngine::Parakeet);
+    CHECK(parakeet && ModelChoice(*parakeet).fixedLanguages.find(L"European") != std::wstring::npos);    /* and the window says so */
+}
+
+TEST(Models_TheTopEndIsLargeV3AndParakeetIsTheAlternative)
+{
+    const AsrModel *top = FindAsrModel(L"ggml-large-v3.bin");
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(top && parakeet);
+    if (!top || !parakeet)
+        return;
+    CHECK(top->engine == AsrEngine::Whisper && !top->fixedLanguages && top->offered);
+    CHECK(top->gpuMemoryBytes >= (4ull << 30));                         /* only a PC with a card to match is offered it */
+    CHECK(parakeet->engine == AsrEngine::Parakeet && parakeet->fixedLanguages && parakeet->offered);
+    CHECK_EQ(parakeet->gpuMemoryBytes, std::uint64_t(0));               /* light enough for every PC */
+    CHECK_EQ(std::wstring(parakeet->licence), std::wstring(L"CC-BY-4.0"));      /* NVIDIA's weights */
+    for (const AsrModel &m : kAsrModels) {
+        if (&m != top)
+            CHECK(m.bytes <= top->bytes || m.engine != AsrEngine::Whisper);     /* of the Whisper ones, the biggest */
+    }
+}
+
+TEST(Models_TheTurboModelIsUsedWhenItIsThereButNoLongerOffered)
+{
+    const AsrModel *turbo = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    CHECK(turbo != nullptr);
+    CHECK(turbo && !turbo->offered);
+}
+
+TEST(Models_TheSmallEnglishModelIsGone)
+{
+    CHECK(FindAsrModel(L"ggml-small.en-q5_1.bin") == nullptr);          /* a copy in the models folder is simply not used */
+}
+
+TEST(Models_AStepDownGoesToTheLighterModelsOfTheSameEngineOnly)
+{
+    std::vector<const AsrModel *> installed;
+    for (const AsrModel &m : kAsrModels)
+        installed.push_back(&m);
+    const AsrModel *top = FindAsrModel(L"ggml-large-v3.bin");
+    const AsrModel *turbo = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const AsrModel *parakeet = FindAsrModel(L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin");
+    CHECK(top && turbo && parakeet);
+    if (!top || !turbo || !parakeet)
+        return;
+    const std::vector<const AsrModel *> lighter = SmallerModels(kAsrModels, top, installed);
+    CHECK(lighter.size() == 1 && lighter[0] == turbo);                          /* every language still understood */
+    CHECK(SmallerModels(kAsrModels, parakeet, installed).empty());              /* nothing lighter of its own kind, and Whisper weighs more */
+}
+
 
 /* ---- the manifest ---- */
 

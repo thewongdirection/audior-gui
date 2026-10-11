@@ -35,7 +35,8 @@ struct TranscriptEvent {
 struct TranscriptModel {
     std::wstring file;                      /* what RecordingSettings::transcribeModel names */
     std::wstring label;                     /* for the user                                  */
-    bool         multilingual = false;      /* false: English only                           */
+    std::wstring fixedLanguages;            /* what it understands, if it finds the language itself and cannot be
+                                               told (Parakeet: "European languages"); empty: it can be told */
 };
 
 /* What a stream's transcription is doing.  A problem here never ends the

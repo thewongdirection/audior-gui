@@ -6,7 +6,7 @@
  * recording, neither of which is in the repository.  Without them a test is
  * skipped and says so.  To run everything:
  *
- *     set AUDIOR_MODELS=<a folder holding ggml-small.en-q5_1.bin>
+ *     set AUDIOR_MODELS=<a folder holding a Whisper model, ggml-large-v3-turbo-q5_0.bin say>
  *     set AUDIOR_ASR_WAV=<a 16 kHz mono 16-bit WAV of speech>
  *     set AUDIOR_ASR_EXPECT=country            (a word the recording says; optional)
  *     bin\x64\run_tests.exe RealHelper_

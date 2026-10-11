@@ -94,7 +94,7 @@ if not exist "bin\x64\Audior-GUI.exe" (
     exit /b 1
 )
 if not exist "docs\screenshots" mkdir "docs\screenshots"
-for %%s in (recording idle saved error clipping hotkeys bluetooth-mic transcript-saved setup-ask setup-download setup-declined) do (
+for %%s in (recording idle saved error clipping hotkeys bluetooth-mic transcript-saved transcript-chinese setup-ask setup-download setup-declined) do (
     start "" /wait "bin\x64\Audior-GUI.exe" --screenshot "docs\screenshots\%%s.png" --scenario %%s
     if errorlevel 1 (
         echo Scenario %%s failed.
@@ -214,14 +214,15 @@ if defined DRV (
 )
 if not exist "bin\x64" mkdir "bin\x64"
 REM No backend may be left over from an earlier build.
-del /q "bin\x64\ggml*.dll" "bin\x64\whisper.dll" 2>nul
+del /q "bin\x64\ggml*.dll" "bin\x64\whisper.dll" "bin\x64\parakeet.dll" 2>nul
 copy /y "build\asr-x64\bin\audior_asr.exe" "bin\x64\audior_asr.exe" >nul || goto :asrfail
 copy /y "build\asr-x64\bin\whisper.dll" "bin\x64\" >nul || goto :asrfail
+copy /y "build\asr-x64\bin\parakeet.dll" "bin\x64\" >nul || goto :asrfail
 copy /y "build\asr-x64\bin\ggml*.dll" "bin\x64\" >nul || goto :asrfail
 
 REM The list of the helper's files with their SHA-256, which the recorder checks before it starts the helper.
 type nul > "bin\x64\audior_asr.sha256"
-for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll) do (
+for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll bin\x64\parakeet.dll) do (
     set "ASRHASH="
     for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "%%f" SHA256') do if not defined ASRHASH set "ASRHASH=%%h"
     if not defined ASRHASH goto :asrfail
@@ -232,9 +233,9 @@ for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll) do (
 REM Only Windows' own DLLs may be imported; the helper's own DLLs are allowed to each other, and the Vulkan backend
 REM to the graphics driver's vulkan-1.
 set "OWNDLLS="
-for %%f in (bin\x64\ggml*.dll bin\x64\whisper.dll) do set "OWNDLLS=!OWNDLLS!,%%~nf"
+for %%f in (bin\x64\ggml*.dll bin\x64\whisper.dll bin\x64\parakeet.dll) do set "OWNDLLS=!OWNDLLS!,%%~nf"
 set "OWNDLLS=!OWNDLLS:~1!"
-for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll) do (
+for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll bin\x64\parakeet.dll) do (
     set "ALLOWED=!OWNDLLS!"
     if /i "%%~nxf"=="ggml-vulkan.dll" set "ALLOWED=!OWNDLLS!,vulkan-1"
     powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 -Allow "!ALLOWED!" "%%f" || goto :asrfail

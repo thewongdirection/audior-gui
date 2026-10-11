@@ -16,7 +16,9 @@ void TranscriptEvent::SetText(const wchar_t *source, std::size_t length)
     while (cut > 0 && source[cut] != L' ')              /* the last word boundary that fits */
         --cut;
     if (cut == 0)
-        cut = room;                                     /* one huge word: cut it */
+        cut = room;                                     /* one huge word (Chinese has no spaces): cut it */
+    if (cut > 0 && source[cut - 1] >= 0xD800 && source[cut - 1] <= 0xDBFF)
+        --cut;                                          /* not between the halves of a character */
     std::wmemcpy(text, source, cut);
     text[cut] = L'…';
     text[cut + 1] = L'\0';

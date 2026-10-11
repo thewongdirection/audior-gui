@@ -53,7 +53,7 @@ SetupPlan PlanSetup(const HardwareProfile &hw, bool backendPresent, const std::v
 
     for (std::size_t i = 0; i < modelCount; ++i) {
         const AsrModel &m = models[i];
-        if (m.gpuMemoryBytes == 0 || (plan.gpu.use == GpuUse::Usable && plan.gpu.cardBytes >= m.gpuMemoryBytes))
+        if (m.offered && (m.gpuMemoryBytes == 0 || (plan.gpu.use == GpuUse::Usable && plan.gpu.cardBytes >= m.gpuMemoryBytes)))
             plan.download.push_back(&m);
     }
     if (!plan.download.empty() && vad && !vadInstalled)

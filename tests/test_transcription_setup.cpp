@@ -18,7 +18,7 @@ const char kHash[] = "0000000000000000000000000000000000000000000000000000000000
 
 const AsrModel kTable[] = {
     {L"small.bin", kHash, 100 * kMiB, L"Small", L"MIT", L"https://example.test/m"},
-    {L"big.bin", kHash, 300 * kMiB, L"Big", L"MIT", L"https://example.test/m", true, 4ull << 30},
+    {L"big.bin", kHash, 300 * kMiB, L"Big", L"MIT", L"https://example.test/m", nullptr, 4ull << 30},
 };
 const AsrModel kVoice = {L"voice.bin", kHash, 1 * kMiB, L"Voice", L"MIT", L"https://example.test/v"};
 

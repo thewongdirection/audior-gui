@@ -15,7 +15,7 @@ const char kHash[] = "0000000000000000000000000000000000000000000000000000000000
 /* A small table in the table's own shape: one model for every PC, one that wants a card of 4 GiB. */
 const AsrModel kTable[] = {
     {L"small.bin", kHash, 100, L"Small", L"MIT", L"https://example.test/m"},
-    {L"big.bin", kHash, 300, L"Big", L"MIT", L"https://example.test/m", true, 4 * kGiB},
+    {L"big.bin", kHash, 300, L"Big", L"MIT", L"https://example.test/m", nullptr, 4 * kGiB},
 };
 const AsrModel &kSmall = kTable[0], &kBig = kTable[1];
 const AsrModel kVoice = {L"voice.bin", kHash, 7, L"Voice", L"MIT", L"https://example.test/v"};
@@ -121,10 +121,25 @@ TEST(Plan_ThePlanOfTheRealTableAlwaysOffersAModelToAPcWithNone)
 {
     const SetupPlan plan = PlanSetup(HardwareProfile(), true, {}, false);
     CHECK(plan.download.size() >= 2);                                   /* a model and the voice model */
-    CHECK(plan.download[0] == &kAsrModels[0]);                          /* the one that suits every PC comes first */
+    CHECK(plan.download[0]->gpuMemoryBytes == 0);                       /* the one that suits every PC (Parakeet), and no other */
+    CHECK(plan.download[0]->engine == AsrEngine::Parakeet);
+    CHECK_EQ(plan.download.size(), std::size_t(2));
     CHECK(plan.download.back() == &kVadModel);
     std::uint64_t total = 0;
-    for (const AsrModel *m : plan.download)
+    for (const AsrModel *m : plan.download) {
         total += m->bytes;
+        CHECK(m == &kVadModel || m->offered);                           /* what the user has to bring is never fetched */
+    }
     CHECK_EQ(plan.bytes, total);
+}
+
+TEST(Plan_AModelThatIsNotOfferedIsNeverPlannedForDownload)
+{
+    AsrModel table[2] = {{L"a.bin", "x", 100, L"A", L"MIT", L"https://huggingface.co/x"},
+                         {L"b.bin", "x", 200, L"B", L"MIT", L"https://huggingface.co/x"}};
+    table[1].offered = false;
+    const SetupPlan plan = PlanSetup(HardwareProfile(), true, {}, true, table, 2, nullptr);
+    CHECK_EQ(plan.download.size(), std::size_t(1));
+    CHECK(plan.download.size() == 1 && plan.download[0] == &table[0]);
+    CHECK_EQ(plan.bytes, std::uint64_t(100));
 }

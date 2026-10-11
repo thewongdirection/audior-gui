@@ -71,6 +71,7 @@ public:
     struct Fallback {
         std::wstring     model;
         TransportFactory factory;
+        AsrEngine        engine = AsrEngine::Whisper;
     };
 
     struct Options {
@@ -81,6 +82,7 @@ public:
                                                        without using up a restart                  */
         SpeechLanguage language = SpeechLanguage::Auto;     /* and what to take the speech for (Hello) */
         bool         gpu = true;                    /* and whether it may use the graphics card (Hello) */
+        AsrEngine    engine = AsrEngine::Whisper;   /* and what the model is for (Hello); a Fallback has its own */
         int          maxRestarts    = 3;            /* in a row; then the streams are Failed       */
         int          backoffMs      = 1000;         /* before the first restart; doubles after     */
         int          healthyMs      = 60000;        /* a helper that ran this long before dying
@@ -160,6 +162,7 @@ private:
     bool Handle(const asr::Message &message);
     const TransportFactory &CurrentFactory() const { return stage_ == 0 ? factory_ : options_.fallbacks[stage_ - 1].factory; }
     const std::wstring &CurrentModel() const { return stage_ == 0 ? options_.model : options_.fallbacks[stage_ - 1].model; }
+    AsrEngine CurrentEngine() const { return stage_ == 0 ? options_.engine : options_.fallbacks[stage_ - 1].engine; }
     bool StepRequested();
     bool TakeStepRequest();
     bool Wanted(StreamId stream) const { return (streams_ & (1u << StreamIndex(stream))) != 0; }

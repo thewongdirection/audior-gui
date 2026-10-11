@@ -318,6 +318,7 @@ bool TranscriptionHost::WriteLoop(IAsrTransport &transport)
     message.streams = streams_;
     message.language = options_.language;
     message.gpu = options_.gpu;
+    message.engine = CurrentEngine();
     message.text = CurrentModel();
     message.vadModel = options_.vadModel;
     if (!send())

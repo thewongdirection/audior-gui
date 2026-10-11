@@ -215,10 +215,11 @@ TEST(Cli_AnUnknownTranscriptionModelOrLanguageIsRejected)
 {
     const Parsed model = Parse({L"--transcribe-model", L"mystery.bin"});
     CHECK(!model.result.error.empty());
-    CHECK(model.result.error.find(L"ggml-small.en-q5_1.bin") != std::wstring::npos);    /* it says what to use */
+    CHECK(model.result.error.find(L"ggml-large-v3.bin") != std::wstring::npos);         /* it says what to use */
     CHECK(!Parse({L"--transcribe-model"}).result.error.empty());
 
-    CHECK(!Parse({L"--transcribe-language", L"fr"}).result.error.empty());
+    const Parsed language = Parse({L"--transcribe-language", L"klingon"});
+    CHECK(language.result.error.find(L"zh-hant") != std::wstring::npos);            /* it says what to use */
     CHECK(!Parse({L"--transcribe-language"}).result.error.empty());
 }
 

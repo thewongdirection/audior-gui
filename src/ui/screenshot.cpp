@@ -4,6 +4,7 @@
 
 #include <memory>
 
+#include "../core/asr_languages.h"
 #include "../core/asr_models.h"
 #include "../core/recorder_controller.h"
 #include "../core/setup_status.h"
@@ -76,10 +77,11 @@ bool BuildSetup(Scene &scene, const std::wstring &name)
     } else if (name == L"setup-download") {                 /* the second file, two fifths of the way */
         status = DownloadingStatus(plan, 1, plan.download[0]->bytes + plan.download[1]->bytes * 2 / 5);
     } else if (name == L"setup-done") {                     /* the models have arrived: the Transcript section is complete */
-        status = ReadyStatus(plan.gpu, kAsrModels[0].label, true);
+        status = ReadyStatus(plan.gpu, plan.download[0]->label, true);
         status.modelsChanged = true;
     } else if (name == L"setup-failed") {
-        status = FailedStatus(L"Download failed", L"The download of Small · English did not finish: the connection was lost (error 12030).");
+        status = FailedStatus(L"Download failed", std::wstring(L"The download of ") + plan.download[0]->label +
+                                                          L" did not finish: the connection was lost (error 12030).");
         status.canRetry = true;
     } else if (name == L"setup-declined") {                 /* "Not now" was answered before: nothing to show but the link */
         status.scanned = true;
@@ -102,7 +104,7 @@ bool Build(Scene &scene, const std::wstring &name)
         return BuildSetup(scene, name);
     if (name == L"idle" || name == L"hotkeys" || name == L"hotkey-taken")      /* the view does the rest */
         return true;
-    if (name == L"model") {                              /* idle, the multilingual model chosen, transcripts on */
+    if (name == L"model") {                              /* idle, a Whisper model chosen, transcripts on */
         RecordingSettings &s = ctl.Settings();
         s.includeSystemAudio = s.transcribeMicrophone = s.transcribeSystem = true;
         s.transcribeModel = kAsrModels[1].file;
@@ -118,11 +120,16 @@ bool Build(Scene &scene, const std::wstring &name)
         return true;
     }
 
-    const bool transcripts = name == L"transcript" || name == L"transcript-saved" || name == L"catching-up";
+    const bool transcripts = name == L"transcript" || name == L"transcript-saved" || name == L"catching-up" ||
+                             name == L"transcript-chinese";
     if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping" || transcripts) {
         ctl.Settings().includeSystemAudio = true;
         if (transcripts)
             ctl.Settings().transcribeMicrophone = ctl.Settings().transcribeSystem = true;
+        if (name == L"transcript-chinese") {            /* the meeting in Chinese: Whisper, told the language */
+            ctl.Settings().transcribeModel = kAsrModels[1].file;
+            FindSpeechLanguage(L"zh", &ctl.Settings().transcribeLanguage);
+        }
         if (name == L"catching-up")
             scene.engine.FallBehindAfter(8.0);
         if (name == L"clipping")

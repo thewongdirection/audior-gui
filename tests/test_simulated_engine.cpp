@@ -4,6 +4,7 @@
 
 #include "../src/core/asr_models.h"
 #include "../src/core/lag_governor.h"
+#include "../src/core/asr_languages.h"
 #include "../src/engine/simulated_engine.h"
 #include "test_support.h"
 
@@ -447,6 +448,32 @@ TEST(Sim_AnUtteranceIsSpokenWordByWordThenFinal)
     }
     CHECK_EQ(std::wstring(events[10].text), std::wstring(events[11].text));    /* the final repeats the last partial */
     CHECK(std::wstring(events[11].text).compare(0, 4, L"Okay") == 0);
+}
+
+TEST(Sim_ChineseIsHeardTwoCharactersAtATimeWithNoSpaces)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    CHECK(FindSpeechLanguage(L"zh", &rig.settings.transcribeLanguage));
+    rig.Start();
+    rig.now = 4.5;
+    const auto events = rig.TakeText(StreamId::Microphone);
+
+    CHECK_EQ(events.size(), std::size_t(12));           /* 21 characters: ten times two and one, then the final */
+    CHECK(events.back().isFinal);
+    const std::wstring all = events.back().text;
+    CHECK_EQ(all, std::wstring(L"好的，我们开始吧。感谢大家这么快就赶过来。"));
+    for (std::size_t i = 0; i + 1 < events.size(); ++i) {
+        const std::wstring part = events[i].text;
+        CHECK_EQ(part.size(), std::min<std::size_t>(2 * (i + 1), all.size()));
+        CHECK(all.compare(0, part.size(), part) == 0);                  /* each is the start of the next */
+    }
+    rig.engine.Stop();
+    Rig english;
+    english.settings.transcribeMicrophone = true;
+    english.Start();
+    english.now = 4.5;
+    CHECK(std::wstring(english.TakeText(StreamId::Microphone).back().text).compare(0, 4, L"Okay") == 0);   /* the other language still plays */
 }
 
 TEST(Sim_TextAppearsAtTheScriptedTimes)

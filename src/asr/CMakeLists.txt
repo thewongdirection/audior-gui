@@ -36,6 +36,8 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../third_party/whisper.cpp whisper
 
 add_executable(audior_asr
     helper.cpp
+    backends.cpp
+    parakeet_decoder.cpp
     silero_classifier.cpp
     whisper_decoder.cpp
     ../core/asr_protocol.cpp
@@ -45,5 +47,5 @@ add_executable(audior_asr
     ../core/utterance_tracker.cpp)
 target_compile_definitions(audior_asr PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_compile_options(audior_asr PRIVATE /W4 /utf-8 /EHsc)
-target_link_libraries(audior_asr PRIVATE whisper)
+target_link_libraries(audior_asr PRIVATE whisper parakeet)
 set_target_properties(audior_asr PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)     # next to the DLLs

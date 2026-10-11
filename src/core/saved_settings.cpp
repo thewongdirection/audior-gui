@@ -1,5 +1,6 @@
 #include "saved_settings.h"
 
+#include "asr_languages.h"
 #include "asr_models.h"
 #include "format.h"
 
@@ -115,8 +116,7 @@ void Apply(SavedSettings *saved, const std::wstring &key, const std::wstring &va
         else if (const AsrModel *model = FindAsrModel(value))
             s.transcribeModel = model->file;
     } else if (key == L"transcribeLanguage") {
-        if (value == L"auto" || value == L"en")
-            s.transcribeLanguage = value == L"en" ? SpeechLanguage::English : SpeechLanguage::Auto;
+        FindSpeechLanguage(value, &s.transcribeLanguage);               /* one that is not known leaves it as it was */
     } else if (key == L"transcribeGpu") {
         ReadOnOff(value, &s.transcribeGpu);
     } else if (key == L"modelDownload") {
@@ -150,7 +150,7 @@ std::wstring FormatSavedSettings(const SavedSettings &saved)
     AddLine(&text, L"transcribeMicrophone", OnOff(s.transcribeMicrophone));
     AddLine(&text, L"transcribeSystem", OnOff(s.transcribeSystem));
     AddLine(&text, L"transcribeModel", s.transcribeModel);
-    AddLine(&text, L"transcribeLanguage", s.transcribeLanguage == SpeechLanguage::English ? L"en" : L"auto");
+    AddLine(&text, L"transcribeLanguage", InfoOf(s.transcribeLanguage).word);
     AddLine(&text, L"transcribeGpu", OnOff(s.transcribeGpu));
     AddLine(&text, L"modelDownload", saved.downloadDeclined ? L"declined" : L"ask");
     AddLine(&text, L"startHotkey", FormatHotkey(saved.hotkeys[HotkeyIndex(HotkeyAction::Start)]));

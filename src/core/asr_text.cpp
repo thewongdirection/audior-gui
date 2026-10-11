@@ -22,18 +22,69 @@ void Append(std::wstring *out, unsigned long codePoint)
 
 bool IsSpace(wchar_t c) { return c == L' ' || c == L'\t' || c == L'\r' || c == L'\n' || c == 0xA0; }
 
+bool In(wchar_t c, unsigned first, unsigned last) { return c >= first && c <= last; }
+
 /* Something that can be said: a letter or a digit.  Above ASCII, the letters of every script count; the
- * Latin-1 punctuation, general punctuation, symbols and notes, emoji (surrogates) and the replacement
- * character do not. */
+ * punctuation of Latin-1, of general use and of the CJK and full-width blocks (and of Arabic and Hindi),
+ * symbols and notes, emoji (surrogates) and the replacement character do not. */
 bool IsSpoken(wchar_t c)
 {
     if ((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z'))
         return true;
     if (c < 0xC0)
         return c == 0xAA || c == 0xB5 || c == 0xBA;                 /* the few letters among Latin-1's symbols */
-    if ((c >= 0x2000 && c <= 0x2BFF) || (c >= 0xD800 && c <= 0xDFFF) || c == 0xFFFD)
+    if (c == 0xD7 || c == 0xF7 || c == 0xFFFD || In(c, 0xD800, 0xDFFF) || In(c, 0x2000, 0x2BFF) || In(c, 0x2E00, 0x2E7F))
         return false;
+    if (c == 0x60C || c == 0x61B || c == 0x61F || In(c, 0x66A, 0x66D) || c == 0x6D4 || In(c, 0x964, 0x965))
+        return false;                                               /* Arabic and Devanagari punctuation */
+    if (In(c, 0x3000, 0x3004) || In(c, 0x3008, 0x3020) || c == 0x3030 || In(c, 0x303D, 0x303F) || c == 0x30A0 || c == 0x30FB)
+        return false;                                               /* CJK punctuation, brackets, the middle dot */
+    if (In(c, 0xFF01, 0xFF0F) || In(c, 0xFF1A, 0xFF20) || In(c, 0xFF3B, 0xFF40) || In(c, 0xFF5B, 0xFF65) || In(c, 0xFFE0, 0xFFEE))
+        return false;                                               /* the same, full width */
     return true;
+}
+
+bool IsHan(wchar_t c) { return In(c, 0x3400, 0x4DBF) || In(c, 0x4E00, 0x9FFF) || In(c, 0xF900, 0xFAFF); }
+
+/* A character of a script written without spaces between words (Chinese, Japanese, Thai, Lao, Burmese, Khmer): to
+ * the loop guard each one is a word.  A pair of surrogates for one of the rarer Chinese characters is one. */
+bool IsUnspaced(const std::wstring &text, std::size_t i)
+{
+    const wchar_t c = text[i];
+    if (In(c, 0x3041, 0x30FF))                          /* kana, but not the double hyphen and the middle dot */
+        return c != 0x30A0 && c != 0x30FB;
+    return IsHan(c) || In(c, 0x0E00, 0x0EFF) || In(c, 0x1000, 0x109F) || In(c, 0x1780, 0x17FF) ||
+           (In(c, 0xD840, 0xD87F) && i + 1 < text.size() && In(text[i + 1], 0xDC00, 0xDFFF));
+}
+
+/* The full-width mark Chinese text has in place of an ASCII one, or the mark itself: Whisper writes the commas and
+ * question marks of Chinese as it does in English, whatever it was asked.  A full stop only counts at the end of a
+ * sentence ("3.5" is a number). */
+wchar_t FullWidthMark(wchar_t mark, bool endsSentence)
+{
+    switch (mark) {
+    case L',': return 0xFF0C;
+    case L'?': return 0xFF1F;
+    case L'!': return 0xFF01;
+    case L':': return 0xFF1A;
+    case L';': return 0xFF1B;
+    case L'.': return endsSentence ? 0x3002 : mark;
+    default: return mark;
+    }
+}
+
+/* What ends an annotation that `open` begins, or 0 if it begins none: [..], (..), *..*, and the full-width （..）, 【..】, ［..］. */
+wchar_t ClosingMark(wchar_t open)
+{
+    switch (open) {
+    case L'[': return L']';
+    case L'(': return L')';
+    case L'*': return L'*';
+    case 0xFF08: return 0xFF09;
+    case 0x3010: return 0x3011;
+    case 0xFF3B: return 0xFF3D;
+    default: return 0;
+    }
 }
 
 /* Whether text[from, to) has a letter in it: "(laughs)" is an annotation, "(1)" and "5 * 3 * 2" are not. */
@@ -114,17 +165,42 @@ std::string Utf8FromWide(const std::wstring &text)
 
 namespace {
 
-constexpr std::size_t kMaxPhraseWords = 12;
+constexpr std::size_t kMaxPhraseWords = 30;             /* a long sentence, as the large model repeats whole ones */
 constexpr std::size_t kLoopRepeats = 3, kLoopRepeatsOfOneWord = 6;
+/* A phrase this long, said twice in a row word for word, is the model's doing, not the speaker's (the large
+ * model does it when it is given a shortened audio window): one copy is kept, without calling it a loop.  So
+ * is the start of a long phrase (at least 5 of its words) that follows a copy of it at once and ends the text:
+ * the copy the model was cut off in. */
+constexpr std::size_t kLongPhraseWords = 5, kLongPhraseRepeats = 2, kPartialCopyMinWords = 8;
 
-std::vector<std::wstring> Words(const std::wstring &text)
+struct Word {
+    std::wstring text;
+    bool         spaceBefore;               /* white space came before it: it is put back when the word is kept */
+};
+
+/* The words of a text: what is between spaces, except that each character of an unspaced script is one on its
+ * own (with the punctuation after it), and a Latin word ends where such a character begins. */
+std::vector<Word> Words(const std::wstring &text)
 {
-    std::vector<std::wstring> words;
+    std::vector<Word> words;
+    bool space = false;
     for (std::size_t at = 0; at < text.size();) {
-        const std::size_t end = std::min(text.find(L' ', at), text.size());
-        if (end > at)
-            words.push_back(text.substr(at, end - at));
-        at = end + 1;
+        if (IsSpace(text[at])) {
+            space = true;
+            ++at;
+            continue;
+        }
+        const std::size_t from = at;
+        if (IsUnspaced(text, at)) {
+            at += In(text[at], 0xD800, 0xDBFF) ? 2 : 1;
+            while (at < text.size() && !IsSpace(text[at]) && !IsSpoken(text[at]) && !IsUnspaced(text, at))
+                ++at;                               /* "好，" and "你好。": the mark goes with the character */
+        } else {
+            while (at < text.size() && !IsSpace(text[at]) && !IsUnspaced(text, at))
+                ++at;
+        }
+        words.push_back({text.substr(from, at - from), space});
+        space = false;
     }
     return words;
 }
@@ -147,32 +223,51 @@ std::wstring Plain(const std::wstring &word)
 
 std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found)
 {
-    const std::vector<std::wstring> words = Words(text);
+    const std::vector<Word> words = Words(text);
     std::vector<std::wstring> plain;
-    for (const std::wstring &w : words)
-        plain.push_back(Plain(w));
+    std::size_t unspaced = 0;
+    for (const Word &w : words) {
+        plain.push_back(Plain(w.text));
+        unspaced += IsUnspaced(w.text, 0);
+    }
+    /* A character of such a script is about half a word: a phrase has to be twice as long in them to count as long. */
+    const std::size_t scale = unspaced * 2 > words.size() ? 2 : 1;
 
     *found = false;
     std::wstring out;
     for (std::size_t i = 0; i < words.size();) {
         std::size_t skip = 0;                           /* how many words of a loop starting here can be dropped */
         std::size_t kept = 1;
-        for (std::size_t length = 1; length <= kMaxPhraseWords && i + 2 * length <= words.size(); ++length) {
+        bool loop = false;                              /* ...and whether that was a loop, not just a phrase said twice */
+        for (std::size_t length = 1; length <= kMaxPhraseWords * scale && i + length < words.size(); ++length) {
+            const std::size_t inWords = (length + scale - 1) / scale;
             std::size_t repeats = 1;
             while (i + (repeats + 1) * length <= words.size() &&
                    std::equal(plain.begin() + i, plain.begin() + i + length, plain.begin() + i + repeats * length))
                 ++repeats;
-            if (repeats >= (length == 1 ? kLoopRepeatsOfOneWord : kLoopRepeats) && (repeats - 1) * length > skip) {
-                skip = (repeats - 1) * length;
+            /* A last copy that was cut short (the model ran out of room): the words after the phrase begin it again. */
+            std::size_t tail = 0;
+            const std::size_t after = i + repeats * length;
+            while (tail + 1 < length && after + tail < words.size() && plain[i + tail] == plain[after + tail])
+                ++tail;
+            const bool cutShort = after + tail == words.size();         /* the cut-off copy ends the text */
+            const std::size_t extra = inWords >= kPartialCopyMinWords && tail >= kLongPhraseWords * scale && cutShort ? tail : 0;
+            /* one word, which people do say twice or thrice, has to fill as much as six of them (six characters, or three
+             * of two, are not a loop in Chinese: it takes twelve of one and six of two) */
+            const std::size_t loopRepeats = inWords == 1 ? (kLoopRepeatsOfOneWord * scale + length - 1) / length : kLoopRepeats;
+            const std::size_t needed = inWords >= kLongPhraseWords ? kLongPhraseRepeats : loopRepeats;
+            if ((repeats >= needed || extra > 0) && (repeats - 1) * length + extra > skip) {
+                skip = (repeats - 1) * length + extra;
                 kept = length;
+                loop = repeats >= loopRepeats;
             }
         }
         for (std::size_t k = 0; k < kept; ++k) {
-            if (!out.empty())
+            if (!out.empty() && words[i + k].spaceBefore)
                 out.push_back(L' ');
-            out += words[i + k];
+            out += words[i + k].text;
         }
-        if (skip > 0)
+        if (skip > 0 && loop)
             *found = true;
         i += kept + skip;
     }
@@ -184,7 +279,7 @@ std::wstring CleanTranscript(const std::wstring &text)
     std::wstring kept;
     for (std::size_t i = 0; i < text.size();) {
         const wchar_t open = text[i];
-        const wchar_t close = open == L'[' ? L']' : open == L'(' ? L')' : open == L'*' ? L'*' : 0;
+        const wchar_t close = ClosingMark(open);
         if (close) {
             const std::size_t end = text.find(close, i + 1);
             if (end != std::wstring::npos && end - i - 1 <= kMaxAnnotation && HasLetter(text, i + 1, end)) {
@@ -198,12 +293,14 @@ std::wstring CleanTranscript(const std::wstring &text)
 
     std::wstring out;
     bool spoken = false;
-    for (wchar_t c : kept) {
+    for (std::size_t i = 0; i < kept.size(); ++i) {
+        const wchar_t c = kept[i];
         if (IsSpace(c)) {
             if (!out.empty() && out.back() != L' ')
                 out.push_back(L' ');
-        } else {
-            out.push_back(c);
+        } else if (c != 0xFFFD) {                       /* a model cut in the middle of a character leaves this behind */
+            const bool afterHan = !out.empty() && IsHan(out.back());
+            out.push_back(afterHan ? FullWidthMark(c, i + 1 == kept.size() || IsSpace(kept[i + 1])) : c);
             spoken = spoken || IsSpoken(c);
         }
     }
