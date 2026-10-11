@@ -168,6 +168,8 @@ std::vector<DeviceInfo> SimulatedEngine::ListDevices(DeviceKind kind)
 std::vector<TranscriptModel> SimulatedEngine::TranscriptModels() const
 {
     std::vector<TranscriptModel> models;
+    if (!modelsPresent_)
+        return models;
     for (const AsrModel &m : kAsrModels)
         models.push_back(ModelChoice(m));
     return models;

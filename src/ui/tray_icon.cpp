@@ -143,12 +143,12 @@ void TrayIcon::Remove()
     added_ = false;
 }
 
-void TrayIcon::Balloon(const std::wstring &title, const std::wstring &text)
+void TrayIcon::Balloon(const std::wstring &title, const std::wstring &text, bool warning)
 {
     if (!added_)
         return;
     data_.uFlags = NIF_INFO;
-    data_.dwInfoFlags = NIIF_WARNING;
+    data_.dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO;
     Copy(data_.szInfoTitle, ARRAYSIZE(data_.szInfoTitle), title);
     Copy(data_.szInfo, ARRAYSIZE(data_.szInfo), text);
     Shell_NotifyIconW(NIM_MODIFY, &data_);

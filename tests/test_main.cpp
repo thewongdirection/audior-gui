@@ -15,6 +15,7 @@
 #include <cstring>
 
 #include "fake_asr_helper.h"
+#include "fake_fetch.h"
 #include "test_support.h"
 
 namespace testing {
@@ -50,6 +51,8 @@ int main(int argc, char **argv)
     using namespace testing;
     if (argc > 2 && std::strcmp(argv[1], kFakeAsrHelperFlag) == 0)      /* started by a test, to play the helper */
         return RunFakeAsrHelper(argv[2]);
+    if (argc > 5 && std::strcmp(argv[1], kFakeFetchFlag) == 0)          /* the same, to play the download program */
+        return RunFakeFetch(argv[2], argv[3], argv[4], argv[5]);
     const char *filter = argc > 1 ? argv[1] : nullptr;
 
     if (filter && std::strcmp(filter, "--list") == 0) {

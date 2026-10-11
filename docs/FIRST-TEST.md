@@ -132,6 +132,31 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | Start with `--transcribe-model ggml-large-v3-turbo-q5_0.bin` while that file is not in the models folder | Recording does not start and the message names the missing model. |
 | Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--english] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
 
+## 5. The start-up set-up of transcription (only with the helper)
+
+Needs `audior_asr.exe` with its list next to `Audior-GUI.exe`, and `audior_fetch.exe` with
+`audior_fetch.sha256` (`build.bat` makes the second pair; `build.bat x64 asr` the first). The
+downloads are 181 MiB (and 547 MiB, only on a PC whose card has 4 GiB or more of its own
+memory) and need a connection. To start over between rows: delete the files of the models
+folder, and the registry value `DownloadDeclined` under `HKEY_CURRENT_USER\Software\Audior-GUI`.
+
+| Try | Expect |
+|---|---|
+| Start the program with the models folder empty | A notification above the two panes: *Live transcripts need a speech model*, naming the files, their total size and `huggingface.co`, and saying which graphics card will be used (or why the processor will do the work). Nothing is downloaded yet (check the folder, and Task Manager's network column). The panel's Transcript section says *Waiting for your answer*. |
+| Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; the multilingual model is in the list of files. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only the small model and the voice detector are named, and the sentence says why the processor is used. |
+| Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Transcript** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
+| Record with a transcript on straight afterwards | Works as in section 4. |
+| Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |
+| Delete the models, start, press **Not now** | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |
+| Press **Download**, then **Cancel** while it runs | *Download cancelled*; no `.part` file is left; the next start asks again (a cancel is not a "not now"). |
+| Press **Download** and unplug the network (or block `huggingface.co`) | *Download failed* with the reason, and **Try again**. The next start asks again. |
+| Press **Download**, then minimize the window to the tray | The tray tooltip shows the percentage; a balloon says when it finished or failed. At the next start with the window minimized, a balloon says that a model is needed and waits for you to open the window. |
+| Press **Download** and close the window mid-way | The program ends at once; no `.part` file is left and no `audior_fetch.exe` stays in Task Manager. |
+| Start a recording while the download runs | The recording is not affected (no stutter), and the notification keeps going. |
+| Change one byte of `audior_fetch.exe` and start with no model | No question: the notification says the download program is not the one in its list. |
+| Remove `audior_fetch.exe` | The notification says a model can be put in the folder by hand; transcription with a model that is there is not affected. |
+| `Audior-GUI --demo` | No notification at all: the demo has its own simulated models. |
+
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of

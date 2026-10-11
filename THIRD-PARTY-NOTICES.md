@@ -1,9 +1,11 @@
 # Third-party notices
 
-audior-gui itself is built only on what ships with Windows. The optional live
-transcription helper and the speech models it can use are the exceptions. Each
-is used under its own licence, listed here; the models are downloaded by the
-user and are not part of this repository.
+audior-gui itself is built only on what ships with Windows (the program that
+downloads a model, `audior_fetch.exe`, uses Windows' own WinHTTP and nothing
+else). The optional live transcription helper and the speech models it can use
+are the exceptions. Each is used under its own licence, listed here; the models
+are downloaded by the user, or by the program once the user agrees, and are not
+part of this repository.
 
 ## Code
 
@@ -23,8 +25,9 @@ the PC's graphics driver provides.
 
 ## Models
 
-Models are not distributed with audior-gui. The recorder uses a model only if it
-is one of those below, with the size and SHA-256 listed in
+Models are not distributed with audior-gui. They are fetched from Hugging Face
+(by the user, or by `audior_fetch.exe` after the user has agreed), and the recorder
+uses a model only if it is one of those below, with the size and SHA-256 listed in
 `src/core/asr_models.h`.
 
 | Model | Licence | Source |

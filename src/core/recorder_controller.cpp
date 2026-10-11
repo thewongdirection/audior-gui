@@ -1,5 +1,6 @@
 #include "recorder_controller.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace audiorgui {
@@ -10,6 +11,8 @@ constexpr std::size_t kPullChunk     = 256;     /* bins per TakePeaks() call    
 constexpr std::size_t kTranscriptChunk = 4;     /* events per TakeTranscript() call     */
 constexpr int         kMaxPullsPerTick = 64;    /* bounds a misbehaving engine's output */
 constexpr int         kMaxNumberedNames = 1000; /* " (2)" ... " (999)" before giving up   */
+constexpr double      kSetupResultSeconds = 10.0; /* how long the notification of a finished set-up stays   */
+constexpr double      kSetupAwaitSeconds = 2.0;  /* how long to wait for the set-up to answer a request  */
 
 }  // namespace
 
@@ -194,8 +197,94 @@ bool RecorderController::Animating() const
     return false;
 }
 
+bool RecorderController::SetupBusy() const
+{
+    if (!setupSource_)
+        return false;
+    switch (setup_.phase) {
+    case SetupPhase::Scanning:
+    case SetupPhase::Downloading:
+        return true;
+    case SetupPhase::Finished:                  /* a failure stays until it is dismissed: nothing to count down */
+        return setupAwaitSeconds_ > 0.0 || (!setupDismissed_ && setup_.result != SetupResult::Failed);
+    default:
+        return setupAwaitSeconds_ > 0.0;
+    }
+}
+
+void RecorderController::RefreshTranscription()
+{
+    engine_.RescanTranscription();
+    transcriptModels_ = engine_.TranscriptModels();
+}
+
+void RecorderController::AnswerSetup(bool download)
+{
+    if (!setupSource_)
+        return;
+    setupSource_->Answer(download);
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+}
+
+void RecorderController::CancelSetup()
+{
+    if (!setupSource_)
+        return;
+    setupSource_->Cancel();
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+}
+
+void RecorderController::RetrySetup()
+{
+    if (!setupSource_)
+        return;
+    setupSource_->Retry();
+    setupDismissed_ = false;
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+    ++setupVersion_;
+}
+
+void RecorderController::DismissSetup()
+{
+    setupDismissed_ = true;
+    ++setupVersion_;
+}
+
+/* Takes what the set-up has to say, and applies what it found out. */
+void RecorderController::PollSetup(double dtSeconds)
+{
+    if (!setupSource_)
+        return;
+    if (setupSource_->Poll(&setup_)) {
+        ++setupVersion_;
+        setupDismissed_ = false;
+        setupShownSeconds_ = 0.0;
+        setupAwaitSeconds_ = 0.0;
+        if (setup_.phase == SetupPhase::Scanning)           /* a new run */
+            gpuApplied_ = modelsApplied_ = false;
+        if (setup_.scanned && !gpuApplied_) {
+            gpuApplied_ = true;
+            if (!setup_.gpuUsable)                          /* only ever turned off: a user's --transcribe-cpu stays */
+                settings_.transcribeGpu = false;
+        }
+        if (setup_.modelsChanged && !modelsApplied_) {
+            modelsApplied_ = true;
+            RefreshTranscription();
+        }
+        return;
+    }
+
+    setupAwaitSeconds_ = std::max(0.0, setupAwaitSeconds_ - dtSeconds);
+    if (setup_.phase == SetupPhase::Finished && !setupDismissed_ && setup_.result != SetupResult::Failed) {
+        setupShownSeconds_ += dtSeconds;
+        if (setupShownSeconds_ >= kSetupResultSeconds)
+            DismissSetup();
+    }
+}
+
 void RecorderController::Tick(double dtSeconds)
 {
+    PollSetup(dtSeconds);
     if (phase_ == Phase::Recording) {
         DrainPeaks();
         DrainTranscripts();

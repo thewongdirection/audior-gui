@@ -14,8 +14,12 @@ void CreateOutputFolder(const std::wstring &filePath)
         CreateDirectoryW(filePath.substr(0, slash).c_str(), nullptr);       /* fails harmlessly if it exists */
 }
 
-WasapiEngine::WasapiEngine() : transcribes_(FindAsr(ProgramDirectory(), ModelsDirectory(), &asr_))
+WasapiEngine::WasapiEngine() { RescanTranscription(); }
+
+void WasapiEngine::RescanTranscription()
 {
+    transcribes_ = FindAsr(ProgramDirectory(), ModelsDirectory(), &asr_);
+    models_.clear();
     if (!transcribes_)
         return;
     for (const AsrModel *m : InstalledModels(ModelsDirectory()))

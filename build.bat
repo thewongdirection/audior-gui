@@ -16,6 +16,8 @@ REM                              in the README and docs; run it whenever the win
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
 REM    Audior-GUI.exe     the application
+REM    audior_fetch.exe   the program that downloads a speech model, with audior_fetch.sha256 (the one
+REM                       file of the project that uses the network; the recorder starts it only after the user says yes)
 REM    run_tests.exe      the unit tests (run by this script)
 REM    hardware_tests.exe the tests that record on this PC's audio devices (hardware option only)
 REM  Intermediate files go to build\<arch>.
@@ -92,7 +94,7 @@ if not exist "bin\x64\Audior-GUI.exe" (
     exit /b 1
 )
 if not exist "docs\screenshots" mkdir "docs\screenshots"
-for %%s in (recording idle saved error clipping hotkeys bluetooth-mic) do (
+for %%s in (recording idle saved error clipping hotkeys bluetooth-mic setup-ask setup-download setup-declined) do (
     start "" /wait "bin\x64\Audior-GUI.exe" --screenshot "docs\screenshots\%%s.png" --scenario %%s
     if errorlevel 1 (
         echo Scenario %%s failed.
@@ -118,7 +120,8 @@ set "LFLAGS=/OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib ucrt.lib"
 set "GUILIBS=user32.lib gdi32.lib shell32.lib dwmapi.lib d2d1.lib dwrite.lib windowscodecs.lib"
 REM The recording engine: COM, the registry (saved hotkeys), WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
 REM delay-loaded so the program also starts on Windows N editions that lack it.
-set "ENGLIBS=ole32.lib uuid.lib advapi32.lib avrt.lib mfplat.lib mfreadwrite.lib mfuuid.lib delayimp.lib /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll"
+REM  DXGI (in Windows) is asked for the graphics cards.
+set "ENGLIBS=ole32.lib uuid.lib advapi32.lib avrt.lib mfplat.lib mfreadwrite.lib mfuuid.lib dxgi.lib delayimp.lib /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll"
 
 REM The logic shared by the app and the tests: compiled once per architecture.
 set "CORE_SRC="
@@ -133,6 +136,18 @@ cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\run_tests.exe" !TEST_SRC! !CORE_OBJ! /lin
 
 REM Only libraries that ship with Windows may be imported (see tests\check_imports.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\run_tests.exe || goto :buildfail
+
+REM The download program (src\fetch): the only file that may import winhttp.  It is built before the tests, which run it
+REM (what it refuses before it touches the network), and its SHA-256 goes into audior_fetch.sha256, which the recorder
+REM checks before it starts it.
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_fetch.exe" src\fetch\fetch.cpp "%OBJ%\fetch_protocol.obj" ^
+    /link %LFLAGS% /SUBSYSTEM:CONSOLE winhttp.lib || goto :buildfail
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 -Allow winhttp %OUT%\audior_fetch.exe || goto :buildfail
+set "FETCHHASH="
+for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "%OUT%\audior_fetch.exe" SHA256') do if not defined FETCHHASH set "FETCHHASH=%%h"
+if not defined FETCHHASH goto :buildfail
+set "FETCHHASH=!FETCHHASH: =!"
+> "%OUT%\audior_fetch.sha256" echo !FETCHHASH!  audior_fetch.exe
 
 REM Run the tests before compiling the UI, so a UI error never hides a test result.
 if not "%RUN_TESTS%"=="1" goto :build_app

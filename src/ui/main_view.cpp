@@ -13,6 +13,9 @@ namespace {
 constexpr float kPi = 3.14159265358979f;
 constexpr float kTranscriptSectionHeight = 54.0f;   /* the Transcript caption and its row of controls */
 constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio only" at the small size */
+constexpr float kBannerHeight = 96.0f;      /* the set-up's notification: a title, up to three lines of detail, a progress bar */
+constexpr float kBannerButtonWidth = 112.0f, kBannerButtonHeight = 30.0f;
+constexpr float kNoteLinkWidth = 110.0f;    /* "Download…" in the Transcript section */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
 const LaneStyle kSystemStyle = {L"System audio", theme::kSystem};
@@ -166,14 +169,21 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
             host_->ShowInFolder(o.files[0]);
     };
 
+    bannerPrimary_.style = Button::Style::Prominent;
+    bannerPrimary_.onClick = [this] { Act(primaryAct_); };
+    bannerSecondary_.onClick = [this] { Act(secondaryAct_); };
+    retryLink_.style = Button::Style::Link;
+    retryLink_.text = L"Download…";
+    retryLink_.onClick = [this] { Act(BannerAct::TryAgain); };
+
     ConfigureHotkey(HotkeyAction::Start, L"Start");
     ConfigureHotkey(HotkeyAction::Stop, L"Stop");
 
     Widget *const order[kWidgetCount] = {
-        &micCheck_, &micTranscript_, &micField_, &bluetoothLink_, &gain_[0].slider, &systemCheck_,
-        &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_,
-        &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1], &gpuSwitch_, &languageSeg_,
-        &modelField_, &startButton_, &stopButton_, &showButton_};
+        &bannerPrimary_, &bannerSecondary_, &micCheck_, &micTranscript_, &micField_, &bluetoothLink_,
+        &gain_[0].slider, &systemCheck_, &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_,
+        &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
+        &gpuSwitch_, &languageSeg_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     RefreshHotkeys();
@@ -338,6 +348,7 @@ void MainView::Refresh()
     }
 
     summary_ = Summarize(ctl_.Active());
+    RefreshSetup();
 
     /* Start and Stop swap roles: keep the keyboard focus on the live one. */
     if (focus_ && !focus_->Interactive()) {
@@ -349,12 +360,95 @@ void MainView::Refresh()
             focus_ = nullptr;
     }
     lastPhase_ = ctl_.GetPhase();
+    setupVersion_ = ctl_.SetupVersion();
+
+    /* The notification and the Transcript section take room that the rest gives up. */
+    if (width_ > 0.0f && (ctl_.SetupVisible() != bannerShown_ || (ctl_.CanTranscribe() || ctl_.HasSetup()) != sectionShown_))
+        Layout(width_, height_);
 }
 
-void MainView::Update()
+/* The set-up's notification: its buttons, and what the Transcript section says while there is no speech model. */
+void MainView::RefreshSetup()
 {
-    if (ctl_.GetPhase() != lastPhase_)
-        Refresh();          /* a recording ended by itself (a device failed) */
+    const SetupStatus &st = ctl_.Setup();
+    primaryAct_ = secondaryAct_ = BannerAct::None;
+    if (ctl_.SetupVisible()) {
+        switch (st.phase) {
+        case SetupPhase::Asking:
+            primaryAct_ = BannerAct::Download;
+            secondaryAct_ = BannerAct::NotNow;
+            break;
+        case SetupPhase::Downloading:
+            secondaryAct_ = BannerAct::Cancel;
+            break;
+        case SetupPhase::Finished:
+            if (st.result == SetupResult::Failed)
+                primaryAct_ = BannerAct::TryAgain;
+            secondaryAct_ = BannerAct::Dismiss;
+            break;
+        default:
+            break;
+        }
+    }
+    static const wchar_t *const kLabels[] = {L"", L"Download", L"Not now", L"Cancel", L"Try again", L"Dismiss"};
+    bannerPrimary_.text = kLabels[static_cast<int>(primaryAct_)];
+    bannerSecondary_.text = kLabels[static_cast<int>(secondaryAct_)];
+    bannerPrimary_.visible = primaryAct_ != BannerAct::None;
+    bannerSecondary_.visible = secondaryAct_ != BannerAct::None;
+    PositionBanner();
+
+    /* Without a speech model the Transcript section has no controls, but says why, and may offer the download. */
+    const bool waiting = st.phase == SetupPhase::Scanning || st.phase == SetupPhase::Asking ||
+                         st.phase == SetupPhase::Downloading;
+    transcriptNote_.clear();
+    retryLink_.visible = false;
+    if (ctl_.HasSetup() && !ctl_.CanTranscribe()) {
+        transcriptNote_ = st.phase == SetupPhase::Scanning      ? L"Looking for a speech model…"
+                          : st.phase == SetupPhase::Asking      ? L"Waiting for your answer."
+                          : st.phase == SetupPhase::Downloading ? L"Downloading a speech model…"
+                                                                : L"No speech model is installed.";
+        retryLink_.visible = st.canRetry && !waiting;
+    }
+}
+
+/* The notification's buttons are stacked at its right edge, one alone in the middle. */
+void MainView::PositionBanner()
+{
+    const float x = bannerRect_.right - 16.0f - kBannerButtonWidth;
+    const float middle = (bannerRect_.top + bannerRect_.bottom) * 0.5f;
+    if (bannerPrimary_.visible && bannerSecondary_.visible) {
+        bannerPrimary_.rect = RectXYWH(x, middle - kBannerButtonHeight - 4.0f, kBannerButtonWidth, kBannerButtonHeight);
+        bannerSecondary_.rect = RectXYWH(x, middle + 4.0f, kBannerButtonWidth, kBannerButtonHeight);
+    } else {
+        bannerPrimary_.rect = bannerSecondary_.rect =
+            RectXYWH(x, middle - kBannerButtonHeight * 0.5f, kBannerButtonWidth, kBannerButtonHeight);
+    }
+}
+
+/* One of the notification's buttons (or the Transcript section's link) was used. */
+void MainView::Act(BannerAct act)
+{
+    switch (act) {
+    case BannerAct::Download: ctl_.AnswerSetup(true);  break;
+    case BannerAct::NotNow:   ctl_.AnswerSetup(false); break;
+    case BannerAct::Cancel:   ctl_.CancelSetup();      break;
+    case BannerAct::TryAgain: ctl_.RetrySetup();       break;
+    case BannerAct::Dismiss:  ctl_.DismissSetup();     break;
+    case BannerAct::None:     return;
+    }
+    if (host_)
+        host_->Wake();                      /* the set-up answers on its own thread: keep looking for it */
+    Refresh();
+}
+
+bool MainView::Update()
+{
+    if (ctl_.GetPhase() != lastPhase_ || ctl_.SetupVersion() != setupVersion_)
+        Refresh();          /* a recording ended by itself (a device failed), or the set-up has news */
+    const float extra = ExtraMinHeight();
+    const bool taller = extra > extraMinHeight_;
+    extraMinHeight_ = extra;
+    return taller;
 }
 
 void MainView::ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor)
@@ -520,15 +614,24 @@ void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &tr
     device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
-float MainView::ExtraMinHeight() const { return ctl_.CanTranscribe() ? kTranscriptSectionHeight : 0.0f; }
+float MainView::ExtraMinHeight() const
+{
+    return ctl_.CanTranscribe() || ctl_.HasSetup() ? kTranscriptSectionHeight : 0.0f;
+}
 
 void MainView::Layout(float w, float h)
 {
     using namespace theme;
     width_ = w;
+    height_ = h;
+    bannerShown_ = ctl_.SetupVisible();
+    sectionShown_ = ctl_.CanTranscribe() || ctl_.HasSetup();
+    extraMinHeight_ = ExtraMinHeight();
 
     const float bottom = h - kTransportH - kGap;
-    const D2D1_RECT_F content = RectF(kMargin, kHeaderH, w - kMargin - kPanelW - kGap, bottom);
+    const float contentRight = w - kMargin - kPanelW - kGap;
+    bannerRect_ = RectF(kMargin, kHeaderH, contentRight, kHeaderH + kBannerHeight);
+    const D2D1_RECT_F content = RectF(kMargin, bannerShown_ ? bannerRect_.bottom + kGap : kHeaderH, contentRight, bottom);
     panel_     = RectF(w - kMargin - kPanelW, kHeaderH, w - kMargin, bottom);
     transport_ = RectF(0, h - kTransportH, w, h);
 
@@ -569,10 +672,13 @@ void MainView::Layout(float w, float h)
     keyBox_[0].rect = RectXYWH(x, y, half, 36);
     keyBox_[1].rect = RectXYWH(x + half + 12.0f, y, half, 36);      y += 36 + 4;
     hotkeyHintRect_ = RectXYWH(x, y, iw, 18);                       y += 18 + 14;
-    captions_[5] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
+    captions_[5] = {sectionShown_ ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
     gpuSwitch_.rect = RectXYWH(x + iw - 84, y - 4, 84, 22);                                  y += 18;
     languageSeg_.rect = RectXYWH(x, y, 140, 36);
     modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
+    transcriptNoteRect_ = RectXYWH(x, y, iw - kNoteLinkWidth, 36);
+    retryLink_.rect = RectXYWH(x + iw - kNoteLinkWidth, y, kNoteLinkWidth, 36);
+    PositionBanner();
 
     /* The transport bar. */
     const float by = transport_.top + (kTransportH - 48.0f) * 0.5f;
@@ -590,6 +696,7 @@ void MainView::Paint(Painter &p)
 {
     p.Clear(theme::kBackground);
     PaintHeader(p);
+    PaintBanner(p);
 
     const bool recording = ctl_.GetPhase() == Phase::Recording;
     micView_.Paint(p, micCard_, kMicStyle, ctl_.Lane(StreamId::Microphone),
@@ -655,6 +762,50 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
+/* The set-up's notification: its state in the colour of the left dot and the outline, the title, the detail (wrapped, up to
+ * three lines) and, while downloading, how far it is.  The buttons are widgets. */
+void MainView::PaintBanner(Painter &p)
+{
+    using namespace theme;
+    if (!bannerShown_)
+        return;
+    const SetupStatus &st = ctl_.Setup();
+    D2D1_COLOR_F accent = kMic;
+    if (st.phase == SetupPhase::Finished)
+        accent = st.result == SetupResult::Ready ? kOk : st.result == SetupResult::Failed ? kError : kWarn;
+
+    p.FillRound(bannerRect_, kCardRadius, kSurface);
+    p.StrokeRound(bannerRect_, kCardRadius, WithAlpha(accent, 0.6f));
+
+    const float left = bannerRect_.left + 20.0f;
+    const float textLeft = left + 18.0f;
+    const float textRight = (bannerPrimary_.visible || bannerSecondary_.visible ? bannerPrimary_.rect.left : bannerRect_.right) - 16.0f;
+    p.FillCircle(left + 4.0f, bannerRect_.top + 23.0f, 4.0f, accent);
+    p.Text(st.title, RectF(textLeft, bannerRect_.top + 11.0f, textRight, bannerRect_.top + 35.0f), Font::BodyStrong, kText);
+
+    const bool bar = st.phase == SetupPhase::Downloading && st.fraction >= 0.0f;
+    const D2D1_RECT_F detail = RectF(textLeft, bannerRect_.top + 37.0f, textRight, bannerRect_.bottom - (bar ? 26.0f : 10.0f));
+    if (Width(detail) > 40.0f) {
+        if (!bannerLayout_ || bannerLayoutVersion_ != setupVersion_ || bannerLayoutWidth_ != Width(detail)) {
+            bannerLayout_ = p.WrappedLayout(Font::Small, st.detail.c_str(), static_cast<UINT32>(st.detail.size()), Width(detail));
+            bannerLayoutVersion_ = setupVersion_;
+            bannerLayoutWidth_ = Width(detail);
+        }
+        if (bannerLayout_) {
+            p.PushClip(detail);
+            p.Draw(bannerLayout_.Get(), detail.left, detail.top, kTextMuted);
+            p.PopClip();
+        }
+    }
+    if (bar) {
+        const D2D1_RECT_F track = RectF(textLeft, bannerRect_.bottom - 20.0f, textRight, bannerRect_.bottom - 14.0f);
+        p.FillRound(track, 3.0f, kBorder);
+        const float filled = Width(track) * std::min(1.0f, st.fraction);
+        if (filled >= 1.0f)
+            p.FillRound(RectXYWH(track.left, track.top, std::max(filled, 6.0f), Height(track)), 3.0f, accent);
+    }
+}
+
 /* Each stream's gain label and value (the slider is a widget), and the microphone's Bluetooth note. */
 void MainView::PaintPaneControls(Painter &p)
 {
@@ -694,6 +845,8 @@ void MainView::PaintPanel(Painter &p)
         p.Text(kHotkeyListenHint, hotkeyHintRect_, Font::Small, kTextMuted);
     else
         p.Text(hotkeyHint_, hotkeyHintRect_, Font::Small, hotkeyHintIsError_ ? kError : kTextFaint);
+    if (!transcriptNote_.empty())
+        p.Text(transcriptNote_, transcriptNoteRect_, Font::Small, kTextMuted);
 }
 
 void MainView::PaintTransport(Painter &p)

@@ -27,6 +27,12 @@ inline constexpr wchar_t kHelperFile[]   = L"audior_asr.exe";
 inline constexpr wchar_t kManifestFile[] = L"audior_asr.sha256";
 inline constexpr wchar_t kGpuBackendFile[] = L"ggml-vulkan.dll";    /* optional: the backend for the graphics card */
 
+/* The program that downloads a speech model (src/fetch), with the list that vouches for it.  It is
+ * separate from the helper so that neither it nor the recorder needs the other; without it models are
+ * added by hand. */
+inline constexpr wchar_t kFetcherFile[]     = L"audior_fetch.exe";
+inline constexpr wchar_t kFetcherManifest[] = L"audior_fetch.sha256";
+
 /* What was found: the helper and the model it will be given. */
 struct AsrSetup {
     std::wstring    directory;          /* the helper's folder                 */
@@ -42,6 +48,20 @@ struct AsrSetup {
  * %AUDIOR_MODELS% if that is set, else %LOCALAPPDATA%\audior-gui\models. */
 std::wstring ProgramDirectory();
 std::wstring ModelsDirectory();
+
+/* The size of the file, or false if there is none (or it is a folder). */
+bool FileSize(const std::wstring &path, std::uint64_t *bytes);
+
+/* Are the helper and its manifest in `programDir` (whatever models there are)?  Likewise the download
+ * program and its list. */
+bool HelperInstalled(const std::wstring &programDir);
+bool FetcherInstalled(const std::wstring &programDir);
+
+/* Is `model` whole in `modelsDir`?  A cheap look: only the size of the file is checked. */
+bool ModelInstalled(const std::wstring &modelsDir, const AsrModel &model);
+
+/* Does the helper in `programDir` have the backend for the graphics card next to it (kGpuBackendFile)? */
+bool GpuBackendInstalled(const std::wstring &programDir);
 
 /* The models of the table that are whole in `modelsDir`, in the table's order.  A cheap look:
  * nothing is read, only file sizes.  (`models` is the table; the tests give it a small one.) */
@@ -64,6 +84,10 @@ bool HashFile(const std::wstring &path, std::string *hex, const StopCheck &stopp
  * `stopping` interrupted it).  It reads the files completely (a model takes a
  * second or two), so not on the UI thread. */
 std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &stopping = nullptr);
+
+/* The same for the download program: its list must cover it, and it must be the file listed.  An empty
+ * string if all is well, else why not. */
+std::wstring VerifyFetcher(const std::wstring &programDir, const StopCheck &stopping = nullptr);
 
 /* What a TranscriptionHost needs to start the helper: each call verifies the
  * helper's files (the model only the first time) and launches the process. */

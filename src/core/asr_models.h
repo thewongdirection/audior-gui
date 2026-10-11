@@ -27,6 +27,8 @@ struct AsrModel {
     const wchar_t *licence;         /* of the weights, as published                       */
     const wchar_t *source;          /* where to download it from                          */
     bool           multilingual = false;    /* false: English only                        */
+    std::uint64_t  gpuMemoryBytes = 0;      /* offered for download only to a PC whose graphics card has this
+                                               much memory of its own; 0: offered on every PC */
 };
 
 /* In order of preference for a machine without a GPU: the first one found is
@@ -37,12 +39,17 @@ inline constexpr AsrModel kAsrModels[] = {
      L"Small · English", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", false},
     {L"ggml-large-v3-turbo-q5_0.bin",
      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574041195,
-     L"Large v3 turbo", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", true},
+     L"Large v3 turbo", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", true, 4ull << 30},
 };
 inline constexpr std::size_t kAsrModelCount = sizeof(kAsrModels) / sizeof(kAsrModels[0]);
 
 /* The entry of kAsrModels with this file name (any case), or null. */
 const AsrModel *FindAsrModel(const std::wstring &file);
+
+/* Where the file of `model` is downloaded from: its source with "/resolve/main/<file>" (the address
+ * Hugging Face serves a file's current version from).  The size and SHA-256 above, not the address,
+ * are what vouch for what arrives. */
+std::wstring ModelUrl(const AsrModel &model);
 
 /* The models of `table` that come before `chosen` and are in `installed`, the nearest first: the
  * ones to change to if `chosen` is too slow.  With `keepLanguages` a multilingual `chosen` is

@@ -1,40 +1,10 @@
 #include <windows.h>
 
 #include "../src/preferences.h"
+#include "test_registry_key.h"
 #include "test_support.h"
 
 using namespace audiorgui;
-
-namespace {
-
-/* A registry key of the test's own, deleted when the test is done. */
-class TestKey {
-public:
-    TestKey()
-    {
-        key_ = L"Software\\Audior-GUI-tests\\" + std::to_wstring(GetCurrentProcessId());
-        RegDeleteTreeW(HKEY_CURRENT_USER, key_.c_str());
-    }
-    ~TestKey() { RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Audior-GUI-tests"); }
-
-    const wchar_t *Name() const { return key_.c_str(); }
-
-    void SetText(const wchar_t *value, const wchar_t *text) const
-    {
-        RegSetKeyValueW(HKEY_CURRENT_USER, key_.c_str(), value, REG_SZ, text,
-                        static_cast<DWORD>((wcslen(text) + 1) * sizeof(wchar_t)));
-    }
-
-    void SetNumber(const wchar_t *value, DWORD number) const
-    {
-        RegSetKeyValueW(HKEY_CURRENT_USER, key_.c_str(), value, REG_DWORD, &number, sizeof(number));
-    }
-
-private:
-    std::wstring key_;
-};
-
-}  // namespace
 
 TEST(Preferences_NothingStoredMeansTheDefaults)
 {
@@ -94,4 +64,21 @@ TEST(Preferences_AnythingUnreadableMeansTheDefault)
 
     key.SetText(L"StartHotkey", L"Ctrl+Alt+Shift+Insert+Ctrl+Alt+Shift+Insert+Ctrl+Alt+Shift+Insert");     /* too long to read */
     CHECK(prefs.LoadHotkey(HotkeyAction::Start) == DefaultHotkey(HotkeyAction::Start));
+}
+
+TEST(Preferences_ADeclinedDownloadIsRememberedUntilItIsTakenBack)
+{
+    TestKey key;
+    const Preferences prefs(key.Name());
+    CHECK(!prefs.LoadDownloadDeclined());               /* nothing stored: the question is still to be asked */
+
+    CHECK(prefs.SaveDownloadDeclined(true));
+    CHECK(Preferences(key.Name()).LoadDownloadDeclined());                         /* a new run */
+    CHECK(prefs.LoadHotkey(HotkeyAction::Start) == DefaultHotkey(HotkeyAction::Start));     /* the hotkeys are not disturbed */
+
+    CHECK(prefs.SaveDownloadDeclined(false));
+    CHECK(!prefs.LoadDownloadDeclined());
+
+    key.SetText(L"DownloadDeclined", L"1");             /* the wrong kind of value means "not declined" */
+    CHECK(!prefs.LoadDownloadDeclined());
 }

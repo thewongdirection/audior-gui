@@ -607,3 +607,257 @@ TEST(Controller_AsksOnlyForTheTranscriptsSwitchedOn)
     CHECK_EQ(engine.pulls[0], 0);
     CHECK(engine.pulls[1] > 0);
 }
+
+/* ---- the start-up set-up of transcription ---- */
+
+namespace {
+
+/* A set-up source the test speaks for. */
+class FakeSetup : public ISetupSource {
+public:
+    bool Poll(SetupStatus *out) override
+    {
+        if (!pending)
+            return false;
+        *out = next;
+        pending = false;
+        return true;
+    }
+    void Answer(bool download) override { answers.push_back(download); }
+    void Cancel() override { ++cancels; }
+    void Retry() override { ++retries; }
+
+    void Say(const SetupStatus &status)
+    {
+        next = status;
+        pending = true;
+    }
+
+    SetupStatus       next;
+    bool              pending = false;
+    std::vector<bool> answers;
+    int               cancels = 0, retries = 0;
+};
+
+/* An engine without a speech model until it is told to look again. */
+class LackingEngine : public SimulatedEngine {
+public:
+    explicit LackingEngine(Clock now) : SimulatedEngine(std::move(now)) { LackModels(); }
+    void RescanTranscription() override
+    {
+        ++rescans;
+        SimulatedEngine::RescanTranscription();
+    }
+    int rescans = 0;
+};
+
+struct SetupRig {
+    double          now = 0.0;
+    LackingEngine   engine;
+    RecorderController ctl;
+    FakeSetup       setup;
+
+    SetupRig() : engine([this] { return now; }), ctl(engine, [] { return LocalTime(); }) { ctl.AttachSetup(&setup); }
+
+    void Run(double seconds)
+    {
+        for (double t = 0.0; t < seconds - 1e-9; t += 0.25)
+            ctl.Tick(0.25);
+    }
+};
+
+SetupStatus Status(SetupPhase phase, SetupResult result = SetupResult::None)
+{
+    SetupStatus s;
+    s.phase = phase;
+    s.result = result;
+    s.title = L"title";
+    return s;
+}
+
+}  // namespace
+
+TEST(Setup_ControllerWithoutASetupHasNothingToShow)
+{
+    Rig rig;
+    CHECK(!rig.ctl.HasSetup());
+    CHECK(!rig.ctl.SetupVisible());
+    CHECK(!rig.ctl.SetupBusy());
+    rig.ctl.AnswerSetup(true);                                      /* harmless */
+    rig.ctl.CancelSetup();
+    rig.ctl.RetrySetup();
+    rig.Run(1.0);
+    CHECK(!rig.ctl.SetupVisible());
+}
+
+TEST(Setup_ControllerShowsWhatTheSetupSays)
+{
+    SetupRig rig;
+    CHECK(rig.ctl.HasSetup());
+    CHECK(!rig.ctl.SetupVisible());                                 /* nothing said yet */
+    const std::uint32_t before = rig.ctl.SetupVersion();
+
+    rig.setup.Say(Status(SetupPhase::Scanning));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupVisible());
+    CHECK(rig.ctl.Setup().phase == SetupPhase::Scanning);
+    CHECK(rig.ctl.SetupVersion() != before);
+
+    const std::uint32_t during = rig.ctl.SetupVersion();
+    rig.ctl.Tick(0.016);                                            /* nothing new: nothing changes */
+    CHECK_EQ(rig.ctl.SetupVersion(), during);
+}
+
+TEST(Setup_ControllerKeepsTickingOnlyWhileTheSetupHasWorkToDo)
+{
+    SetupRig rig;
+    CHECK(!rig.ctl.SetupBusy());                                    /* nothing said: idle */
+    rig.setup.Say(Status(SetupPhase::Scanning));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupBusy());
+
+    rig.setup.Say(Status(SetupPhase::Asking));
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.SetupBusy());                                    /* waiting for the user costs nothing */
+
+    rig.ctl.AnswerSetup(true);
+    CHECK(rig.ctl.SetupBusy());                                     /* but the answer to the answer is awaited ... */
+    rig.Run(3.0);
+    CHECK(!rig.ctl.SetupBusy());                                    /* ... not for ever */
+
+    rig.setup.Say(Status(SetupPhase::Downloading));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupBusy());
+}
+
+TEST(Setup_ControllerPassesTheUsersAnswersOn)
+{
+    SetupRig rig;
+    rig.ctl.AnswerSetup(true);
+    rig.ctl.AnswerSetup(false);
+    rig.ctl.CancelSetup();
+    rig.ctl.RetrySetup();
+    CHECK_EQ(rig.setup.answers.size(), std::size_t(2));
+    CHECK(rig.setup.answers[0] && !rig.setup.answers[1]);
+    CHECK_EQ(rig.setup.cancels, 1);
+    CHECK_EQ(rig.setup.retries, 1);
+}
+
+TEST(Setup_NoUsableCardTurnsTheGpuSettingOffOncePerRun)
+{
+    SetupRig rig;
+    CHECK(rig.ctl.Settings().transcribeGpu);
+    SetupStatus asking = Status(SetupPhase::Asking);
+    asking.scanned = true;
+    asking.gpuUsable = false;
+    rig.setup.Say(asking);
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.Settings().transcribeGpu);
+
+    rig.ctl.Settings().transcribeGpu = true;                        /* the user insists */
+    SetupStatus downloading = asking;
+    downloading.phase = SetupPhase::Downloading;
+    rig.setup.Say(downloading);
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.Settings().transcribeGpu);                        /* and is not overruled by the next message of the same run */
+
+    rig.setup.Say(Status(SetupPhase::Scanning));                    /* a new run (Retry) scans afresh */
+    rig.ctl.Tick(0.016);
+    rig.setup.Say(asking);
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.Settings().transcribeGpu);
+}
+
+TEST(Setup_AUsableCardOrNoScanYetLeavesTheGpuSettingAlone)
+{
+    SetupRig rig;
+    rig.setup.Say(Status(SetupPhase::Scanning));                    /* not scanned yet: gpuUsable means nothing */
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.Settings().transcribeGpu);
+
+    SetupStatus found = Status(SetupPhase::Finished, SetupResult::Ready);
+    found.scanned = true;
+    found.gpuUsable = true;
+    rig.setup.Say(found);
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.Settings().transcribeGpu);
+
+    SetupRig cpuOnly;                                               /* --transcribe-cpu is never turned back on */
+    cpuOnly.ctl.Settings().transcribeGpu = false;
+    cpuOnly.setup.Say(found);
+    cpuOnly.ctl.Tick(0.016);
+    CHECK(!cpuOnly.ctl.Settings().transcribeGpu);
+}
+
+TEST(Setup_NewModelsAreTakenUpOncePerRun)
+{
+    SetupRig rig;
+    CHECK(!rig.ctl.CanTranscribe());
+    CHECK(rig.ctl.TranscriptModels().empty());
+
+    SetupStatus done = Status(SetupPhase::Finished, SetupResult::Ready);
+    done.scanned = true;
+    done.modelsChanged = true;
+    rig.setup.Say(done);
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.CanTranscribe());                                 /* the Transcript controls can appear */
+    CHECK(!rig.ctl.TranscriptModels().empty());
+    CHECK_EQ(rig.engine.rescans, 1);
+
+    rig.setup.Say(done);                                            /* the same message again does not scan again */
+    rig.ctl.Tick(0.016);
+    CHECK_EQ(rig.engine.rescans, 1);
+}
+
+TEST(Setup_ASuccessGoesAwayByItselfAndAFailureStays)
+{
+    SetupRig rig;
+    rig.setup.Say(Status(SetupPhase::Finished, SetupResult::Ready));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupVisible());
+    rig.Run(5.0);
+    CHECK(rig.ctl.SetupVisible());                                  /* long enough to be read */
+    const std::uint32_t before = rig.ctl.SetupVersion();
+    rig.Run(6.0);
+    CHECK(!rig.ctl.SetupVisible());
+    CHECK(rig.ctl.SetupVersion() != before);                        /* the view is told */
+    CHECK(!rig.ctl.SetupBusy());
+
+    rig.setup.Say(Status(SetupPhase::Finished, SetupResult::Failed));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupVisible());
+    CHECK(!rig.ctl.SetupBusy());                                    /* nothing to count down */
+    rig.Run(60.0);
+    CHECK(rig.ctl.SetupVisible());                                  /* until the user has read it */
+    rig.ctl.DismissSetup();
+    CHECK(!rig.ctl.SetupVisible());
+}
+
+TEST(Setup_RetryBringsTheNotificationBack)
+{
+    SetupRig rig;
+    rig.setup.Say(Status(SetupPhase::Finished, SetupResult::Failed));
+    rig.ctl.Tick(0.016);
+    rig.ctl.DismissSetup();
+    CHECK(!rig.ctl.SetupVisible());
+
+    rig.ctl.RetrySetup();
+    CHECK(rig.ctl.SetupVisible());                                  /* until the set-up has its new say */
+    CHECK(rig.ctl.SetupBusy());
+    rig.setup.Say(Status(SetupPhase::Scanning));
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.SetupVisible() && rig.ctl.Setup().phase == SetupPhase::Scanning);
+}
+
+TEST(Setup_AQuietSetupShowsNothingButKeepsWhatItFoundOut)
+{
+    SetupRig rig;
+    SetupStatus quiet;                                              /* Idle, but scanned: a "no" remembered from before */
+    quiet.scanned = true;
+    quiet.canRetry = true;
+    rig.setup.Say(quiet);
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.SetupVisible());
+    CHECK(rig.ctl.Setup().canRetry);                                /* the Transcript section offers the download */
+    CHECK(!rig.ctl.SetupBusy());
+}

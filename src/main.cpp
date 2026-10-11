@@ -26,7 +26,9 @@
 #include "engine/asr_helper.h"
 #include "engine/simulated_engine.h"
 #include "engine/stop_signal.h"
+#include "engine/system_setup.h"
 #include "engine/wasapi_engine.h"
+#include "preferences.h"
 #include "ui/app_window.h"
 #include "ui/screenshot.h"
 
@@ -130,11 +132,20 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
     else
         engine = std::make_unique<WasapiEngine>();
 
+    /* With the transcription helper installed, the program looks at this PC at start-up and offers to download a
+     * speech model if there is none (see engine/transcription_setup.h).  Not for the demo, which has its own. */
+    std::unique_ptr<TranscriptionSetup> setup;
+    if (!cli.demo)
+        setup = MakeSystemSetup(ProgramDirectory(), ModelsDirectory(), Preferences());
+
     RecorderController controller(*engine, LocalNow, FileExists);
     controller.Settings() = settings;
+    controller.AttachSetup(setup.get());
     if (!controller.CanTranscribe() && (settings.transcribeMicrophone || settings.transcribeSystem))
-        WriteError(L"Warning: live transcription needs the helper audior_asr.exe next to this program and a model in " +
-                   ModelsDirectory() + L" (see the README); without them only --demo can transcribe.\n");
+        WriteError(setup ? L"Warning: no speech model is installed in " + ModelsDirectory() +
+                               L" yet: live transcription starts once the window has downloaded one (see the README).\n"
+                         : L"Warning: live transcription needs the helper audior_asr.exe next to this program and a model in " +
+                               ModelsDirectory() + L" (see the README); without them only --demo can transcribe.\n");
     if (!ChooseDevice(controller, DeviceKind::Microphone, cli.microphone, &controller.Settings().microphoneId) ||
         !ChooseDevice(controller, DeviceKind::Playback, cli.outputDevice, &controller.Settings().systemDeviceId))
         return 1;
@@ -146,6 +157,10 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
     }
     if (cli.start)
         window.StartRecording();
+    if (setup) {
+        setup->Start();
+        window.Wake();                                      /* the window looks for what it has to say */
+    }
     return window.Run();
 }
 

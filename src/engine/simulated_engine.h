@@ -44,6 +44,10 @@ public:
      * (status CatchingUp, a lag of several seconds, a smaller model running). */
     void FallBehindAfter(double seconds);
 
+    /* Pretends that no speech model is installed, so that it cannot transcribe, until
+     * RescanTranscription() "finds" one (for the demos and tests of the start-up set-up). */
+    void LackModels() { modelsPresent_ = false; }
+
     bool IsSimulated() const override { return true; }
     std::vector<DeviceInfo> ListDevices(DeviceKind kind) override;
     bool Start(const RecordingSettings &settings, const std::wstring &outputPath,
@@ -55,9 +59,10 @@ public:
     std::wstring Failure() override { return failure_; }
     std::vector<std::wstring> OutputFiles() override { return files_; }
 
-    bool CanTranscribe() const override { return true; }
+    bool CanTranscribe() const override { return modelsPresent_; }
     std::vector<TranscriptModel> TranscriptModels() const override;     /* the table's, as if all were installed */
-    bool CanTranscribeOnGpu() const override { return true; }
+    void RescanTranscription() override { modelsPresent_ = true; }
+    bool CanTranscribeOnGpu() const override { return modelsPresent_; }
     TranscriptStatus Transcription(StreamId stream) override;
     std::wstring TranscriptionProblem(StreamId) override { return transcriptFailMessage_; }
     std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override;
@@ -83,6 +88,7 @@ private:
     double        failAt_    = -1.0;        /* when the current recording fails; < 0: never */
     std::wstring  failMessage_;
 
+    bool          modelsPresent_ = true;                    /* see LackModels() */
     std::uint64_t transcriptNext_[kStreamCount] = {0, 0};   /* the next scripted event of each stream */
     double        transcriptFailAfter_ = -1.0;              /* the same two for the transcription */
     double        transcriptFailAt_    = -1.0;

@@ -15,6 +15,10 @@ namespace {
 
 constexpr DWORD kMaxManifestBytes = 64 * 1024;
 
+std::wstring Join(const std::wstring &dir, const std::wstring &name) { return dir + L"\\" + name; }
+
+}  // namespace
+
 bool FileSize(const std::wstring &path, std::uint64_t *bytes)
 {
     WIN32_FILE_ATTRIBUTE_DATA data;
@@ -24,10 +28,6 @@ bool FileSize(const std::wstring &path, std::uint64_t *bytes)
     *bytes = (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
     return true;
 }
-
-std::wstring Join(const std::wstring &dir, const std::wstring &name) { return dir + L"\\" + name; }
-
-}  // namespace
 
 std::wstring ProgramDirectory()
 {
@@ -51,13 +51,38 @@ std::wstring ModelsDirectory()
     return std::wstring(base, n) + L"\\audior-gui\\models";
 }
 
+bool HelperInstalled(const std::wstring &programDir)
+{
+    std::uint64_t bytes = 0;
+    return !programDir.empty() && FileSize(Join(programDir, kHelperFile), &bytes) &&
+           FileSize(Join(programDir, kManifestFile), &bytes);
+}
+
+bool FetcherInstalled(const std::wstring &programDir)
+{
+    std::uint64_t bytes = 0;
+    return !programDir.empty() && FileSize(Join(programDir, kFetcherFile), &bytes) &&
+           FileSize(Join(programDir, kFetcherManifest), &bytes);
+}
+
+bool ModelInstalled(const std::wstring &modelsDir, const AsrModel &model)
+{
+    std::uint64_t bytes = 0;
+    return !modelsDir.empty() && FileSize(Join(modelsDir, model.file), &bytes) && bytes == model.bytes;
+}
+
+bool GpuBackendInstalled(const std::wstring &programDir)
+{
+    std::uint64_t bytes = 0;
+    return !programDir.empty() && FileSize(Join(programDir, kGpuBackendFile), &bytes);
+}
+
 std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models,
                                               std::size_t modelCount)
 {
     std::vector<const AsrModel *> found;
-    std::uint64_t bytes = 0;
-    for (std::size_t i = 0; i < modelCount && !modelsDir.empty(); ++i) {
-        if (FileSize(Join(modelsDir, models[i].file), &bytes) && bytes == models[i].bytes)
+    for (std::size_t i = 0; i < modelCount; ++i) {
+        if (ModelInstalled(modelsDir, models[i]))
             found.push_back(&models[i]);
     }
     return found;
@@ -66,10 +91,9 @@ std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, con
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
              std::size_t modelCount, const std::wstring &preferred, const AsrModel *vad)
 {
-    std::uint64_t bytes = 0;
-    const std::wstring helper = Join(programDir, kHelperFile);
-    if (programDir.empty() || !FileSize(helper, &bytes) || !FileSize(Join(programDir, kManifestFile), &bytes))
+    if (!HelperInstalled(programDir))
         return false;
+    const std::wstring helper = Join(programDir, kHelperFile);
 
     for (const AsrModel *model : InstalledModels(modelsDir, models, modelCount)) {
         if (preferred.empty() || _wcsicmp(preferred.c_str(), model->file) == 0) {
@@ -77,10 +101,10 @@ bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrS
             setup->helper = helper;
             setup->model = model;
             setup->modelPath = Join(modelsDir, model->file);
-            setup->gpu = FileSize(Join(programDir, kGpuBackendFile), &bytes);
+            setup->gpu = GpuBackendInstalled(programDir);
             setup->vad = nullptr;
             setup->vadPath.clear();
-            if (vad && FileSize(Join(modelsDir, vad->file), &bytes) && bytes == vad->bytes) {
+            if (vad && ModelInstalled(modelsDir, *vad)) {
                 setup->vad = vad;
                 setup->vadPath = Join(modelsDir, vad->file);
             }
@@ -115,43 +139,65 @@ bool HashFile(const std::wstring &path, std::string *hex, const StopCheck &stopp
     return ok;
 }
 
-std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &stopping)
+namespace {
+
+bool Lists(const std::vector<ManifestEntry> &entries, const wchar_t *file)
+{
+    for (const ManifestEntry &entry : entries) {
+        if (_wcsicmp(entry.file.c_str(), file) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* Reads the manifest `manifestFile` of `dir` and checks every file it lists.  `what` names the program the
+ * files belong to, for the messages.  An empty string if all is well. */
+std::wstring VerifyListed(const std::wstring &dir, const wchar_t *manifestFile, const std::wstring &what,
+                          const StopCheck &stopping, std::vector<ManifestEntry> *entries)
 {
     /* The manifest, which is small. */
     std::string text;
     {
-        HANDLE file = CreateFileW(Join(setup.directory, kManifestFile).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+        HANDLE file = CreateFileW(Join(dir, manifestFile).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                   OPEN_EXISTING, 0, nullptr);
         if (file == INVALID_HANDLE_VALUE)
-            return L"The transcription engine's file list (" + std::wstring(kManifestFile) + L") is missing.";
+            return what + L"'s file list (" + std::wstring(manifestFile) + L") is missing.";
         text.resize(kMaxManifestBytes);
         DWORD got = 0;
         const BOOL read = ReadFile(file, &text[0], kMaxManifestBytes, &got, nullptr);
         CloseHandle(file);
         if (!read || got == kMaxManifestBytes)
-            return L"The transcription engine's file list could not be read.";
+            return what + L"'s file list could not be read.";
         text.resize(got);
     }
 
-    std::vector<ManifestEntry> entries;
     std::wstring problem;
-    if (!ParseManifest(text, &entries, &problem))
+    if (!ParseManifest(text, entries, &problem))
         return problem;
 
-    bool coversHelper = false, coversGpu = false;
-    for (const ManifestEntry &entry : entries) {
-        coversHelper = coversHelper || _wcsicmp(entry.file.c_str(), kHelperFile) == 0;
-        coversGpu = coversGpu || _wcsicmp(entry.file.c_str(), kGpuBackendFile) == 0;
+    for (const ManifestEntry &entry : *entries) {
         std::string actual;
-        if (!HashFile(Join(setup.directory, entry.file), &actual, stopping))
-            return L"The transcription engine's file \"" + entry.file + L"\" is missing or cannot be read.";
+        if (!HashFile(Join(dir, entry.file), &actual, stopping))
+            return what + L"'s file \"" + entry.file + L"\" is missing or cannot be read.";
         if (actual != entry.sha256)
-            return L"The transcription engine's file \"" + entry.file + L"\" is not the one in its file list.";
+            return what + L"'s file \"" + entry.file + L"\" is not the one in its file list.";
     }
-    if (!coversHelper)
-        return L"The transcription engine's file list does not cover " + std::wstring(kHelperFile) + L".";
-    if (setup.gpu && !coversGpu)                        /* the helper loads this DLL by name: only a listed one */
-        return L"The transcription engine's file list does not cover " + std::wstring(kGpuBackendFile) + L".";
+    return std::wstring();
+}
+
+}  // namespace
+
+std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &stopping)
+{
+    const std::wstring what = L"The transcription engine";
+    std::vector<ManifestEntry> entries;
+    std::wstring problem = VerifyListed(setup.directory, kManifestFile, what, stopping, &entries);
+    if (!problem.empty())
+        return problem;
+    if (!Lists(entries, kHelperFile))
+        return what + L"'s file list does not cover " + std::wstring(kHelperFile) + L".";
+    if (setup.gpu && !Lists(entries, kGpuBackendFile))  /* the helper loads this DLL by name: only a listed one */
+        return what + L"'s file list does not cover " + std::wstring(kGpuBackendFile) + L".";
 
     if (checkModel) {
         std::string actual;
@@ -168,6 +214,17 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
         }
     }
     return std::wstring();
+}
+
+std::wstring VerifyFetcher(const std::wstring &programDir, const StopCheck &stopping)
+{
+    const std::wstring what = L"The download program";
+    std::vector<ManifestEntry> entries;
+    const std::wstring problem = VerifyListed(programDir, kFetcherManifest, what, stopping, &entries);
+    if (!problem.empty())
+        return problem;
+    return Lists(entries, kFetcherFile) ? std::wstring()
+                                        : what + L"'s file list does not cover " + std::wstring(kFetcherFile) + L".";
 }
 
 TransportFactory MakeProcessFactory(const AsrSetup &setup)

@@ -355,3 +355,67 @@ TEST(Asr_ProgramAndModelFoldersAreFullPaths)
     const std::wstring models = ModelsDirectory();
     CHECK(models.empty() || models.find(L"audior-gui") != std::wstring::npos);
 }
+
+TEST(Asr_TheHelperCountsAsInstalledWithItsManifestWhateverTheModels)
+{
+    TempDir programs;
+    CHECK(!HelperInstalled(programs.Dir()));
+    CHECK(!HelperInstalled(std::wstring()));
+    Write(programs.Path(kHelperFile), "x");
+    CHECK(!HelperInstalled(programs.Dir()));            /* the manifest is part of it */
+    Write(programs.Path(kManifestFile), "x");
+    CHECK(HelperInstalled(programs.Dir()));
+}
+
+TEST(Asr_AModelAndTheGraphicsBackendAreNoticedByTheirFiles)
+{
+    TempDir programs, models;
+    const AsrModel model = {L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"};
+    CHECK(!ModelInstalled(models.Dir(), model));
+    CHECK(!ModelInstalled(std::wstring(), model));
+    Write(models.Path(L"a.bin"), "12");
+    CHECK(!ModelInstalled(models.Dir(), model));        /* not whole */
+    Write(models.Path(L"a.bin"), "123");
+    CHECK(ModelInstalled(models.Dir(), model));
+
+    CHECK(!GpuBackendInstalled(programs.Dir()));
+    CHECK(!GpuBackendInstalled(std::wstring()));
+    Write(programs.Path(kGpuBackendFile), "x");
+    CHECK(GpuBackendInstalled(programs.Dir()));
+}
+
+TEST(Asr_TheDownloadProgramIsVerifiedAgainstItsOwnList)
+{
+    TempDir programs;
+    CHECK(!FetcherInstalled(programs.Dir()));
+    CHECK(!VerifyFetcher(programs.Dir()).empty());      /* no list */
+
+    const std::string content = "MZ pretend download program";
+    Write(programs.Path(kFetcherFile), content);
+    CHECK(!FetcherInstalled(programs.Dir()));           /* the program alone is not enough */
+    Write(programs.Path(kFetcherManifest), Sha256Hex(content.data(), content.size()) + "  audior_fetch.exe\n");
+    CHECK(FetcherInstalled(programs.Dir()));
+    CHECK(VerifyFetcher(programs.Dir()).empty());
+
+    Write(programs.Path(kFetcherFile), "MZ a different program");
+    const std::wstring why = VerifyFetcher(programs.Dir());
+    CHECK(why.find(L"audior_fetch.exe") != std::wstring::npos && why.find(L"download program") != std::wstring::npos);
+
+    Write(programs.Path(kFetcherFile), content);
+    Write(programs.Path(kFetcherManifest), Sha256Hex(content.data(), content.size()) + "  other.exe\n");
+    Write(programs.Path(L"other.exe"), content);
+    CHECK(!VerifyFetcher(programs.Dir()).empty());      /* a list that does not cover it vouches for nothing */
+
+    DeleteFileW(programs.Path(kFetcherFile).c_str());
+    Write(programs.Path(kFetcherManifest), Sha256Hex(content.data(), content.size()) + "  audior_fetch.exe\n");
+    CHECK(!VerifyFetcher(programs.Dir()).empty());      /* listed, but gone */
+}
+
+TEST(Asr_TheHelperDoesNotNeedTheDownloadProgram)
+{
+    Pack pack;                                          /* a pack without audior_fetch.exe: removing the downloader leaves transcription alone */
+    AsrSetup setup;
+    CHECK(pack.Find(&setup));
+    CHECK(VerifyAsr(setup, true).empty());
+    CHECK(!FetcherInstalled(pack.programDir.Dir()));
+}

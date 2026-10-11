@@ -12,7 +12,11 @@
  *
  * Frames are driven by a timer that runs only while something is moving (a
  * recording, or a waveform still settling); an idle window uses no CPU, and a
- * window hidden in the tray, which draws nothing, ticks a few times a second.
+ * window hidden in the tray, which draws nothing, ticks a few times a second.  While
+ * only the start-up set-up of transcription is at work (it takes the PC's measure, or
+ * downloads a model) the timer ticks four times a second, and the window is redrawn
+ * only when the set-up has news; its progress also shows in the tray's tooltip, and a
+ * balloon asks for the user's answer if the window is hidden.
  */
 #pragma once
 
@@ -64,6 +68,7 @@ private:
     int     ToPixels(float dips) const;
     UINT    FrameMs() const;
     void    RearmTimer();
+    void    EnsureMinimumHeight();
 
     bool    RegisterHotkey(int index, const Hotkey &hotkey);
     void    RegisterSavedHotkeys();
@@ -74,6 +79,7 @@ private:
     void    RestoreFromTray();
     void    ShowTrayMenu(int x, int y);
     void    SyncTray();
+    void    TellTrayAboutSetup();
     void    ReportProblem();
     std::wstring TrayTip() const;
 
@@ -94,8 +100,12 @@ private:
 
     bool          hidden_           = false;        /* in the tray, not on screen */
     Phase         lastPhase_        = Phase::Idle;  /* what the tray last showed */
+    SetupPhase    lastSetupPhase_   = SetupPhase::Idle;
     long long     traySeconds_      = -1;
+    int           trayPercent_      = -1;
     bool          timerOn_          = false;
+    UINT          timerMs_          = 0;            /* the rate it was last set to */
+    bool          wasMoving_        = false;        /* something moved at the last tick: one more frame settles it */
     bool          trackingMouse_    = false;
     bool          releasingCapture_ = false;       /* we, not the system, are ending the capture */
     LARGE_INTEGER lastTick_      = {};

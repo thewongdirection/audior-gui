@@ -35,7 +35,7 @@ shows a real PC; `build.bat x64 screenshots` redraws them (see [Design](#design)
 | Display | Direct2D and DirectWrite, which are part of Windows. No GPU is required (Direct2D falls back to software). Segoe UI Variable on Windows 11, Segoe UI on Windows 10 |
 | Disk | A writable folder (default `Documents\Audior-GUI`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
 | Memory | Fixed: each stream buffers at most 8 seconds, whatever the length of the recording |
-| Network | **None.** No connection, account or API key. See [below](#what-works-offline-and-what-needs-the-internet) |
+| Network | **None** for recording, transcribing and everything else. The one exception is an optional download of a speech model, which happens only after you say yes. No account or API key. See [below](#what-works-offline-and-what-needs-the-internet) |
 | Not needed | .NET, the Visual C++ redistributable, WebView2, any third-party library |
 
 ### To build
@@ -56,16 +56,22 @@ loaded on demand, so the program also starts on a Windows N edition without it
 
 **Everything is local.** Recording both streams, the gains, the merge, WAV and MP3
 encoding, the waveforms, live transcripts and every command-line option work with no
-connection, no account and no key. The program sends nothing anywhere: neither the
-recorder nor the transcription helper contains networking code, and
-`tests\check_imports.ps1` fails the build if either imports a networking DLL.
-Unplugging the network changes nothing.
+connection, no account and no key. Neither the recorder nor the transcription helper
+contains networking code, and `tests\check_imports.ps1` fails the build if either
+imports a networking DLL. Unplugging the network changes nothing.
 
-The internet is used for one thing only, and not by this program: you download a
-speech model once, in your browser (see *Live transcripts* below). Your audio never
-leaves the PC. Transcription runs in a separate helper program, so neither a model nor
-a problem in it can touch a recording, and the recorder itself stays dependency-free.
-A transcription problem never stops or damages a recording.
+The internet is used for one thing only: **downloading a speech model, once, and only
+if you say yes** (see *Live transcripts* below). When the transcription helper is
+installed but no model is, the program asks whether to download one; if you decline,
+nothing is ever sent and transcription simply is not offered. The download is done by
+a separate small program, `audior_fetch.exe`, so that the recorder itself stays free of
+networking code. It uses only Windows' own WinHTTP; speaks HTTPS to `huggingface.co`
+and nothing else; creates one new `.part` file and writes nothing else; and what it
+brings is checked by the recorder against the size and SHA-256 published for that model
+before it is used. Delete `audior_fetch.exe` and the program cannot download anything.
+Your audio never leaves the PC. Transcription runs in a separate helper program, so
+neither a model nor a problem in it can touch a recording, and the recorder itself
+stays dependency-free. A transcription problem never stops or damages a recording.
 
 **Cloud transcription is a placeholder.** Nothing for it is built. If it is ever added
 it will be opt-in, off unless you switch it on, and the pane will show when it is in
@@ -81,6 +87,9 @@ build.bat hardware     :: also builds bin\<arch>\hardware_tests.exe (not run: it
 
 bin\x64\Audior-GUI.exe
 ```
+
+`build.bat` also makes `bin\<arch>\audior_fetch.exe` and its list `audior_fetch.sha256`
+(the download program, see *At start-up* below); keep them next to `Audior-GUI.exe`.
 
 `build.bat` finds Visual Studio itself (via `vswhere`), so any command prompt
 works. The binaries use audior's "hybrid CRT" settings (static VC runtime,
@@ -140,13 +149,13 @@ has a built-in script and always shows it):
    off from the command line). A PC without a usable Vulkan driver simply uses the
    processor, and the first use of the card takes several seconds longer while the
    driver prepares its code.
-2. **A speech model**, downloaded by you into `%LOCALAPPDATA%\audior-gui\models`
-   (or the folder named by the `AUDIOR_MODELS` environment variable), from
-   <https://huggingface.co/ggerganov/whisper.cpp>: `ggml-small.en-q5_1.bin`
+2. **A speech model**, in `%LOCALAPPDATA%\audior-gui\models` (or the folder named
+   by the `AUDIOR_MODELS` environment variable): `ggml-small.en-q5_1.bin`
    (English, 181 MiB, fast enough for two streams on an ordinary CPU) or
    `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a GPU).
    Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
-   are used.
+   are used. The program downloads one for you if you let it (next section), or you
+   download one yourself from <https://huggingface.co/ggerganov/whisper.cpp>.
 
 Optionally, `ggml-silero-v5.1.2.bin` (864 KiB, from
 <https://huggingface.co/ggml-org/whisper-vad>) in the same folder. Without it a
@@ -160,6 +169,49 @@ With a model in place the settings panel gets a **Transcript** section: the mode
 *Auto* lets a multilingual model recognise the language of each phrase, *English*
 tells it to expect English, which is a little faster and more exact for English
 speech. An English-only model always expects English.
+
+### At start-up: the PC is scanned, and a model is offered
+
+With the helper installed, the program looks at the PC every time it starts, and
+a notification above the two panes says what it is doing and what it found:
+
+1. **Scanning.** It asks Windows (DXGI) for the graphics cards and checks that the
+   graphics driver has installed Vulkan. If there is a card, a Vulkan driver and a
+   helper built with `build.bat vulkan`, transcription uses the card (the **GPU**
+   switch stays on); otherwise the **GPU** setting is turned off, so that the helper
+   does not lose time trying, and the notification says why. (`--transcribe-cpu` is
+   never overruled.)
+2. **A model is installed:** the notification says *Live transcripts are ready*, names
+   the card and the model, and goes away by itself. Nothing is downloaded.
+3. **No model is installed:** the notification asks, naming the files, their size and
+   where they come from, and nothing is downloaded until you press **Download**.
+   Every PC is offered the English model and the small voice-activity detector; a PC
+   whose card has 4 GiB or more of its own memory, and can use it for transcription (see
+   step 1), is offered the multilingual model as well.
+
+   ![The start-up notification asking whether to download a speech model: Download Small · English, Large v3 turbo and the voice-activity detector, 729.6 MB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
+
+4. **Downloading:** the notification shows which file, how much and a progress bar, with
+   a **Cancel** button; the recording and everything else keep working. Each file is
+   checked (size and SHA-256) before it gets its name, so a damaged or tampered file is
+   never used; a failed or cancelled download leaves nothing behind. When it is done the
+   **Transcript** switches and the model choice appear without a restart.
+
+   ![The notification while downloading: Downloading Large v3 turbo, 2 of 3, 400.3 MB of 729.6 MB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
+
+If you press **Not now** the program takes that for an answer and does not ask again;
+instead the **Transcript** section of the panel says *No speech model is installed*
+and has a **Download…** link, which asks again whenever you want.
+
+![The Transcript section of the panel without a speech model: No speech model is installed, and a Download… link](docs/screenshots/setup-declined.png)
+
+A failed download (no connection, say) says why and offers **Try again**; it is asked
+about again at the next start. With the window in the tray, a balloon says when the
+question waits for an answer and how a download ended, and the tray tooltip shows its
+progress. Without `audior_fetch.exe` next to the program (and its list,
+`audior_fetch.sha256`) the program cannot download, says so, and tells you where to put
+a model by hand. The start-up check does nothing at all when the helper is not
+installed, or with `--demo`.
 
 **If the PC cannot keep up** (a big model, two busy streams, a busy CPU) the pane
 says *Catching up* with how far behind the text is. Settled phrases always come
@@ -301,7 +353,8 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
 headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `catching-up` (the transcription has fallen behind), `model` (the
 multilingual model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
-program owns).
+program owns), and the start-up notification of transcription: `setup-scan`,
+`setup-ask`, `setup-download`, `setup-done`, `setup-failed`, `setup-declined`.
 
 The pictures in this README and in `docs/` are such scenarios, kept in
 `docs/screenshots/` (named after their scenario, drawn at 1120x720 from simulated
@@ -324,8 +377,9 @@ If a change adds a picture to the docs, add its scenario to the `:shots` list in
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
-| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`. |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says). |
+| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`; and for its start-up set-up `hardware_scan` (DXGI), `TranscriptionSetup` (the conversation: scan, ask, download, finish), `ModelInstaller` (runs the download program, checks what it brings, moves it into place) and `system_setup` (wires them to this PC). |
+| `src/fetch` | The download program `audior_fetch.exe`: one HTTPS download from `huggingface.co` with WinHTTP into a new `.part` file. The only code of the project that uses the network (see *What works offline*). |
 | `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the saved hotkeys (registry). |
@@ -356,8 +410,16 @@ in-memory files. The GUI sees audio only as peak bins through
   meter, waveform alignment, the controller state machine, the simulated engine,
   sample-format conversion and resampling, ring buffers, the mixer, the WAV and
   MP3 sinks, the recording session (merge, separate, device and disk failures,
-  overflow, outside stop) and the engine's no-hardware paths.
-- **Import check** (`tests\check_imports.ps1`): only in-box Windows DLLs.
+  overflow, outside stop) and the engine's no-hardware paths; the start-up set-up of
+  transcription: what a scan decides (card, driver, which models to offer), the
+  notification's words, the whole conversation with the user (ask, download, cancel,
+  decline and remember, retry, failure) with made-up hardware and downloads, the
+  installer against a stand-in download program (a wrong size or hash, a program that
+  dies, cancelling, no partial files left), and the real `audior_fetch.exe`'s refusals
+  (any address but https on huggingface.co, any file but a new `.part`, any size a model
+  cannot have), none of which needs a connection.
+- **Import check** (`tests\check_imports.ps1`): only in-box Windows DLLs, and `winhttp`
+  only for `audior_fetch.exe`.
 - **UI smoke test** (`tests\ui_smoke.ps1`): launches the real executable, drives
   the command line, clicks Start and Stop in the simulated and the real engine,
   checks the status light and saves screenshots.

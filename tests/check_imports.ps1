@@ -10,11 +10,14 @@
       check_imports.ps1 [-Allow <dll>[,<dll>...]] <exe> [<exe> ...]
 
   -Allow names DLLs (without ".dll") that the files given may import besides
-  Windows' own.  Only the optional transcription helper uses it (build.bat asr):
-  its own DLLs (whisper, ggml and the like, which sit next to it and are checked
-  against a hash list before it is started), and for ggml-vulkan.dll the graphics
-  driver's vulkan-1.  The recorder itself, audior_gui.exe, is never checked with
-  it.
+  the base list.  Only two programs next to the recorder use it:
+    - the optional transcription helper (build.bat asr): its own DLLs (whisper,
+      ggml and the like, which sit next to it and are checked against a hash list
+      before it is started), and for ggml-vulkan.dll the graphics driver's vulkan-1;
+    - the download program audior_fetch.exe: winhttp, Windows' own HTTP library.
+      It is the only file of the project that may touch the network, so winhttp
+      is not on the base list: the recorder and the helper must never import it.
+  The recorder itself, audior_gui.exe, is never checked with it.
 
   dumpbin.exe must be on PATH, as it is after vcvarsall.bat.
 #>
@@ -30,7 +33,7 @@ param(
 $allowed = @(
     'kernel32', 'user32', 'gdi32', 'advapi32', 'shell32', 'shlwapi', 'ole32', 'oleaut32',
     'comctl32', 'comdlg32', 'dwmapi', 'uxtheme', 'ntdll', 'imm32',
-    'd2d1', 'dwrite', 'windowscodecs',
+    'd2d1', 'dwrite', 'windowscodecs', 'dxgi',
     'mmdevapi', 'avrt', 'mf', 'mfplat', 'mfreadwrite'
 )
 $allowedPattern = '^api-ms-win-(crt|core)-'
