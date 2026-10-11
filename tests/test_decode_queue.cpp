@@ -118,6 +118,32 @@ TEST(DecodeQueue_OnlyAFewFinalsWaitAndTheOldestIsLost)
     CHECK(!queue.Pop(&job));
 }
 
+TEST(DecodeQueue_KnowsHowLongTheOldestJobOfAStreamHasWaited)
+{
+    DecodeQueue queue;
+    CHECK(queue.OldestReceivedAt(kMic) < 0.0);                      /* nothing waits */
+
+    DecodeJob partial = Job(kMic, 1, false);
+    partial.receivedAt = 50.0;
+    queue.Push(std::move(partial));
+    DecodeJob later = Job(kMic, 1, false);                          /* replaces the waiting draft */
+    later.receivedAt = 51.0;
+    queue.Push(std::move(later));
+    CHECK_NEAR(queue.OldestReceivedAt(kMic), 51.0, 1e-9);
+    CHECK(queue.OldestReceivedAt(kSys) < 0.0);                      /* of its own stream only */
+
+    DecodeJob finalJob = Job(kMic, 0, true);
+    finalJob.receivedAt = 48.0;
+    queue.Push(std::move(finalJob));
+    CHECK_NEAR(queue.OldestReceivedAt(kMic), 48.0, 1e-9);           /* the oldest of everything waiting */
+
+    DecodeJob job;
+    CHECK(queue.Pop(&job) && job.isFinal);                          /* finals go first */
+    CHECK_NEAR(queue.OldestReceivedAt(kMic), 51.0, 1e-9);
+    CHECK(queue.Pop(&job));
+    CHECK(queue.OldestReceivedAt(kMic) < 0.0);
+}
+
 TEST(DecodeQueue_SaysWhichPhraseWasLost)
 {
     DecodeQueue queue;

@@ -43,6 +43,8 @@
 #include <mmsystem.h>
 #include <sapi.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
@@ -52,6 +54,7 @@
 #include <cwctype>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../../src/engine/wasapi_engine.h"
@@ -762,6 +765,224 @@ void T15()
         Info("the helper has no graphics card backend (build.bat vulkan), so only the processor was tried");
 }
 
+/* ---- T16: a busy PC makes the transcript change to a smaller model ---------- */
+
+/* Every core kept busy at normal priority: the helper runs below normal, so it gets what is left. */
+class CpuLoad {
+public:
+    void Start()
+    {
+        const unsigned cores = std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 4;
+        for (unsigned i = 0; i < cores; ++i) {
+            threads_.emplace_back([this] {
+                std::uint32_t x = 1;
+                while (!stop_.load(std::memory_order_relaxed)) {
+                    for (int k = 0; k < 100000; ++k)
+                        x = x * 1664525u + 1013904223u;
+                    sink_.store(x, std::memory_order_relaxed);          /* so that the loop is not optimised away */
+                }
+            });
+        }
+    }
+    void Stop()
+    {
+        stop_ = true;
+        for (std::thread &t : threads_)
+            t.join();
+        threads_.clear();
+    }
+    bool Running() const { return !threads_.empty(); }
+    ~CpuLoad() { Stop(); }
+
+private:
+    std::atomic<bool>          stop_{false};
+    std::atomic<std::uint32_t> sink_{0};
+    std::vector<std::thread>   threads_;
+};
+
+/* Reads the samples of a 16 kHz mono 16-bit WAV file. */
+bool ReadSamples(const std::wstring &path, std::vector<std::int16_t> *samples)
+{
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+    LARGE_INTEGER size = {};
+    std::vector<std::uint8_t> bytes;
+    if (GetFileSizeEx(file, &size) && size.QuadPart > 44 && size.QuadPart < (16 << 20)) {
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        DWORD got = 0;
+        if (!ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &got, nullptr) || got != bytes.size())
+            bytes.clear();
+    }
+    CloseHandle(file);
+    for (std::size_t at = 12; bytes.size() > 44 && at + 8 <= bytes.size();) {
+        std::uint32_t length;
+        std::memcpy(&length, bytes.data() + at + 4, 4);
+        if (std::memcmp(bytes.data() + at, "data", 4) == 0) {
+            const std::size_t count = std::min<std::size_t>(length, bytes.size() - at - 8) / 2;
+            samples->resize(count);
+            std::memcpy(samples->data(), bytes.data() + at + 8, count * 2);
+            return count > 0;
+        }
+        at += 8 + length + (length & 1);
+    }
+    return false;
+}
+
+/* Windows' own speech voice says `text` into a file, silently, as 16 kHz mono 16-bit samples. */
+bool SpeechSamples(const wchar_t *text, std::vector<std::int16_t> *samples)
+{
+    static const GUID kWaveFormatEx = {0xC31ADBAE, 0x527F, 0x4ff5, {0xA2, 0x30, 0xF6, 0x2B, 0xB6, 0x1F, 0xF7, 0x0C}};
+    const std::wstring path = Path(L"speech.wav");
+    ISpVoice *voice = nullptr;
+    ISpStream *stream = nullptr;
+    bool ok = SUCCEEDED(CoCreateInstance(__uuidof(SpVoice), nullptr, CLSCTX_ALL, __uuidof(ISpVoice), reinterpret_cast<void **>(&voice))) &&
+              SUCCEEDED(CoCreateInstance(__uuidof(SpStream), nullptr, CLSCTX_ALL, __uuidof(ISpStream), reinterpret_cast<void **>(&stream)));
+    if (ok) {
+        WAVEFORMATEX format = {WAVE_FORMAT_PCM, 1, 16000, 32000, 2, 16, 0};
+        ok = SUCCEEDED(stream->BindToFile(path.c_str(), SPFM_CREATE_ALWAYS, &kWaveFormatEx, &format, 0)) &&
+             SUCCEEDED(voice->SetOutput(stream, TRUE)) &&
+             SUCCEEDED(voice->Speak(text, static_cast<DWORD>(SPF_IS_NOT_XML), nullptr));    /* returns when it is all in the file */
+        stream->Close();
+    }
+    if (stream)
+        stream->Release();
+    if (voice)
+        voice->Release();
+    return ok && ReadSamples(path, samples);
+}
+
+void T16()
+{
+    Section("T16 a busy PC: the transcript changes to a smaller model");
+    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-small.en-q5_1.bin");
+    audiorgui::AsrSetup setup, fallback;
+    const std::wstring programs = audiorgui::ProgramDirectory(), models = audiorgui::ModelsDirectory();
+    if (!big || !lesser || !audiorgui::FindAsr(programs, models, &setup, audiorgui::kAsrModels, audiorgui::kAsrModelCount, big->file) ||
+        !audiorgui::FindAsr(programs, models, &fallback, audiorgui::kAsrModels, audiorgui::kAsrModelCount, lesser->file)) {
+        Info("skipped: it needs the helper (build.bat asr) and both the large (turbo) and the small English model");
+        return;
+    }
+
+    static const wchar_t kSpeech[] =
+        L"Good morning. Today the weather is mild, the river is calm, and the mountain road is open. "
+        L"We meet at the station at nine, and then we walk to the old market together. "
+        L"The first stall sells bread and honey, the second one sells wool and tea. "
+        L"My neighbour says that the best coffee in town is made behind the church, "
+        L"although nobody agrees about it, and everybody has a different favourite place. "
+        L"After lunch we climb the hill, take a few photographs, and watch the boats on the lake. "
+        L"In the evening the streets fill with music, children laugh, and the lamps are lit one by one. "
+        L"Please remember the schedule for tomorrow: breakfast at seven, a short meeting at eight, "
+        L"and the long drive to the coast after that. "
+        L"And finally, at the very end, a purple banana sat quietly beside the open window.";
+    static const wchar_t *const kLateWords[] = {L"purple", L"banana", L"window", L"coast", L"schedule"};
+    std::vector<std::int16_t> speech;
+    if (!SpeechSamples(kSpeech, &speech)) {
+        Check("a voice could be synthesized into a file", false);
+        return;
+    }
+    Info(Fmt("%.0f s of speech, large model on the processor, language fixed to English; every core is kept busy once it is ready",
+             static_cast<double>(speech.size()) / 16000.0));
+
+    audiorgui::TranscriptionHost::Options options;
+    options.model = setup.modelPath;
+    options.vadModel = setup.vadPath;
+    options.language = audiorgui::SpeechLanguage::English;
+    options.gpu = false;
+    options.fallbacks.push_back({fallback.modelPath, audiorgui::MakeProcessFactory(fallback)});
+    audiorgui::TranscriptionHost host(audiorgui::MakeProcessFactory(setup), options);
+    constexpr audiorgui::StreamId kStream = audiorgui::StreamId::Microphone;
+    const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+    host.Start(static_cast<std::uint8_t>(1u << audiorgui::StreamIndex(kStream)));
+
+    bool sawCatchingUp = false, smaller = false, recovered = false;
+    double catchingAt = -1.0, smallerAt = -1.0, maxLag = 0.0, nextReport = 0.0;
+    std::wstring finals;
+    audiorgui::TranscriptEvent events[8];
+    CpuLoad load;
+    auto observe = [&](double now) {
+        const audiorgui::TranscriptStatus status = host.Status(kStream);
+        maxLag = status.lagSeconds > maxLag ? status.lagSeconds : maxLag;
+        if (status.state == audiorgui::TranscriptState::CatchingUp && !sawCatchingUp) {
+            sawCatchingUp = true;
+            catchingAt = now;
+        }
+        if (status.smallerModel && !smaller) {
+            smaller = true;
+            smallerAt = now;
+        }
+        if (smaller && load.Running() == false && status.state == audiorgui::TranscriptState::Live)
+            recovered = true;
+        for (std::size_t n; (n = host.TakeEvents(kStream, events, 8)) > 0;) {
+            for (std::size_t i = 0; i < n; ++i) {
+                if (events[i].isFinal)
+                    finals += std::wstring(events[i].text) + L" ";
+            }
+        }
+        if (now >= nextReport) {
+            nextReport = now + 10.0;
+            Info(Fmt("t=%5.1f s  state %d, %.1f s behind%s%s", now, static_cast<int>(status.state), status.lagSeconds,
+                     status.smallerModel ? ", smaller model" : "", load.Running() ? ", PC busy" : ""));
+        }
+    };
+
+    const auto began = std::chrono::steady_clock::now();
+    auto now = [&] { return SecondsSince(began); };
+    while (now() < 120.0 && host.Status(kStream).state != audiorgui::TranscriptState::Live)       /* the model is read without the load */
+        Sleep(100);
+    const bool ready = host.Status(kStream).state == audiorgui::TranscriptState::Live;
+    Check("the large model becomes ready", ready, Fmt("after %.1f s", now()));
+    if (ready) {
+        load.Start();
+        const double started = now();
+        std::size_t at = 0;
+        while (at < speech.size()) {                                    /* the speech, at the pace of speech */
+            const std::size_t chunk = std::min<std::size_t>(1600, speech.size() - at);
+            host.Push(kStream, speech.data() + at, chunk);
+            at += chunk;
+            observe(now());
+            if (smaller && load.Running() && now() > smallerAt + 5.0)    /* the busy time is over a few seconds after the change */
+                load.Stop();
+            const double due = started + static_cast<double>(at) / 16000.0;
+            while (now() < due)
+                Sleep(10);
+        }
+        if (load.Running() && !smaller)
+            Info("the speech is over and the model never changed");
+        const double waitUntil = now() + 60.0;
+        while (now() < waitUntil && !(smaller && recovered && host.Status(kStream).lagSeconds < 1.0)) {
+            if (smaller && load.Running() && now() > smallerAt + 5.0)
+                load.Stop();
+            observe(now());
+            Sleep(100);
+        }
+        load.Stop();
+    }
+    host.Stop();
+    observe(now());
+
+    Check("the text fell behind while the PC was busy (it said it was catching up)", sawCatchingUp,
+          sawCatchingUp ? Fmt("at %.1f s, at most %.1f s behind", catchingAt, maxLag) : Fmt("at most %.1f s behind", maxLag));
+    Check("it changed to the smaller model", smaller, smaller ? Fmt("at %.1f s", smallerAt) : "never");
+    std::wstring lowered = finals;
+    for (wchar_t &c : lowered)
+        c = static_cast<wchar_t>(std::towlower(c));
+    int found = 0;
+    for (const wchar_t *word : kLateWords)
+        found += lowered.find(word) != std::wstring::npos ? 1 : 0;
+    Check("the last sentences, said after the change, are in the text", found >= 3,
+          Fmt("%d of %d key words; the end of the text: \"%s\"", found, static_cast<int>(sizeof(kLateWords) / sizeof(kLateWords[0])),
+              Narrow(finals.size() > 200 ? finals.substr(finals.size() - 200) : finals).c_str()));
+    Check("it is live again once the PC is quiet", recovered);
+    std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
+    for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+        Sleep(100);
+        helpersAfter = FindProcesses(L"audior_asr.exe").size();
+    }
+    Check("no helper is left running", helpersAfter <= helpersBefore, Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+}
+
 struct TestEntry {
     const char *id;
     void      (*run)();
@@ -771,7 +992,7 @@ struct TestEntry {
 const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
-    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true},
+    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false},
 };
 
 /* ---- start-up ------------------------------------------------------------- */

@@ -10,9 +10,6 @@ blocks using it; each item is worth doing when it starts to matter.
   microphone and watch the window. The system audio's transcript is checked by
   `hardware_tests.exe --only T15`, which makes the PC speak a sentence (CI has no audio
   devices, and the speech tests are skipped there for want of a model).
-- The step to a smaller model on a PC that is really too slow (the logic is tested
-  with fake helpers; `core/lag_governor.h` has the thresholds: 3 s / 1.5 s behind to
-  say *Catching up*, 6 s for 10 s to change model).
 - Silero's thresholds on real conversations (`src/asr/silero_classifier.cpp`): on
   whisper.cpp's JFK sample it splits at every pause, which is right, but a very
   short pause may be too eager.

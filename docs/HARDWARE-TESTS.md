@@ -85,6 +85,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
 | T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 | T15 | Live transcript of the system audio | skipped (with a note) unless the helper and a model are in place. Runs the recording engine in the test process with the system stream's transcript on, once on the processor and, if the helper has the Vulkan backend, once on the graphics card, while a voice speaks a sentence: the helper becomes ready; the transcript does not fail; text appears *while* the voice is still speaking; at least 4 of the 5 key words (quick, brown, fox, lazy, dog) are in the settled text; the text is never 3 s or more behind; no `audior_asr.exe` is left after the recording ends |
+| T16 | A busy PC: the step to a smaller model | skipped (with a note) unless the helper and both the large (turbo) and the small English model are in place. Windows' voice says about a minute of speech into a file (silently); the large model reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the small model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
 
 ### How the files are measured
 
@@ -149,6 +150,16 @@ the recording was very probably ended early (T15 now checks for that: "the recor
 short by anything else"); other sound mixed into the system audio would give the same picture. It
 did not come back in three more runs. If T15 fails, read the "heard" text in its detail and run
 it again, with nothing else recording or running tests.
+
+**T16 (a busy PC), 2026-10-11, x64:** the first run, with the helper as it was, failed four of its
+five checks and found a real flaw: the helper reported how far behind it was only when it finished
+decoding something, and on a starved PC it finished nothing for a minute, so the recorder saw
+"live, 0.0 s behind" while the text was far behind and never changed model (the transcript was
+`… … …`, the marks for phrases it never got to). The helper now also reports the age of what is
+waiting or being decoded once a second. Second run, all checks pass: with every core busy the
+large model said *catching up* at 7 s, was 17 s behind at its worst, the small model took over
+at 24 s, was then 0.2 to 0.3 s behind, and all five key words of the last sentences are in the
+text; it was live again a few seconds after the load stopped.
 
 ## Findings
 

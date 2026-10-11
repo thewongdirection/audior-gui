@@ -206,8 +206,10 @@ public:
     /* The next audio of a stream, from the thread that reads the protocol. */
     void Audio(StreamId stream, std::uint64_t firstSample, const std::int16_t *samples, std::size_t count)
     {
-        if (streams_ & (1u << StreamIndex(stream)))
+        if (streams_ & (1u << StreamIndex(stream))) {
             trackers_[StreamIndex(stream)]->Add(samples, count, firstSample, Sink(stream));
+            ReportLag(stream);
+        }
     }
 
     /* No more audio: what is being spoken is settled, everything waiting is decoded, and the worker ends. */
@@ -248,6 +250,34 @@ private:
         };
     }
 
+    /* Once a second, while something of the stream waits or is being decoded, how long the oldest of it has
+     * waited.  A decode that takes very long (a PC that is busy with something else) finishes nothing to report
+     * from, and the recorder must still hear that the text is falling behind. */
+    void ReportLag(StreamId stream)
+    {
+        const int s = StreamIndex(stream);
+        const double now = Now();
+        if (now - lastReport_[s] < 1.0)
+            return;
+        lastReport_[s] = now;
+        double oldest;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            oldest = queue_.OldestReceivedAt(stream);
+            if (inFlightStream_ == s && (oldest < 0.0 || inFlightAt_ < oldest))
+                oldest = inFlightAt_;
+        }
+        if (oldest < 0.0)
+            return;                                     /* nothing waits: the last report stands */
+        const float lag = static_cast<float>(std::max(0.0, now - oldest));
+        TranscriptState state;
+        {
+            std::lock_guard<std::mutex> lock(lagMutex_);
+            state = governors_[s].Observe(lag);
+        }
+        events_.Status(stream, state, lag);
+    }
+
     void Work()
     {
         bool failed[kStreamCount] = {false, false};     /* streams the recorder was told are over: nothing more is decoded for them */
@@ -255,9 +285,12 @@ private:
             DecodeJob job;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
+                inFlightStream_ = -1;                   /* (the previous job is done) */
                 wake_.wait(lock, [&] { return aborted_ || finishing_ || !queue_.Empty(); });
                 if (aborted_ || !queue_.Pop(&job))
                     return;                             /* (finishing, and nothing is left) */
+                inFlightStream_ = StreamIndex(job.stream);
+                inFlightAt_ = job.receivedAt;
             }
 
             std::string utf8;
@@ -277,7 +310,12 @@ private:
                 events_.Text(job.stream, job.id, job.isFinal, static_cast<double>(job.startSample) / asr::kSampleRate,
                              text);
             const float lag = static_cast<float>(std::max(0.0, Now() - job.receivedAt));
-            events_.Status(job.stream, governors_[s].Observe(lag), lag);
+            TranscriptState state;
+            {
+                std::lock_guard<std::mutex> lock(lagMutex_);
+                state = governors_[s].Observe(lag);
+            }
+            events_.Status(job.stream, state, lag);
         }
     }
 
@@ -285,9 +323,13 @@ private:
     WhisperDecoder   &decoder_;
     const std::uint8_t streams_;
     std::unique_ptr<UtteranceTracker> trackers_[kStreamCount];      /* of the streams transcribed; the protocol thread only */
-    LagGovernor      governors_[kStreamCount];          /* the worker only */
+    double           lastReport_[kStreamCount] = {0.0, 0.0};    /* when ReportLag last spoke (the protocol thread only) */
+    std::mutex       lagMutex_;
+    LagGovernor      governors_[kStreamCount];          /* both threads report: guarded by lagMutex_ */
 
     std::mutex              mutex_;
+    int                     inFlightStream_ = -1;       /* the stream of the job being decoded, and when its audio arrived */
+    double                  inFlightAt_ = 0.0;
     std::condition_variable wake_;
     DecodeQueue             queue_;
     bool                    finishing_ = false, aborted_ = false;
