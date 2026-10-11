@@ -150,8 +150,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT
 if not "%WANT_HW%"=="1" goto :builddone
 set "HW_SRC="
 for %%f in (tests\hardware\*.cpp) do set "HW_SRC=!HW_SRC! %%f"
-cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\hardware_tests.exe" !HW_SRC! ^
-    /link %LFLAGS% /SUBSYSTEM:CONSOLE user32.lib ole32.lib mfplat.lib mfreadwrite.lib mfuuid.lib winmm.lib || goto :buildfail
+REM Most of it drives the real program from outside; T15 uses the recording engine in the test process.
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\hardware_tests.exe" !HW_SRC! !CORE_OBJ! ^
+    /link %LFLAGS% /SUBSYSTEM:CONSOLE user32.lib winmm.lib %ENGLIBS% || goto :buildfail
 
 :builddone
 endlocal & exit /b 0
