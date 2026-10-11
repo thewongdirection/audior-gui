@@ -21,7 +21,7 @@ Ctrl+Alt+S, yours to change).
 |  Audior-GUI                                            * Ready  |
 +------------------------------------------+---------------------+
 |  [x] Microphone                  -12 dB  |  SAVE TO            |
-|  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\audior      v]|
+|  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\Audior-GUI  v]|
 |  |||  ||||||  ||| ||||||||| |||||| |||   |  FILE NAME          |
 +------------------------------------------+  [team-call       ] |
 |  [x] System audio                -20 dB  |  Saved as team-call.mp3
@@ -47,7 +47,7 @@ Ctrl+Alt+S, yours to change).
 | Windows privacy | Settings → Privacy & security → Microphone must let desktop apps use the microphone. If Windows blocks it, the recorder reports `access was denied (check Windows privacy settings)` or gets no microphone audio |
 | Rights | An ordinary user account: no administrator rights, installer, driver or service |
 | Display | Direct2D and DirectWrite, which are part of Windows. No GPU is required (Direct2D falls back to software). Segoe UI Variable on Windows 11, Segoe UI on Windows 10 |
-| Disk | A writable folder (default `Documents\audior`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
+| Disk | A writable folder (default `Documents\Audior-GUI`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
 | Memory | Fixed: each stream buffers at most 8 seconds, whatever the length of the recording |
 | Network | **None.** No connection, account or API key. See [below](#what-works-offline-and-what-needs-the-internet) |
 | Not needed | .NET, the Visual C++ redistributable, WebView2, any third-party library |

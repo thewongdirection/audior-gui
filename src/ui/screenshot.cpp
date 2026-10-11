@@ -20,7 +20,7 @@ struct Scene {
         : engine([this] { return now; }),
           ctl(engine, [] { return LocalTime{2026, 10, 10, 15, 30, 45}; })
     {
-        ctl.Settings().outputDirectory = L"C:\\Users\\you\\Documents\\audior";
+        ctl.Settings().outputDirectory = L"C:\\Users\\you\\Documents\\Audior-GUI";
     }
 
     void Run(double seconds)

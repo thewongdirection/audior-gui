@@ -48,7 +48,7 @@ signed), choose *More info*, then *Run anyway*.
 2. While idle the waveforms rest; they move only while recording.
 3. Press **Start recording**, speak, play some music, press **Stop**.
    The waveforms move, the time runs, the status says *Saved*, **Show in folder**
-   opens `Documents\audior`.
+   opens `Documents\Audior-GUI`.
 4. Play the file. For MP3, check the length matches the clock.
 
 ## 2. The cases worth trying

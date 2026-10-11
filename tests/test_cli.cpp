@@ -15,7 +15,7 @@ struct Parsed {
 Parsed Parse(std::vector<std::wstring> args)
 {
     Parsed p;
-    p.settings.outputDirectory = L"C:\\Docs\\audior";                   /* the app's default folder */
+    p.settings.outputDirectory = L"C:\\Docs\\Audior-GUI";               /* the app's default folder */
     p.result = ParseCommandLine(args, kCwd, &p.settings);
     return p;
 }
@@ -35,7 +35,7 @@ TEST(Cli_NoArgumentsOpenTheWindowWithTheDefaults)
     CHECK(p.result.error.empty());
     CHECK(!p.result.start);
     CHECK(!p.result.demo);
-    CHECK_EQ(p.settings.outputDirectory, std::wstring(L"C:\\Docs\\audior"));
+    CHECK_EQ(p.settings.outputDirectory, std::wstring(L"C:\\Docs\\Audior-GUI"));
     CHECK(p.settings.format == Format::Mp3);
 }
 

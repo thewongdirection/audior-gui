@@ -37,7 +37,7 @@ private:
 };
 
 /* Creates the folder `filePath` is to go in if it is missing, one level deep:
- * its parent must exist.  The default folder ("Documents\audior") then needs no
+ * its parent must exist.  The default folder ("Documents\Audior-GUI") then needs no
  * set-up, and a typo further up the path is still reported rather than
  * repaired. */
 void CreateOutputFolder(const std::wstring &filePath);

@@ -61,13 +61,13 @@ std::wstring CurrentDirectory()
     return n > 0 && n < MAX_PATH ? std::wstring(buffer, n) : std::wstring();
 }
 
-/* Documents\audior: where recordings go until the user picks a folder. */
+/* Documents\Audior-GUI: where recordings go until the user picks a folder. */
 std::wstring DefaultOutputDirectory()
 {
     PWSTR documents = nullptr;
     std::wstring dir;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_DEFAULT, nullptr, &documents)))
-        dir = std::wstring(documents) + L"\\audior";
+        dir = std::wstring(documents) + L"\\Audior-GUI";
     CoTaskMemFree(documents);
     return dir;
 }
