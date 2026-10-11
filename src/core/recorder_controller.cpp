@@ -14,7 +14,8 @@ constexpr int         kMaxNumberedNames = 1000; /* " (2)" ... " (999)" before gi
 }  // namespace
 
 RecorderController::RecorderController(IRecordingEngine &engine, Clock clock, FileExists fileExists)
-    : engine_(engine), clock_(std::move(clock)), fileExists_(std::move(fileExists))
+    : engine_(engine), clock_(std::move(clock)), fileExists_(std::move(fileExists)),
+      transcriptModels_(engine.TranscriptModels())
 {
     RefreshDevices();
 }

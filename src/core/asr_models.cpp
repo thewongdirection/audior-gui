@@ -1,5 +1,7 @@
 #include "asr_models.h"
 
+#include <algorithm>
+
 namespace audiorgui {
 
 namespace {
@@ -19,6 +21,32 @@ bool SameName(const std::wstring &a, const std::wstring &b)
     }
     return true;
 }
+
+}  // namespace
+
+const AsrModel *FindAsrModel(const std::wstring &file)
+{
+    for (const AsrModel &m : kAsrModels) {
+        if (SameName(file, m.file))
+            return &m;
+    }
+    return nullptr;
+}
+
+std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
+                                            const std::vector<const AsrModel *> &installed, bool keepLanguages)
+{
+    std::vector<const AsrModel *> smaller;
+    for (std::ptrdiff_t i = chosen - table - 1; i >= 0; --i) {
+        const AsrModel *m = table + i;
+        const bool present = std::find(installed.begin(), installed.end(), m) != installed.end();
+        if (present && (m->multilingual || !keepLanguages || !chosen->multilingual))
+            smaller.push_back(m);
+    }
+    return smaller;
+}
+
+namespace {
 
 bool IsPlainFileName(const std::string &name)
 {

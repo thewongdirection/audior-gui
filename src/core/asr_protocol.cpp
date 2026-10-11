@@ -101,10 +101,17 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
     Reader r(payload, size);
     m->type = type;
     switch (type) {
-    case Type::Hello:
+    case Type::Hello: {
         m->version = r.Get<std::uint16_t>();
         m->streams = r.Get<std::uint8_t>();
-        return r.String(size / sizeof(wchar_t), &m->text) && r.done();
+        const std::uint8_t language = r.Get<std::uint8_t>();
+        const std::uint8_t gpu = r.Get<std::uint8_t>();
+        if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English) || gpu > 1)
+            return false;
+        m->language = static_cast<SpeechLanguage>(language);
+        m->gpu = gpu != 0;
+        return r.String(size / sizeof(wchar_t), &m->text) && r.String(size / sizeof(wchar_t), &m->vadModel) && r.done();
+    }
     case Type::Audio: {
         const std::uint8_t stream = r.Get<std::uint8_t>();
         m->firstSample = r.Get<std::uint64_t>();
@@ -124,7 +131,7 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         const std::uint8_t stream = r.Get<std::uint8_t>();
         const std::uint8_t state = r.Get<std::uint8_t>();
         const float lag = r.Get<float>();
-        if (!r.done() || !ValidStream(stream) || state > static_cast<std::uint8_t>(TranscriptState::Failed) ||
+        if (!r.done() || !ValidStream(stream) || state > static_cast<std::uint8_t>(TranscriptState::CatchingUp) ||
             !std::isfinite(lag) || lag < 0.0f || lag > 1e6f)
             return false;
         m->stream = static_cast<StreamId>(stream);
@@ -172,7 +179,10 @@ std::size_t Encode(const Message &m, std::uint8_t *out, std::size_t capacity)
     case Type::Hello:
         w.Put(m.version);
         w.Put(m.streams);
+        w.Put(static_cast<std::uint8_t>(m.language));
+        w.Put(static_cast<std::uint8_t>(m.gpu ? 1 : 0));
         w.String(m.text.c_str(), m.text.size());
+        w.String(m.vadModel.c_str(), m.vadModel.size());
         break;
     case Type::Audio:
         if (m.sampleCount > kMaxAudioSamples) {

@@ -40,6 +40,10 @@ public:
      * next recording, which carries on. */
     void FailTranscriptAfter(double seconds, std::wstring message);
 
+    /* And the transcription falls behind from `seconds` of the next recording on
+     * (status CatchingUp, a lag of several seconds, a smaller model running). */
+    void FallBehindAfter(double seconds);
+
     bool IsSimulated() const override { return true; }
     std::vector<DeviceInfo> ListDevices(DeviceKind kind) override;
     bool Start(const RecordingSettings &settings, const std::wstring &outputPath,
@@ -52,6 +56,8 @@ public:
     std::vector<std::wstring> OutputFiles() override { return files_; }
 
     bool CanTranscribe() const override { return true; }
+    std::vector<TranscriptModel> TranscriptModels() const override;     /* the table's, as if all were installed */
+    bool CanTranscribeOnGpu() const override { return true; }
     TranscriptStatus Transcription(StreamId stream) override;
     std::wstring TranscriptionProblem(StreamId) override { return transcriptFailMessage_; }
     std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override;
@@ -80,6 +86,7 @@ private:
     std::uint64_t transcriptNext_[kStreamCount] = {0, 0};   /* the next scripted event of each stream */
     double        transcriptFailAfter_ = -1.0;              /* the same two for the transcription */
     double        transcriptFailAt_    = -1.0;
+    double        behindAfter_ = -1.0, behindAt_ = -1.0;    /* the same, for falling behind */
     std::wstring  transcriptFailMessage_;
 };
 

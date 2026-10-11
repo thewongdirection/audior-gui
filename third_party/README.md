@@ -12,12 +12,12 @@ rule and `THIRD-PARTY-NOTICES.md` for every licence.
 | Upstream | https://github.com/ggml-org/whisper.cpp |
 | Version | v1.9.5 (tag), commit `d1be6fde11ac6e0407606b4e42fe72d34add8037` |
 | Licence | MIT, in `whisper.cpp/LICENSE` |
-| Used for | speech recognition in `audior_asr.exe`, linked statically, CPU only |
+| Used for | speech recognition in `audior_asr.exe`, as DLLs next to it: CPU backend, and the Vulkan backend if built (`build.bat vulkan`) |
 
-It is a trimmed copy: only what a CPU build for Windows on x86 needs. Left out are
-everything outside `src/`, `include/`, `ggml/` and `cmake/` (examples, bindings,
-tests, models, scripts), every GPU and accelerator backend of ggml
-(`ggml/src/ggml-cuda`, `-vulkan`, `-metal` and so on), the CPU backend's code for
+It is a trimmed copy: only what a CPU or Vulkan build for Windows on x86 needs.
+Left out are everything outside `src/`, `include/`, `ggml/` and `cmake/` (examples,
+bindings, tests, models, scripts), every GPU and accelerator backend of ggml but
+Vulkan (`ggml/src/ggml-cuda`, `-metal` and so on), the CPU backend's code for
 other processors (`arch/arm`, `arch/riscv`, ...) and the Core ML, OpenVINO and
 Vitis AI parts of `src/`. (`src/aneforge` stays: upstream's CMake lists its
 files unconditionally, and they compile to nothing outside Apple platforms.)

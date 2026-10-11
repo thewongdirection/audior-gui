@@ -140,6 +140,115 @@ TEST(Asr_NothingIsFoundWithoutEveryPiece)
     }
 }
 
+TEST(Asr_InstalledModelsAreTheWholeOnesInTheTablesOrder)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir models;
+    CHECK(InstalledModels(models.Dir(), table, 2).empty());
+    CHECK(InstalledModels(std::wstring(), table, 2).empty());
+
+    Write(models.Path(L"b.bin"), "1234");
+    std::vector<const AsrModel *> found = InstalledModels(models.Dir(), table, 2);
+    CHECK_EQ(found.size(), std::size_t(1));
+    CHECK(found.size() == 1 && found[0] == &table[1]);
+
+    Write(models.Path(L"a.bin"), "123");
+    found = InstalledModels(models.Dir(), table, 2);
+    CHECK(found.size() == 2 && found[0] == &table[0] && found[1] == &table[1]);
+
+    Write(models.Path(L"a.bin"), "12");                 /* not whole: a download in progress */
+    found = InstalledModels(models.Dir(), table, 2);
+    CHECK(found.size() == 1 && found[0] == &table[1]);
+}
+
+TEST(Asr_TheModelAskedForIsTheOneFound)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir programs, models;
+    Write(programs.Path(kHelperFile), "x");
+    Write(programs.Path(kManifestFile), "x");
+    Write(models.Path(L"a.bin"), "123");
+    Write(models.Path(L"b.bin"), "1234");
+
+    AsrSetup setup;
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* none asked for: the first */
+    CHECK(setup.model == &table[0]);
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"B.BIN"));       /* any case */
+    CHECK(setup.model == &table[1]);
+    CHECK_EQ(setup.modelPath, models.Path(L"b.bin"));
+
+    CHECK(!FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"c.bin"));      /* not a model of the table */
+    Write(models.Path(L"b.bin"), "12");
+    CHECK(!FindAsr(programs.Dir(), models.Dir(), &setup, table, 2, L"b.bin"));      /* asked for, but not whole */
+    CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* the first is still fine  */
+}
+
+TEST(Asr_TheGraphicsCardBackendIsNotedWhenItIsThere)
+{
+    Pack pack;
+    AsrSetup setup;
+    CHECK(pack.Find(&setup));
+    CHECK(!setup.gpu);                                  /* a helper without the Vulkan backend: the processor only */
+
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ pretend backend");
+    CHECK(pack.Find(&setup));
+    CHECK(setup.gpu);
+
+    DeleteFileW(pack.programDir.Path(kGpuBackendFile).c_str());
+    CHECK(pack.Find(&setup));
+    CHECK(!setup.gpu);                                  /* and it is looked for again each time */
+}
+
+TEST(Asr_AGraphicsCardBackendThatIsNotInTheFileListIsRefused)
+{
+    Pack pack;
+    AsrSetup setup;
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ pretend vulkan backend");
+    CHECK(pack.Find(&setup) && setup.gpu);
+    const std::wstring why = VerifyAsr(setup, false);               /* the helper would load it by name, unchecked */
+    CHECK(why.find(kGpuBackendFile) != std::wstring::npos);
+
+    pack.WriteManifest(Sha256Hex("MZ pretend vulkan backend", 25) + "  ggml-vulkan.dll\n");
+    CHECK(VerifyAsr(setup, false).empty());
+
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ a planted backend!!!!");
+    CHECK(!VerifyAsr(setup, false).empty());                        /* and one that is not the listed one */
+}
+
+TEST(Asr_TheVoiceActivityModelIsNotedOnlyWhenItIsWhole)
+{
+    Pack pack;
+    const std::string vadContent = "pretend voice-activity weights", vadHash = Sha256Hex(vadContent.data(), vadContent.size());
+    AsrModel vad = {L"vad.bin", vadHash.c_str(), vadContent.size(), L"A test detector", L"MIT", L"https://example.test"};
+    auto find = [&](AsrSetup *setup) {
+        return FindAsr(pack.programDir.Dir(), pack.modelsDir.Dir(), setup, &pack.standIn.model, 1, std::wstring(), &vad);
+    };
+
+    AsrSetup setup;
+    CHECK(find(&setup));                                /* it is optional: no file, no detector */
+    CHECK(setup.vad == nullptr && setup.vadPath.empty());
+
+    Write(pack.modelsDir.Path(L"vad.bin"), vadContent.substr(0, 4));
+    CHECK(find(&setup) && setup.vad == nullptr);        /* not whole */
+
+    Write(pack.modelsDir.Path(L"vad.bin"), vadContent);
+    CHECK(find(&setup));
+    CHECK(setup.vad == &vad);
+    CHECK_EQ(setup.vadPath, pack.modelsDir.Path(L"vad.bin"));
+    CHECK(VerifyAsr(setup, true).empty());
+
+    Write(pack.modelsDir.Path(L"vad.bin"), std::string(vadContent.size(), 'x'));    /* the right size, other content */
+    CHECK(find(&setup) && setup.vad == &vad);
+    const std::wstring why = VerifyAsr(setup, true);
+    CHECK(why.find(L"vad.bin") != std::wstring::npos);
+    CHECK(VerifyAsr(setup, false).empty());             /* checked together with the model, once */
+
+    CHECK(FindAsr(pack.programDir.Dir(), pack.modelsDir.Dir(), &setup, &pack.standIn.model, 1, std::wstring(), nullptr));
+    CHECK(setup.vad == nullptr);                        /* a caller that wants none gets none */
+}
+
 TEST(Asr_TheRealTableIsNotFoundInAnEmptyFolder)
 {
     TempDir programs, models;

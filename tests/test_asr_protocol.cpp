@@ -89,7 +89,54 @@ TEST(Asr_HelloRoundTrips)
     CHECK(r.type == Type::Hello);
     CHECK_EQ(r.version, kVersion);
     CHECK_EQ(int(r.streams), 3);
+    CHECK(r.language == SpeechLanguage::Auto);
     CHECK_EQ(r.text, m.text);
+    CHECK(r.vadModel.empty());                          /* none unless one is given */
+    CHECK(r.gpu);                                       /* the card is used unless told not to */
+
+    m.gpu = false;
+    CHECK(!ReadOne(Frame(m)).gpu);
+    m.gpu = true;
+    m.language = SpeechLanguage::English;
+    m.vadModel = L"C:\\Models\\ggml-silero-v5.1.2.bin";
+    const Message again = ReadOne(Frame(m));
+    CHECK(again.language == SpeechLanguage::English);
+    CHECK_EQ(again.text, m.text);
+    CHECK_EQ(again.vadModel, m.vadModel);
+}
+
+TEST(Asr_ANonsensicalGpuFlagIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    const std::vector<std::uint8_t> bytes = Frame(hello);
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 4, 0)));                /* after the version, streams and language */
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 4, 1)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 4, 2)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 4, 255)));
+}
+
+TEST(Asr_AHelloWithoutItsSecondPathIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    std::vector<std::uint8_t> bytes = Frame(hello);
+    bytes.resize(bytes.size() - sizeof(std::uint16_t));                 /* cut the (empty) second string off */
+    const std::uint32_t payload = static_cast<std::uint32_t>(bytes.size() - kFrameHeader);
+    std::memcpy(bytes.data(), &payload, sizeof(payload));
+    CHECK(IsInvalid(bytes));
+}
+
+TEST(Asr_AnUnknownLanguageIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    CHECK(!IsInvalid(With(Frame(hello), kFrameHeader + 3, 1)));         /* after the version and the streams */
+    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 2)));
+    CHECK(IsInvalid(With(Frame(hello), kFrameHeader + 3, 255)));
 }
 
 TEST(Asr_AudioRoundTrips)
@@ -144,6 +191,9 @@ TEST(Asr_StatusRoundTrips)
     CHECK(r.stream == StreamId::System);
     CHECK(r.status.state == TranscriptState::Live);
     CHECK_NEAR(r.status.lagSeconds, 1.25, 1e-6);
+
+    m.status.state = TranscriptState::CatchingUp;
+    CHECK(ReadOne(Frame(m)).status.state == TranscriptState::CatchingUp);
 }
 
 TEST(Asr_EventRoundTrips)
@@ -335,7 +385,9 @@ TEST(Asr_ANonsensicalStatusIsRefused)
     m.status.lagSeconds = 0.5f;
     const std::vector<std::uint8_t> ok = Frame(m);
     CHECK(!IsInvalid(ok));
-    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 9)));                    /* a state that does not exist */
+    CHECK(!IsInvalid(With(ok, kFrameHeader + 1, 4)));                   /* the last state there is */
+    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 5)));                    /* one that does not exist */
+    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 9)));
 
     m.status.lagSeconds = std::numeric_limits<float>::quiet_NaN();
     CHECK(IsInvalid(Frame(m)));

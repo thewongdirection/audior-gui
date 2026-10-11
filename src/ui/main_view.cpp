@@ -11,6 +11,7 @@ namespace audiorgui::ui {
 namespace {
 
 constexpr float kPi = 3.14159265358979f;
+constexpr float kTranscriptSectionHeight = 54.0f;   /* the Transcript caption and its row of controls */
 constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio only" at the small size */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
@@ -119,6 +120,20 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
+    gpuSwitch_.text = L"GPU";
+    gpuSwitch_.accent = theme::kSystem;
+    gpuSwitch_.onChange = [this](bool on) {
+        ctl_.Settings().transcribeGpu = on;
+        Refresh();
+    };
+    languageSeg_.options = {L"Auto", L"English"};
+    languageSeg_.onChange = [this](int i) {
+        ctl_.Settings().transcribeLanguage = i == 0 ? SpeechLanguage::Auto : SpeechLanguage::English;
+        Refresh();
+    };
+    modelField_.style = Button::Style::Field;
+    modelField_.onClick = [this] { ChooseModel(); };
+
     shareSlider_.minimum = 0;
     shareSlider_.maximum = 100;
     shareSlider_.step = 5;
@@ -157,8 +172,8 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     Widget *const order[kWidgetCount] = {
         &micCheck_, &micTranscript_, &micField_, &bluetoothLink_, &gain_[0].slider, &systemCheck_,
         &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_,
-        &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1], &startButton_, &stopButton_,
-        &showButton_};
+        &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1], &gpuSwitch_, &languageSeg_,
+        &modelField_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     RefreshHotkeys();
@@ -296,6 +311,18 @@ void MainView::Refresh()
     shareSlider_.value = s.mergeMicPercent;
     shareText_ = ShareText(s.mergeMicPercent);
 
+    /* The language is the model's own business when it knows only English. */
+    const TranscriptModel *model = SelectedModel();
+    const bool english = model && !model->multilingual;
+    languageSeg_.visible = modelField_.visible = canTranscribe && model;
+    gpuSwitch_.visible = canTranscribe && ctl_.CanTranscribeOnGpu();
+    gpuSwitch_.checked = s.transcribeGpu;
+    gpuSwitch_.enabled = unlocked;
+    languageSeg_.selected = english || s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
+    languageSeg_.enabled = unlocked && !english;
+    modelField_.text = model ? model->label : std::wstring();
+    modelField_.enabled = unlocked && ctl_.TranscriptModels().size() > 1;
+
     startButton_.enabled = ctl_.CanStart() && (s.includeMicrophone || s.includeSystemAudio);
     stopButton_.enabled = ctl_.CanStop();
     stopButton_.style = ctl_.CanStop() ? Button::Style::Prominent : Button::Style::Secondary;
@@ -361,6 +388,34 @@ void MainView::ChooseBitrate()
     if (pick < 0 || pick >= kMp3BitrateCount)
         return;
     ctl_.Settings().mp3BitrateKbps = kMp3Bitrates[pick];
+    Refresh();
+}
+
+/* The model the settings stand for: the one named, else the first one installed (null: none). */
+const TranscriptModel *MainView::SelectedModel() const
+{
+    const std::vector<TranscriptModel> &models = ctl_.TranscriptModels();
+    for (const TranscriptModel &m : models) {
+        if (m.file == ctl_.Settings().transcribeModel)
+            return &m;
+    }
+    return models.empty() ? nullptr : &models.front();
+}
+
+void MainView::ChooseModel()
+{
+    const std::vector<TranscriptModel> &models = ctl_.TranscriptModels();
+    std::vector<std::wstring> items;
+    int selected = 0;
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        items.push_back(models[i].label);
+        if (&models[i] == SelectedModel())
+            selected = static_cast<int>(i);
+    }
+    const int pick = host_ ? host_->Choose(items, selected, modelField_.rect) : -1;
+    if (pick < 0 || static_cast<std::size_t>(pick) >= models.size())
+        return;
+    ctl_.Settings().transcribeModel = models[static_cast<std::size_t>(pick)].file;
     Refresh();
 }
 
@@ -465,6 +520,8 @@ void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &tr
     device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
+float MainView::ExtraMinHeight() const { return ctl_.CanTranscribe() ? kTranscriptSectionHeight : 0.0f; }
+
 void MainView::Layout(float w, float h)
 {
     using namespace theme;
@@ -511,7 +568,11 @@ void MainView::Layout(float w, float h)
     const float half = (iw - 12.0f) * 0.5f;
     keyBox_[0].rect = RectXYWH(x, y, half, 36);
     keyBox_[1].rect = RectXYWH(x + half + 12.0f, y, half, 36);      y += 36 + 4;
-    hotkeyHintRect_ = RectXYWH(x, y, iw, 18);
+    hotkeyHintRect_ = RectXYWH(x, y, iw, 18);                       y += 18 + 14;
+    captions_[5] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
+    gpuSwitch_.rect = RectXYWH(x + iw - 84, y - 4, 84, 22);                                  y += 18;
+    languageSeg_.rect = RectXYWH(x, y, 140, 36);
+    modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
 
     /* The transport bar. */
     const float by = transport_.top + (kTransportH - 48.0f) * 0.5f;

@@ -16,6 +16,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "../core/asr_models.h"
 #include "transcription_host.h"
@@ -24,6 +25,7 @@ namespace audiorgui {
 
 inline constexpr wchar_t kHelperFile[]   = L"audior_asr.exe";
 inline constexpr wchar_t kManifestFile[] = L"audior_asr.sha256";
+inline constexpr wchar_t kGpuBackendFile[] = L"ggml-vulkan.dll";    /* optional: the backend for the graphics card */
 
 /* What was found: the helper and the model it will be given. */
 struct AsrSetup {
@@ -31,6 +33,9 @@ struct AsrSetup {
     std::wstring    helper;             /* the helper's full path              */
     const AsrModel *model = nullptr;    /* its entry in kAsrModels             */
     std::wstring    modelPath;
+    const AsrModel *vad = nullptr;      /* the voice-activity model, if it is there too (it is optional) */
+    std::wstring    vadPath;
+    bool            gpu = false;        /* the helper has the Vulkan backend next to it (kGpuBackendFile) */
 };
 
 /* The folder the program runs from, and the folder models are looked for in:
@@ -38,11 +43,17 @@ struct AsrSetup {
 std::wstring ProgramDirectory();
 std::wstring ModelsDirectory();
 
-/* A cheap look (nothing is read, only file sizes): is the helper with its
- * manifest in `programDir`, and a model of the table, whole, in `modelsDir`?
- * (`models` is the table; the tests give it a small one.) */
+/* The models of the table that are whole in `modelsDir`, in the table's order.  A cheap look:
+ * nothing is read, only file sizes.  (`models` is the table; the tests give it a small one.) */
+std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models = kAsrModels,
+                                              std::size_t modelCount = kAsrModelCount);
+
+/* Is the helper with its manifest in `programDir`, and a whole model in `modelsDir`: the file
+ * named `preferred` (any case), or if that is empty the first one of the table that is there?
+ * The voice-activity model `vad` is noted too if it is there whole. */
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup,
-             const AsrModel *models = kAsrModels, std::size_t modelCount = kAsrModelCount);
+             const AsrModel *models = kAsrModels, std::size_t modelCount = kAsrModelCount,
+             const std::wstring &preferred = std::wstring(), const AsrModel *vad = &kVadModel);
 
 /* The SHA-256 of a whole file, read in small pieces.  False if it cannot be
  * read, or if `stopping` (when given) says so between two pieces. */

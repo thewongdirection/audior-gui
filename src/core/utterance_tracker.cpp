@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace audiorgui {
 
@@ -11,9 +12,32 @@ constexpr float kFloorFloorDb = -80.0f;         /* the noise floor is never take
 
 }  // namespace
 
-UtteranceTracker::UtteranceTracker(const TrackerConfig &config) : config_(config)
+bool EnergyClassifier::Speech(const std::int16_t *frame)
 {
-    audio_.reserve(Samples(config.maxUtteranceMs) + static_cast<std::size_t>(config.frameSamples));
+    double energy = 0.0;
+    for (int i = 0; i < config_.frameSamples; ++i)
+        energy += static_cast<double>(frame[i]) * frame[i];
+    const double rms = std::sqrt(energy / config_.frameSamples);
+    const float db = static_cast<float>(20.0 * std::log10(rms / 32768.0 + 1e-9));
+    if (!floorSeeded_) {
+        floorDb_ = std::max(db, kFloorFloorDb);
+        floorSeeded_ = true;
+    }
+
+    const bool loud = db > floorDb_ + config_.loudAboveFloorDb && db > config_.minLoudDb;
+    /* The floor follows the room: down fast, up slowly, and up very slowly even while it is loud, so a fan
+     * that switches on is taken for the room after a few seconds (speech has pauses, which pull it down again). */
+    floorDb_ += (loud ? 0.002f : db < floorDb_ ? 0.25f : 0.01f) * (db - floorDb_);
+    floorDb_ = std::max(floorDb_, kFloorFloorDb);
+    return loud;
+}
+
+UtteranceTracker::UtteranceTracker(const TrackerConfig &config, std::unique_ptr<FrameClassifier> classifier)
+    : config_(config),
+      classifier_(classifier ? std::move(classifier) : std::make_unique<EnergyClassifier>(config))
+{
+    config_.frameSamples = classifier_->FrameSamples();
+    audio_.reserve(Samples(config.maxUtteranceMs) + static_cast<std::size_t>(config_.frameSamples));
 }
 
 void UtteranceTracker::Add(const std::int16_t *samples, std::size_t count, std::uint64_t firstSample, const Sink &emit)
@@ -22,7 +46,7 @@ void UtteranceTracker::Add(const std::int16_t *samples, std::size_t count, std::
         if (active_)
             End(emit, false);
         audio_.clear();
-        frameEnergy_ = 0.0;
+        classifier_->Reset();
         frameFill_ = 0;
         loudRun_ = 0;
         haveAudio_ = false;
@@ -35,7 +59,6 @@ void UtteranceTracker::Add(const std::int16_t *samples, std::size_t count, std::
 
     for (std::size_t i = 0; i < count; ++i) {
         audio_.push_back(samples[i]);
-        frameEnergy_ += static_cast<double>(samples[i]) * samples[i];
         if (++frameFill_ == config_.frameSamples)
             OnFrame(emit);
     }
@@ -49,21 +72,9 @@ void UtteranceTracker::Flush(const Sink &emit)
 
 void UtteranceTracker::OnFrame(const Sink &emit)
 {
-    const double rms = std::sqrt(frameEnergy_ / config_.frameSamples);
-    frameEnergy_ = 0.0;
     frameFill_ = 0;
-    const float db = static_cast<float>(20.0 * std::log10(rms / 32768.0 + 1e-9));
     const std::uint64_t frameEnd = audioStart_ + audio_.size();
-    if (!floorSeeded_) {
-        floorDb_ = std::max(db, kFloorFloorDb);
-        floorSeeded_ = true;
-    }
-
-    const bool loud = db > floorDb_ + config_.loudAboveFloorDb && db > config_.minLoudDb;
-    /* The floor follows the room: down fast, up slowly, and up very slowly even while it is loud, so a fan
-     * that switches on is taken for the room after a few seconds (speech has pauses, which pull it down again). */
-    floorDb_ += (loud ? 0.002f : db < floorDb_ ? 0.25f : 0.01f) * (db - floorDb_);
-    floorDb_ = std::max(floorDb_, kFloorFloorDb);
+    const bool loud = classifier_->Speech(audio_.data() + audio_.size() - static_cast<std::size_t>(config_.frameSamples));
 
     if (!active_) {
         if (!loud) {

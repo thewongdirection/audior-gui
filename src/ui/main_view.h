@@ -23,11 +23,10 @@
  * Each stream has its own pane: a checkbox that says whether it is recorded,
  * a drop-down of every detected device, its gain and its waveform.  When the
  * engine can transcribe, a "Transcript" switch beside the title adds the live
- * text under the waveform.  MainView only reads
- * and drives a RecorderController; everything the operating system has to do
- * (dialogs, menus, the frame timer, the system-wide hotkeys) goes through
- * IViewHost, so the same view renders into a window or into an offscreen
- * bitmap for screenshots.
+ * text under the waveform, and the panel gets the choice of model and language.
+ * MainView only reads and drives a RecorderController; everything the operating system has to do
+ * (dialogs, menus, the frame timer, the system-wide hotkeys) goes through IViewHost, so the same
+ * view renders into a window or into an offscreen bitmap for screenshots.
  */
 #pragma once
 
@@ -73,6 +72,10 @@ public:
 
     void Layout(float width, float height);
 
+    /* How much taller than the window's base minimum it must be for every control of the settings
+     * panel to fit: the Transcript section exists only when transcription is installed. */
+    float ExtraMinHeight() const;
+
     /* Call after each RecorderController::Tick(). */
     void Update();
 
@@ -109,7 +112,7 @@ public:
     void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
 
 private:
-    static constexpr int kWidgetCount = 20;
+    static constexpr int kWidgetCount = 23;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -122,6 +125,8 @@ private:
     void Refresh();
     void ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor);
     void ChooseBitrate();
+    void ChooseModel();
+    const TranscriptModel *SelectedModel() const;
     void ConfigureGain(StreamId stream, int RecordingSettings::*percent, const D2D1_COLOR_F &accent);
     void ConfigureHotkey(HotkeyAction action, const wchar_t *label);
     bool ChangeHotkey(HotkeyAction action, const Hotkey &candidate);
@@ -145,10 +150,10 @@ private:
     float               width_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
-    Switch    micTranscript_, systemTranscript_;
-    Button    micField_, systemField_, folderField_, bitrateField_, bluetoothLink_;
+    Switch    micTranscript_, systemTranscript_, gpuSwitch_;
+    Button    micField_, systemField_, folderField_, bitrateField_, modelField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_;
-    Segmented formatSeg_, mixSeg_;
+    Segmented formatSeg_, mixSeg_, languageSeg_;
     Slider    shareSlider_;
     TextBox   fileNameBox_;
     KeyBox    keyBox_[kHotkeyActionCount];
@@ -164,7 +169,7 @@ private:
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
     D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {}, micNoteRect_ = {};
     bool        micBluetooth_ = false;  /* the microphone to be recorded is a Bluetooth one: say what that does */
-    Caption     captions_[5] = {};
+    Caption     captions_[6] = {};
 
     LaneView micView_, systemView_;
 

@@ -50,6 +50,72 @@ TEST(Models_EveryEntryIsCompleteAndUnique)
     check(kVadModel);
 }
 
+TEST(Models_TheNameSaysWhetherAModelIsMultilingual)
+{
+    for (const AsrModel &m : kAsrModels) {              /* whisper.cpp's own naming: ".en" is English only */
+        const bool englishOnly = std::wstring(m.file).find(L".en") != std::wstring::npos;
+        CHECK_EQ(m.multilingual, !englishOnly);
+    }
+}
+
+TEST(Models_AreFoundByFileNameInAnyCase)
+{
+    for (const AsrModel &m : kAsrModels) {
+        CHECK(FindAsrModel(m.file) == &m);
+        std::wstring shouted = m.file;
+        for (wchar_t &c : shouted)
+            c = c >= L'a' && c <= L'z' ? static_cast<wchar_t>(c - L'a' + L'A') : c;
+        CHECK(FindAsrModel(shouted) == &m);
+    }
+    CHECK(FindAsrModel(L"") == nullptr);
+    CHECK(FindAsrModel(L"nonsense.bin") == nullptr);
+    CHECK(FindAsrModel(kVadModel.file) == nullptr);     /* a voice-activity model is not a speech model */
+}
+
+TEST(Models_OnlyEarlierInstalledOnesCanTakeOver)
+{
+    const AsrModel table[4] = {{L"a.en.bin", "x", 1, L"A", L"MIT", L"https://x", false},
+                               {L"b.bin", "x", 1, L"B", L"MIT", L"https://x", true},
+                               {L"c.bin", "x", 1, L"C", L"MIT", L"https://x", true},
+                               {L"d.bin", "x", 1, L"D", L"MIT", L"https://x", true}};
+    const std::vector<const AsrModel *> all = {&table[0], &table[1], &table[2], &table[3]};
+
+    auto names = [](const std::vector<const AsrModel *> &models) {
+        std::wstring text;
+        for (const AsrModel *m : models)
+            text += std::wstring(m->label);
+        return text;
+    };
+    CHECK_EQ(names(SmallerModels(table, &table[3], all, false)), std::wstring(L"CBA"));      /* nearest first */
+    CHECK_EQ(names(SmallerModels(table, &table[3], all, true)), std::wstring(L"CB"));        /* keeps every language */
+    CHECK_EQ(names(SmallerModels(table, &table[0], all, false)), std::wstring());            /* nothing before the first */
+    CHECK_EQ(names(SmallerModels(table, &table[2], {&table[0], &table[2], &table[3]}, false)),
+             std::wstring(L"A"));                                                            /* only those installed */
+    CHECK_EQ(names(SmallerModels(table, &table[1], all, true)), std::wstring());             /* English only: not for a language-keeping choice */
+    CHECK_EQ(names(SmallerModels(table, &table[0], all, true)), std::wstring());
+}
+
+TEST(Models_TheRealTableOffersTheEnglishModelInPlaceOfTheBigOne)
+{
+    std::vector<const AsrModel *> installed;
+    for (const AsrModel &m : kAsrModels)
+        installed.push_back(&m);
+    const AsrModel *big = FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const AsrModel *small = FindAsrModel(L"ggml-small.en-q5_1.bin");
+    CHECK(big && small);
+    CHECK_EQ(SmallerModels(kAsrModels, big, installed, false).size(), std::size_t(1));      /* English was asked for */
+    CHECK(SmallerModels(kAsrModels, big, installed, true).empty());                          /* automatic: it must keep its languages */
+    CHECK(SmallerModels(kAsrModels, small, installed, false).empty());
+}
+
+TEST(Models_AreListedAsTheGuiShowsThem)
+{
+    const TranscriptModel choice = ModelChoice(kAsrModels[1]);
+    CHECK_EQ(choice.file, std::wstring(kAsrModels[1].file));
+    CHECK_EQ(choice.label, std::wstring(kAsrModels[1].label));
+    CHECK_EQ(choice.multilingual, kAsrModels[1].multilingual);
+}
+
 /* ---- the manifest ---- */
 
 TEST(Manifest_ReadsOneFilePerLine)

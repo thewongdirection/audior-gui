@@ -4,8 +4,11 @@
  *     audior_asr.exe                          the recorder's helper: speaks the protocol of
  *                                             core/asr_protocol.h on standard input and output
  *     audior_asr.exe --file x.wav --model m   transcribes a 16 kHz mono 16-bit WAV through the same
- *       [--realtime]                          pipeline and prints what the recorder would be told
- *                                             (--realtime gives the audio at the pace of speech)
+ *       [--vad v] [--english] [--cpu]         pipeline and prints what the recorder would be told
+ *       [--realtime]                          (--vad: the Silero model, to cut phrases with it;
+ *                                             --english: take the speech for English;
+ *                                             --cpu: not on the graphics card;
+ *                                             --realtime gives the audio at the pace of speech)
  *
  * The audio of each stream goes through an UtteranceTracker (where do phrases
  * begin and end), the phrases become jobs for one decoder thread (a DecodeQueue
@@ -33,7 +36,9 @@
 #include "../core/asr_protocol.h"
 #include "../core/asr_text.h"
 #include "../core/decode_queue.h"
+#include "../core/lag_governor.h"
 #include "../core/utterance_tracker.h"
+#include "silero_classifier.h"
 #include "whisper_decoder.h"
 
 using namespace audiorgui;
@@ -175,9 +180,15 @@ private:
 
 class Transcriber {
 public:
-    Transcriber(IEvents &events, WhisperDecoder &decoder, std::uint8_t streams)
+    /* `classifiers`: who decides what is speech, per stream (a null one: loudness decides). */
+    Transcriber(IEvents &events, WhisperDecoder &decoder, std::uint8_t streams, const TrackerConfig &config,
+                std::unique_ptr<FrameClassifier> (&classifiers)[kStreamCount])
         : events_(events), decoder_(decoder), streams_(streams), worker_(&Transcriber::Work, this)
     {
+        for (int s = 0; s < kStreamCount; ++s) {        /* (the worker does not look at the trackers) */
+            if (streams_ & (1u << s))
+                trackers_[s] = std::make_unique<UtteranceTracker>(config, std::move(classifiers[s]));
+        }
     }
 
     ~Transcriber()
@@ -196,7 +207,7 @@ public:
     void Audio(StreamId stream, std::uint64_t firstSample, const std::int16_t *samples, std::size_t count)
     {
         if (streams_ & (1u << StreamIndex(stream)))
-            trackers_[StreamIndex(stream)].Add(samples, count, firstSample, Sink(stream));
+            trackers_[StreamIndex(stream)]->Add(samples, count, firstSample, Sink(stream));
     }
 
     /* No more audio: what is being spoken is settled, everything waiting is decoded, and the worker ends. */
@@ -204,7 +215,7 @@ public:
     {
         for (int s = 0; s < kStreamCount; ++s) {
             if (streams_ & (1u << s))
-                trackers_[s].Flush(Sink(static_cast<StreamId>(s)));
+                trackers_[s]->Flush(Sink(static_cast<StreamId>(s)));
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -225,11 +236,15 @@ private:
             job.isFinal = step.kind == UtteranceTracker::Step::Kind::Final;
             job.receivedAt = Now();
             job.audio.assign(step.audio, step.audio + step.count);
+            DecodeQueue::Lost lost;
+            bool dropped;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                queue_.Push(std::move(job));
+                dropped = queue_.Push(std::move(job), &lost);
             }
             wake_.notify_one();
+            if (dropped)                                /* too far behind to decode it: the gap is shown, not hidden */
+                events_.Text(lost.stream, lost.id, true, static_cast<double>(lost.startSample) / asr::kSampleRate, L"…");
         };
     }
 
@@ -261,14 +276,16 @@ private:
             if (job.isFinal || !text.empty())           /* an empty Final takes back a phrase that was nothing */
                 events_.Text(job.stream, job.id, job.isFinal, static_cast<double>(job.startSample) / asr::kSampleRate,
                              text);
-            events_.Status(job.stream, TranscriptState::Live, static_cast<float>(std::max(0.0, Now() - job.receivedAt)));
+            const float lag = static_cast<float>(std::max(0.0, Now() - job.receivedAt));
+            events_.Status(job.stream, governors_[s].Observe(lag), lag);
         }
     }
 
     IEvents          &events_;
     WhisperDecoder   &decoder_;
     const std::uint8_t streams_;
-    UtteranceTracker trackers_[kStreamCount];           /* the protocol thread only */
+    std::unique_ptr<UtteranceTracker> trackers_[kStreamCount];      /* of the streams transcribed; the protocol thread only */
+    LagGovernor      governors_[kStreamCount];          /* the worker only */
 
     std::mutex              mutex_;
     std::condition_variable wake_;
@@ -281,12 +298,35 @@ private:
 bool Begin(const asr::Message &hello, IEvents &events, WhisperDecoder &decoder, std::unique_ptr<Transcriber> *work)
 {
     std::string error;
-    if (!decoder.Load(Utf8(hello.text), &error)) {
+    wchar_t exe[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring dir(exe, length < MAX_PATH ? length : 0);
+    dir.resize(dir.find_last_of(L'\\') == std::wstring::npos ? 0 : dir.find_last_of(L'\\'));
+    if (!decoder.Load(Utf8(hello.text), hello.language == SpeechLanguage::English, hello.gpu, Utf8(dir), &error)) {
         events.Problem(true, StreamId::Microphone, WideFromUtf8(error));
         return false;
     }
-    events.Ready(FileNameOf(hello.text) + L" · CPU, " + std::to_wstring(decoder.Threads()) + L" threads");
-    *work = std::make_unique<Transcriber>(events, decoder, hello.streams);
+
+    /* Phrases are cut where Silero hears speech if its model is there and loads; otherwise by loudness. */
+    std::unique_ptr<FrameClassifier> classifiers[kStreamCount];
+    bool silero = !hello.vadModel.empty();
+    for (int s = 0; s < kStreamCount && silero; ++s) {
+        if (hello.streams & (1u << s)) {
+            classifiers[s] = audiorasr::MakeSileroClassifier(Utf8(hello.vadModel));
+            silero = classifiers[s] != nullptr;
+        }
+    }
+    if (!silero) {
+        for (std::unique_ptr<FrameClassifier> &classifier : classifiers)
+            classifier.reset();
+    }
+
+    events.Ready(FileNameOf(hello.text) + L" · " +
+                 (decoder.Device() == "CPU" ? L"CPU, " + std::to_wstring(decoder.Threads()) + L" threads"
+                                            : WideFromUtf8(decoder.Device()) + L" (GPU)") +
+                 (silero ? L" · Silero" : L""));
+    *work = std::make_unique<Transcriber>(events, decoder, hello.streams,
+                                          silero ? audiorasr::SileroTrackerConfig() : TrackerConfig(), classifiers);
     return true;
 }
 
@@ -392,7 +432,8 @@ bool ReadWav(const std::wstring &path, std::vector<std::int16_t> *samples, std::
 }
 
 /* `realtime`: the audio is given at the pace of speech (100 ms every 100 ms), as the recorder does, instead of at once. */
-int RunFile(const std::wstring &wav, const std::wstring &model, bool realtime)
+int RunFile(const std::wstring &wav, const std::wstring &model, const std::wstring &vad, SpeechLanguage language, bool gpu,
+            bool realtime)
 {
     ConsoleEvents events(GetStdHandle(STD_OUTPUT_HANDLE));
     std::vector<std::int16_t> samples;
@@ -404,6 +445,9 @@ int RunFile(const std::wstring &wav, const std::wstring &model, bool realtime)
     asr::Message hello;
     hello.type = asr::Type::Hello;
     hello.streams = 1;
+    hello.language = language;
+    hello.gpu = gpu;
+    hello.vadModel = vad;
     hello.text = model;
     WhisperDecoder decoder;
     std::unique_ptr<Transcriber> work;
@@ -430,25 +474,33 @@ int wmain(int argc, wchar_t **argv)
 
     if (argc == 1)
         return RunProtocol();
-    std::wstring wav, model;
+    std::wstring wav, model, vad;
     bool realtime = false, understood = true;
+    SpeechLanguage language = SpeechLanguage::Auto;
+    bool gpu = true;
     for (int i = 1; i < argc && understood; ++i) {
         const std::wstring option = argv[i];
         if (option == L"--realtime")
             realtime = true;
+        else if (option == L"--cpu")
+            gpu = false;
+        else if (option == L"--english")
+            language = SpeechLanguage::English;
         else if (i + 1 < argc && option == L"--file")
             wav = argv[++i];
         else if (i + 1 < argc && option == L"--model")
             model = argv[++i];
+        else if (i + 1 < argc && option == L"--vad")
+            vad = argv[++i];
         else
             understood = false;
     }
     if (!understood || wav.empty() || model.empty()) {
-        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--realtime]\r\n"
+        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--english] [--cpu] [--realtime]\r\n"
                              "(without arguments it is the recorder's helper and speaks on standard input and output)\r\n";
         DWORD written = 0;
         WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), usage, sizeof(usage) - 1, &written, nullptr);
         return 1;
     }
-    return RunFile(wav, model, realtime);
+    return RunFile(wav, model, vad, language, gpu, realtime);
 }

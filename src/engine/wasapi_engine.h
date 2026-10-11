@@ -24,7 +24,7 @@ public:
     /* Transcription is offered if the helper and a model are in place when the
      * engine is made (see asr_helper.h); a model added later is noticed at the
      * next start of the program. */
-    WasapiEngine() : transcribes_(FindAsr(ProgramDirectory(), ModelsDirectory(), &asr_)) {}
+    WasapiEngine();
 
     bool IsSimulated() const override { return false; }
     std::vector<DeviceInfo> ListDevices(DeviceKind kind) override;
@@ -37,6 +37,8 @@ public:
     std::vector<std::wstring> OutputFiles() override { return session_ ? session_->Files() : std::vector<std::wstring>(); }
 
     bool CanTranscribe() const override { return transcribes_; }
+    std::vector<TranscriptModel> TranscriptModels() const override { return models_; }
+    bool CanTranscribeOnGpu() const override { return transcribes_ && asr_.gpu; }
     TranscriptStatus Transcription(StreamId stream) override
     {
         return host_ ? host_->Status(stream) : TranscriptStatus();
@@ -51,8 +53,9 @@ public:
     }
 
 private:
-    AsrSetup                         asr_;
+    AsrSetup                         asr_;              /* the helper, with the first model */
     bool                             transcribes_;
+    std::vector<TranscriptModel>     models_;           /* the installed ones, the first one first */
     StopSignal                       stopSignal_;       /* exists only while recording */
     std::unique_ptr<TranscriptionHost> host_;           /* the current or last recording's transcriber, if it had one */
     std::unique_ptr<RecordingSession> session_;         /* the current or last recording */

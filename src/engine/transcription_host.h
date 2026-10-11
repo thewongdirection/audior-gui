@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "../core/asr_protocol.h"
+#include "../core/lag_governor.h"
 #include "../core/transcript.h"
 #include "speech_tap.h"
 
@@ -66,14 +67,27 @@ using TransportFactory = std::function<std::unique_ptr<IAsrTransport>(std::wstri
 
 class TranscriptionHost final : public ISpeechSink {
 public:
+    /* A smaller model to change to, and how to start a helper that can use it. */
+    struct Fallback {
+        std::wstring     model;
+        TransportFactory factory;
+    };
+
     struct Options {
         std::wstring model;                         /* what the helper should load (sent in Hello) */
+        std::wstring vadModel;                      /* the voice-activity model, if any (sent in Hello, too) */
+        std::vector<Fallback> fallbacks;            /* if a stream stays hopelessly behind (see
+                                                       StepDownPolicy), the next of these takes over,
+                                                       without using up a restart                  */
+        SpeechLanguage language = SpeechLanguage::Auto;     /* and what to take the speech for (Hello) */
+        bool         gpu = true;                    /* and whether it may use the graphics card (Hello) */
         int          maxRestarts    = 3;            /* in a row; then the streams are Failed       */
         int          backoffMs      = 1000;         /* before the first restart; doubles after     */
         int          healthyMs      = 60000;        /* a helper that ran this long before dying
                                                        does not count towards maxRestarts          */
         int          readyTimeoutMs = 60000;        /* a helper that is not Ready by then is stuck */
         int          flushMs        = 3000;         /* how long Stop() waits for the last words    */
+        double       stepDownHoldSeconds = StepDownPolicy::kHoldSeconds;    /* how long "hopeless" lasts  */
     };
 
     TranscriptionHost(TransportFactory factory, Options options);
@@ -139,6 +153,10 @@ private:
     bool WriteLoop(IAsrTransport &transport);
     void ReadLoop(IAsrTransport *transport);
     bool Handle(const asr::Message &message);
+    const TransportFactory &CurrentFactory() const { return stage_ == 0 ? factory_ : options_.fallbacks[stage_ - 1].factory; }
+    const std::wstring &CurrentModel() const { return stage_ == 0 ? options_.model : options_.fallbacks[stage_ - 1].model; }
+    bool StepRequested();
+    bool TakeStepRequest();
     bool Wanted(StreamId stream) const { return (streams_ & (1u << StreamIndex(stream))) != 0; }
     void SetStatus(StreamId stream, const TranscriptStatus &status);
     void Fail(StreamId stream, const std::wstring &problem);
@@ -150,10 +168,14 @@ private:
 
     TransportFactory factory_;
     Options          options_;
+    std::size_t      stage_ = 0;                        /* 0: the model asked for; n: fallbacks[n - 1]. The
+                                                           supervisor changes it only between two helpers. */
+    StepDownPolicy   stepDown_[kStreamCount];           /* the reader thread only */
     bool             started_ = false;                  /* Start() has been given streams (once only) */
     std::uint8_t     streams_ = 0;
     Lane             lanes_[kStreamCount];
 
+    bool                    smaller_ = false;           /* a fallback model is running (guarded by stateMutex_) */
     mutable std::mutex      stateMutex_;                /* statuses and problems */
     std::mutex              controlMutex_;              /* the flags below       */
     std::condition_variable control_;
@@ -161,6 +183,7 @@ private:
     bool                    runDone_ = false;           /* the supervising thread has finished */
     bool                    readerDone_ = false;
     bool                    ready_ = false;             /* the current helper said Ready */
+    bool                    stepRequested_ = false;   /* the current helper is too slow: change the model */
     IAsrTransport          *current_ = nullptr;         /* the helper in use, for Stop() to cut loose */
     std::thread             thread_;
 };

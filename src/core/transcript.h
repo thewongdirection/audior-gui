@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace audiorgui {
 
@@ -29,13 +30,21 @@ struct TranscriptEvent {
     void SetText(const wchar_t *source, std::size_t length);
 };
 
+/* A speech model an engine can transcribe with. */
+struct TranscriptModel {
+    std::wstring file;                      /* what RecordingSettings::transcribeModel names */
+    std::wstring label;                     /* for the user                                  */
+    bool         multilingual = false;      /* false: English only                           */
+};
+
 /* What a stream's transcription is doing.  A problem here never ends the
  * recording; it only changes this stream's state. */
-enum class TranscriptState { Off, Starting, Live, Failed };
+enum class TranscriptState { Off, Starting, Live, Failed, CatchingUp };
 
 struct TranscriptStatus {
     TranscriptState state      = TranscriptState::Off;
-    float           lagSeconds = 0.0f;      /* Live: how far behind the speech the text runs */
+    float           lagSeconds = 0.0f;      /* Live, CatchingUp: how far behind the speech the text runs */
+    bool            smallerModel = false;   /* a smaller model than the one chosen is running, to keep up */
 };
 
 }  // namespace audiorgui

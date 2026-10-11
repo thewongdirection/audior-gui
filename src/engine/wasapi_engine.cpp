@@ -14,6 +14,14 @@ void CreateOutputFolder(const std::wstring &filePath)
         CreateDirectoryW(filePath.substr(0, slash).c_str(), nullptr);       /* fails harmlessly if it exists */
 }
 
+WasapiEngine::WasapiEngine() : transcribes_(FindAsr(ProgramDirectory(), ModelsDirectory(), &asr_))
+{
+    if (!transcribes_)
+        return;
+    for (const AsrModel *m : InstalledModels(ModelsDirectory()))
+        models_.push_back(ModelChoice(*m));
+}
+
 std::vector<DeviceInfo> WasapiEngine::ListDevices(DeviceKind kind) { return EnumerateDevices(kind); }
 
 bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &outputPath, std::wstring *error)
@@ -26,6 +34,14 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         *error = L"MP3 recording needs Media Foundation, which this edition of Windows does not include. "
                  L"Choose WAV, or install the Media Feature Pack.";
         return false;
+    }
+
+    AsrSetup asr = asr_;                                /* the model this recording transcribes with */
+    if (transcribes_ && !settings.transcribeModel.empty() &&
+        (Transcribes(settings, StreamId::Microphone) || Transcribes(settings, StreamId::System)) &&
+        !FindAsr(ProgramDirectory(), ModelsDirectory(), &asr, kAsrModels, kAsrModelCount, settings.transcribeModel)) {
+        *error = L"The transcription model " + settings.transcribeModel + L" is not in " + ModelsDirectory() + L".";
+        return false;                                   /* asked for by name: better said now than not at all */
     }
 
     session_.reset();                                   /* the previous recording's threads and results */
@@ -53,8 +69,18 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
     const SessionPlan plan = MakePlan(s, outputPath);
     if (transcribes_ && plan.speech != 0) {             /* the transcriber is told first, so it misses none of the audio */
         TranscriptionHost::Options options;
-        options.model = asr_.modelPath;
-        host_ = std::make_unique<TranscriptionHost>(MakeProcessFactory(asr_), options);
+        options.model = asr.modelPath;
+        options.vadModel = asr.vadPath;
+        options.language = s.transcribeLanguage;
+        options.gpu = s.transcribeGpu;
+        for (const AsrModel *smaller :                  /* what to change to if this model cannot keep up */
+             SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()),
+                           s.transcribeLanguage == SpeechLanguage::Auto)) {
+            AsrSetup fallback;
+            if (FindAsr(ProgramDirectory(), ModelsDirectory(), &fallback, kAsrModels, kAsrModelCount, smaller->file))
+                options.fallbacks.push_back({fallback.modelPath, MakeProcessFactory(fallback)});
+        }
+        host_ = std::make_unique<TranscriptionHost>(MakeProcessFactory(asr), options);
         host_->Start(plan.speech);
     }
 

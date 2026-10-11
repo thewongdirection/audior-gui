@@ -183,6 +183,43 @@ TEST(Cli_TheHelpTextListsTheTranscribeFlags)
     const std::wstring help = HelpText();
     CHECK(help.find(L"--transcribe-mic") != std::wstring::npos);
     CHECK(help.find(L"--transcribe-system") != std::wstring::npos);
+    CHECK(help.find(L"--transcribe-model") != std::wstring::npos);
+    CHECK(help.find(L"--transcribe-language") != std::wstring::npos);
+}
+
+TEST(Cli_TheTranscriptionModelAndLanguageCanBeChosen)
+{
+    const Parsed none = Parse({});
+    CHECK(none.settings.transcribeModel.empty());                   /* the first model installed */
+    CHECK(none.settings.transcribeLanguage == SpeechLanguage::Auto);
+
+    const Parsed model = Parse({L"--transcribe-model", L"GGML-Large-V3-Turbo-Q5_0.bin"});
+    CHECK(model.result.error.empty());
+    CHECK_EQ(model.settings.transcribeModel, std::wstring(L"ggml-large-v3-turbo-q5_0.bin"));   /* the table's spelling */
+
+    CHECK(Parse({L"--transcribe-language", L"en"}).settings.transcribeLanguage == SpeechLanguage::English);
+    CHECK(Parse({L"--transcribe-language", L"AUTO"}).settings.transcribeLanguage == SpeechLanguage::Auto);
+}
+
+TEST(Cli_TheGraphicsCardIsUsedUnlessTheProcessorIsAskedFor)
+{
+    CHECK(Parse({}).settings.transcribeGpu);
+    CHECK(Parse({L"--transcribe-mic"}).settings.transcribeGpu);
+    const Parsed cpu = Parse({L"--transcribe-cpu", L"--transcribe-mic"});
+    CHECK(cpu.result.error.empty());
+    CHECK(!cpu.settings.transcribeGpu);
+    CHECK(HelpText().find(L"--transcribe-cpu") != std::wstring::npos);
+}
+
+TEST(Cli_AnUnknownTranscriptionModelOrLanguageIsRejected)
+{
+    const Parsed model = Parse({L"--transcribe-model", L"mystery.bin"});
+    CHECK(!model.result.error.empty());
+    CHECK(model.result.error.find(L"ggml-small.en-q5_1.bin") != std::wstring::npos);    /* it says what to use */
+    CHECK(!Parse({L"--transcribe-model"}).result.error.empty());
+
+    CHECK(!Parse({L"--transcribe-language", L"fr"}).result.error.empty());
+    CHECK(!Parse({L"--transcribe-language"}).result.error.empty());
 }
 
 TEST(Cli_UnknownOptionsAreRejected)

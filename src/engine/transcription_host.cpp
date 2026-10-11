@@ -88,6 +88,8 @@ std::size_t TranscriptionHost::EventQueue::Take(TranscriptEvent *out, std::size_
 TranscriptionHost::TranscriptionHost(TransportFactory factory, Options options)
     : factory_(std::move(factory)), options_(std::move(options))
 {
+    for (StepDownPolicy &policy : stepDown_)
+        policy = StepDownPolicy(options_.stepDownHoldSeconds);
 }
 
 TranscriptionHost::~TranscriptionHost()
@@ -161,8 +163,10 @@ void TranscriptionHost::SetStatus(StreamId stream, const TranscriptStatus &statu
 {
     std::lock_guard<std::mutex> lock(stateMutex_);
     Lane &lane = lanes_[StreamIndex(stream)];
-    if (lane.status.state != TranscriptState::Failed)
+    if (lane.status.state != TranscriptState::Failed) {
         lane.status = status;
+        lane.status.smallerModel = smaller_;
+    }
 }
 
 void TranscriptionHost::Fail(StreamId stream, const std::wstring &problem)
@@ -203,6 +207,20 @@ bool TranscriptionHost::StopRequested()
     return stop_;
 }
 
+bool TranscriptionHost::StepRequested()
+{
+    std::lock_guard<std::mutex> lock(controlMutex_);
+    return stepRequested_;
+}
+
+bool TranscriptionHost::TakeStepRequest()
+{
+    std::lock_guard<std::mutex> lock(controlMutex_);
+    const bool requested = stepRequested_;
+    stepRequested_ = false;
+    return requested;
+}
+
 /* True if the time passed, false if Stop() came first. */
 bool TranscriptionHost::SleepUnlessStopped(int milliseconds)
 {
@@ -217,7 +235,7 @@ void TranscriptionHost::Run()
     int restarts = 0;
     for (;;) {
         std::wstring problem;
-        std::unique_ptr<IAsrTransport> transport = factory_(&problem, [this] { return StopRequested(); });
+        std::unique_ptr<IAsrTransport> transport = CurrentFactory()(&problem, [this] { return StopRequested(); });
         if (!transport) {
             if (!StopRequested())                       /* (a start given up on because of Stop() is not a failure) */
                 FailAll(problem);
@@ -246,6 +264,21 @@ void TranscriptionHost::Run()
 
         if (finished || StopRequested())
             break;
+
+        /* Not gone by itself but let go, because it cannot keep up: the next model takes over at once. */
+        if (TakeStepRequest()) {
+            ++stage_;
+            {
+                std::lock_guard<std::mutex> lock(stateMutex_);
+                smaller_ = true;
+            }
+            for (Lane &lane : lanes_)
+                lane.base = lane.next;
+            for (StepDownPolicy &policy : stepDown_)
+                policy.Reset();
+            SetAllStarting();
+            continue;
+        }
 
         /* The helper went away on its own.  One that had been running well is not a helper that keeps
          * stopping: only crashes in quick succession use up the restarts. */
@@ -283,7 +316,10 @@ bool TranscriptionHost::WriteLoop(IAsrTransport &transport)
 
     message.type = asr::Type::Hello;
     message.streams = streams_;
-    message.text = options_.model;
+    message.language = options_.language;
+    message.gpu = options_.gpu;
+    message.text = CurrentModel();
+    message.vadModel = options_.vadModel;
     if (!send())
         return false;
 
@@ -340,8 +376,8 @@ void TranscriptionHost::ReadLoop(IAsrTransport *transport)
                     ok = took > 0;                      /* a full buffer without a whole message is corrupt */
                     break;
                 }
-                if (result == asr::MessageReader::Result::Invalid || !Handle(message)) {
-                    ok = false;
+                if (result == asr::MessageReader::Result::Invalid || !Handle(message) || StepRequested()) {
+                    ok = false;                         /* (or too slow: see Handle) */
                     break;
                 }
             }
@@ -373,10 +409,16 @@ bool TranscriptionHost::Handle(const asr::Message &m)
     }
     case asr::Type::Status:
         if (Wanted(m.stream)) {
-            if (m.status.state == TranscriptState::Failed)
+            if (m.status.state == TranscriptState::Failed) {
                 Fail(m.stream, std::wstring());         /* with the usual words, if no Problem comes */
-            else
+            } else {
                 SetStatus(m.stream, m.status);
+                const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                if (stepDown_[StreamIndex(m.stream)].Observe(m.status.lagSeconds, now) && stage_ < options_.fallbacks.size()) {
+                    std::lock_guard<std::mutex> lock(controlMutex_);
+                    stepRequested_ = true;              /* the reader lets this helper go: see ReadLoop */
+                }
+            }
         }
         return true;
     case asr::Type::Event:

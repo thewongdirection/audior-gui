@@ -51,22 +51,39 @@ std::wstring ModelsDirectory()
     return std::wstring(base, n) + L"\\audior-gui\\models";
 }
 
+std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models,
+                                              std::size_t modelCount)
+{
+    std::vector<const AsrModel *> found;
+    std::uint64_t bytes = 0;
+    for (std::size_t i = 0; i < modelCount && !modelsDir.empty(); ++i) {
+        if (FileSize(Join(modelsDir, models[i].file), &bytes) && bytes == models[i].bytes)
+            found.push_back(&models[i]);
+    }
+    return found;
+}
+
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
-             std::size_t modelCount)
+             std::size_t modelCount, const std::wstring &preferred, const AsrModel *vad)
 {
     std::uint64_t bytes = 0;
     const std::wstring helper = Join(programDir, kHelperFile);
-    if (programDir.empty() || modelsDir.empty() || !FileSize(helper, &bytes) ||
-        !FileSize(Join(programDir, kManifestFile), &bytes))
+    if (programDir.empty() || !FileSize(helper, &bytes) || !FileSize(Join(programDir, kManifestFile), &bytes))
         return false;
 
-    for (std::size_t i = 0; i < modelCount; ++i) {
-        const std::wstring path = Join(modelsDir, models[i].file);
-        if (FileSize(path, &bytes) && bytes == models[i].bytes) {
+    for (const AsrModel *model : InstalledModels(modelsDir, models, modelCount)) {
+        if (preferred.empty() || _wcsicmp(preferred.c_str(), model->file) == 0) {
             setup->directory = programDir;
             setup->helper = helper;
-            setup->model = &models[i];
-            setup->modelPath = path;
+            setup->model = model;
+            setup->modelPath = Join(modelsDir, model->file);
+            setup->gpu = FileSize(Join(programDir, kGpuBackendFile), &bytes);
+            setup->vad = nullptr;
+            setup->vadPath.clear();
+            if (vad && FileSize(Join(modelsDir, vad->file), &bytes) && bytes == vad->bytes) {
+                setup->vad = vad;
+                setup->vadPath = Join(modelsDir, vad->file);
+            }
             return true;
         }
     }
@@ -121,9 +138,10 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
     if (!ParseManifest(text, &entries, &problem))
         return problem;
 
-    bool coversHelper = false;
+    bool coversHelper = false, coversGpu = false;
     for (const ManifestEntry &entry : entries) {
         coversHelper = coversHelper || _wcsicmp(entry.file.c_str(), kHelperFile) == 0;
+        coversGpu = coversGpu || _wcsicmp(entry.file.c_str(), kGpuBackendFile) == 0;
         std::string actual;
         if (!HashFile(Join(setup.directory, entry.file), &actual, stopping))
             return L"The transcription engine's file \"" + entry.file + L"\" is missing or cannot be read.";
@@ -132,6 +150,8 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
     }
     if (!coversHelper)
         return L"The transcription engine's file list does not cover " + std::wstring(kHelperFile) + L".";
+    if (setup.gpu && !coversGpu)                        /* the helper loads this DLL by name: only a listed one */
+        return L"The transcription engine's file list does not cover " + std::wstring(kGpuBackendFile) + L".";
 
     if (checkModel) {
         std::string actual;
@@ -139,6 +159,13 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
             return L"The model \"" + std::wstring(setup.model->file) + L"\" cannot be read.";
         if (actual != setup.model->sha256)
             return L"The model \"" + std::wstring(setup.model->file) + L"\" is damaged or is not the published file.";
+        if (setup.vad) {                                /* optional, but not to be used unchecked */
+            if (!HashFile(setup.vadPath, &actual, stopping))
+                return L"The model \"" + std::wstring(setup.vad->file) + L"\" cannot be read.";
+            if (actual != setup.vad->sha256)
+                return L"The model \"" + std::wstring(setup.vad->file) +
+                       L"\" is damaged or is not the published file (remove it to go without).";
+        }
     }
     return std::wstring();
 }

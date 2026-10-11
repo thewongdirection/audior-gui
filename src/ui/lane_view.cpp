@@ -128,16 +128,24 @@ void LaneView::PaintStatus(Painter &p, const D2D1_RECT_F &card, const D2D1_COLOR
     case TranscriptState::Starting:
         p.Text(L"Starting…", r, Font::Small, theme::kTextMuted);
         break;
-    case TranscriptState::Live: {
+    case TranscriptState::Live:
+    case TranscriptState::CatchingUp: {
+        const bool catching = t.status.state == TranscriptState::CatchingUp;
         const bool compact = Width(r) < 150.0f;                 /* no room for the lag */
-        const long key = compact ? -2 : std::lround(t.status.lagSeconds * 10.0f);
+        const long key = (compact ? -2 : std::lround(t.status.lagSeconds * 10.0f)) * 4 + (catching ? 2 : 0) +
+                         (t.status.smallerModel ? 1 : 0);
         if (key != lagKey_) {
-            statusText_ = compact ? std::wstring(L"Live")
-                                  : L"Live  ·  " + FormatLag(t.status.lagSeconds) + L" behind";
+            statusText_ = catching ? L"Catching up" : L"Live";
+            if (!compact) {
+                if (t.status.smallerModel)
+                    statusText_ += L"  ·  smaller model";
+                statusText_ += L"  ·  " + FormatLag(t.status.lagSeconds) + L" behind";
+            }
             lagKey_ = key;
         }
-        p.FillCircle(r.left + 4.0f, (r.top + r.bottom) * 0.5f, 3.5f, color);
-        p.Text(statusText_, RectF(r.left + 14.0f, r.top, r.right, r.bottom), Font::Small, color);
+        const D2D1_COLOR_F &shade = catching ? theme::kWarn : color;
+        p.FillCircle(r.left + 4.0f, (r.top + r.bottom) * 0.5f, 3.5f, shade);
+        p.Text(statusText_, RectF(r.left + 14.0f, r.top, r.right, r.bottom), Font::Small, shade);
         break;
     }
     case TranscriptState::Failed:

@@ -54,28 +54,22 @@ loaded on demand, so the program also starts on a Windows N edition without it
 
 ## What works offline, and what needs the internet
 
-**Today everything is local.** Recording both streams, the gains, the merge, WAV and
-MP3 encoding, the waveforms and every command-line option work with no connection,
-no account and no key. The program sends nothing anywhere: it contains no networking
-code, and `tests\check_imports.ps1` fails the build if the executable ever imports a
-networking DLL. Unplugging the network changes nothing.
+**Everything is local.** Recording both streams, the gains, the merge, WAV and MP3
+encoding, the waveforms, live transcripts and every command-line option work with no
+connection, no account and no key. The program sends nothing anywhere: neither the
+recorder nor the transcription helper contains networking code, and
+`tests\check_imports.ps1` fails the build if either imports a networking DLL.
+Unplugging the network changes nothing.
 
-**Live transcription is planned, not built.** `main` has no transcription code yet.
-The design is a live transcript scrolling in each stream's pane, local first; details
-may change before it ships.
+The internet is used for one thing only, and not by this program: you download a
+speech model once, in your browser (see *Live transcripts* below). Your audio never
+leaves the PC. Transcription runs in a separate helper program, so neither a model nor
+a problem in it can touch a recording, and the recorder itself stays dependency-free.
+A transcription problem never stops or damages a recording.
 
-| | Offline: only what is installed on the PC | Online: an internet connection and an API key |
-|---|---|---|
-| Recording, mixing, MP3 and WAV, waveforms, command line | All of it (available now) | No difference: recording never uses the network |
-| Live transcript (planned) | A speech-to-text model that runs on your own CPU, with GPU acceleration to follow. You download the model file once; it is never bundled with the program. After that no connection is needed and your audio never leaves the PC | Streaming transcription by a cloud service (Deepgram is the first planned). Needs a connection and your own API key, and your audio is sent to that service. Off unless you switch it on, and the pane shows when it is in use |
-| Where the key lives (planned) | Not needed | Windows Credential Manager. Never in the settings, on the command line or in a log |
-
-The internet would be used for exactly two things: the one-time download of a model,
-and cloud transcription if you turn it on. An *Auto* choice would pick a local model
-from what the PC has free (GPU memory, CPU, battery) and never use the cloud unless
-you enabled it. Transcription would run in a separate helper program, so neither a
-model nor a GPU driver problem can touch a recording, and the recorder itself stays
-dependency-free. A transcription problem never stops or damages a recording.
+**Cloud transcription is a placeholder.** Nothing for it is built. If it is ever added
+it will be opt-in, off unless you switch it on, and the pane will show when it is in
+use.
 
 ## Build and run
 
@@ -135,17 +129,46 @@ speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
 It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
 
-1. **The helper**, `audior_asr.exe` with its `audior_asr.sha256`, next to
-   `audior_gui.exe`. `build.bat x64 asr` builds it (it compiles whisper.cpp, so it
-   needs the *C++ CMake tools for Windows* of Visual Studio, and takes a few
-   minutes the first time).
+1. **The helper**, `audior_asr.exe` with its DLLs and `audior_asr.sha256` (the
+   list of them with their SHA-256), next to `audior_gui.exe`. `build.bat x64 asr`
+   builds it (it compiles whisper.cpp, so it needs the *C++ CMake tools for
+   Windows* of Visual Studio, and takes a few minutes the first time).
+   `build.bat x64 vulkan` builds it with the Vulkan backend (`ggml-vulkan.dll`), so
+   that the graphics card can do the work; that needs the
+   [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) installed. With that DLL a
+   **GPU** switch appears in the Transcript section (`--transcribe-cpu` turns it
+   off from the command line). A PC without a usable Vulkan driver simply uses the
+   processor, and the first use of the card takes several seconds longer while the
+   driver prepares its code.
 2. **A speech model**, downloaded by you into `%LOCALAPPDATA%\audior-gui\models`
    (or the folder named by the `AUDIOR_MODELS` environment variable), from
    <https://huggingface.co/ggerganov/whisper.cpp>: `ggml-small.en-q5_1.bin`
    (English, 181 MiB, fast enough for two streams on an ordinary CPU) or
    `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a GPU).
    Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
-   are used; the first one found is.
+   are used.
+
+Optionally, `ggml-silero-v5.1.2.bin` (864 KiB, from
+<https://huggingface.co/ggml-org/whisper-vad>) in the same folder. Without it a
+phrase begins when the stream gets clearly louder than the room and ends at a
+pause; with it the *Silero* voice detector decides where speech is, which copes
+better with a fan, music or a keyboard in the background.
+
+With a model in place the settings panel gets a **Transcript** section: the model
+(when more than one is installed; the first one found is the default;
+`--transcribe-model <file>`) and the language (`--transcribe-language auto|en`):
+*Auto* lets a multilingual model recognise the language of each phrase, *English*
+tells it to expect English, which is a little faster and more exact for English
+speech. An English-only model always expects English.
+
+**If the PC cannot keep up** (a big model, two busy streams, a busy CPU) the pane
+says *Catching up* with how far behind the text is. Settled phrases always come
+before drafts of the phrase being spoken, so drafts are what gets skipped first. If
+a stream stays six seconds or more behind for ten seconds, a smaller installed
+model takes over by itself (*smaller model* shows in the pane) and the recording is
+not touched; with *Auto* chosen only another multilingual model may take over, so no
+language stops being understood. A phrase that was still not decoded in time is shown
+as `…` instead of being left out silently.
 
 The helper is a separate process, so a problem with it can never end or damage a
 recording: it is started at low priority inside a Windows Job object, restarted if
@@ -275,7 +298,8 @@ bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
-headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `named`, `typing`,
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `catching-up` (the transcription has fallen behind), `model` (the
+multilingual model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
 program owns).
 

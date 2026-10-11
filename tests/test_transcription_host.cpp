@@ -97,6 +97,9 @@ struct Seen {
     std::size_t   sampleCount;
     std::uint8_t  streams;
     std::wstring  text;
+    SpeechLanguage language;
+    std::wstring  vadModel;
+    bool          gpu;
 };
 
 /* One run of the fake helper: its pipes, its thread and what it saw. */
@@ -111,7 +114,7 @@ struct Instance {
     void Record(const asr::Message &m)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text});
+        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text, m.language, m.vadModel, m.gpu});
     }
     std::vector<Seen> Seen_() const
     {
@@ -303,6 +306,26 @@ std::vector<TranscriptEvent> TakeAll(TranscriptionHost &host, StreamId stream)
 }
 
 }  // namespace
+
+TEST(Host_TellsTheHelperTheLanguage)
+{
+    for (SpeechLanguage language : {SpeechLanguage::Auto, SpeechLanguage::English}) {
+        FakeHelpers helpers;
+        helpers.behavior = WellBehaved;
+        TranscriptionHost::Options options = Quick();
+        options.language = language;
+        options.vadModel = language == SpeechLanguage::English ? L"C:\\Models\\vad.bin" : L"";
+        options.gpu = language == SpeechLanguage::Auto;
+        TranscriptionHost host(helpers.Factory(), options);
+        host.Start(kMic);
+        host.Stop();
+        const std::vector<Seen> seen = helpers.At(0).Seen_();
+        CHECK(!seen.empty() && seen.front().type == asr::Type::Hello);
+        CHECK(seen.front().language == language);
+        CHECK_EQ(seen.front().vadModel, options.vadModel);      /* the voice-activity model too, or none */
+        CHECK_EQ(seen.front().gpu, options.gpu);                /* and whether the graphics card may be used */
+    }
+}
 
 TEST(Host_SendsHelloThenTheAudioThenStop)
 {
@@ -861,4 +884,82 @@ TEST(Host_TheDestructorStopsTheHelper)
         CHECK(WaitUntil([&] { return host.Status(StreamId::Microphone).state == TranscriptState::Live; }));
     }
     CHECK_EQ(helpers.At(0).Count(asr::Type::Stop), std::size_t(1));
+}
+
+/* ---- a helper that cannot keep up ---- */
+
+/* Says Ready, then that it is hopelessly behind, over and over, until it is let go. */
+TEST(Host_ChangesToASmallerModelWhenTheHelperStaysHopelesslyBehind)
+{
+    FakeHelpers slow, small;
+    slow.behavior = [&](Instance &helper, int) {
+        Send(helper, Ready());
+        while (Send(helper, StatusFor(StreamId::Microphone, TranscriptState::CatchingUp, 9.0f)))
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    };
+    small.behavior = WellBehaved;
+
+    TranscriptionHost::Options options = Quick();
+    options.maxRestarts = 0;                            /* a restart would be the end: this must not use one */
+    options.stepDownHoldSeconds = 0.1;
+    options.fallbacks.push_back({L"C:\\Models\\smaller.bin", small.Factory()});
+    TranscriptionHost host(slow.Factory(), options);
+    host.Start(kMic);
+
+    CHECK(WaitUntil([&] { return small.Started() == 1; }));
+    CHECK(WaitUntil([&] { return host.Status(StreamId::Microphone).state == TranscriptState::Live; }));
+    CHECK(host.Status(StreamId::Microphone).smallerModel);
+    CHECK_EQ(slow.Started(), std::size_t(1));                           /* the slow one was not started again */
+
+    host.Stop();
+    const std::vector<Seen> seen = small.At(0).Seen_();
+    CHECK(!seen.empty() && seen.front().type == asr::Type::Hello);
+    CHECK_EQ(seen.front().text, std::wstring(L"C:\\Models\\smaller.bin"));
+}
+
+TEST(Host_KeepsTheModelWhenThereIsNoSmallerOne)
+{
+    FakeHelpers slow;
+    slow.behavior = [&](Instance &helper, int) {
+        Send(helper, Ready());
+        for (int i = 0; i < 60 && Send(helper, StatusFor(StreamId::Microphone, TranscriptState::CatchingUp, 9.0f)); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        Serve(helper, [&](const asr::Message &m) { return m.type != asr::Type::Stop; });
+    };
+    TranscriptionHost::Options options = Quick();
+    options.stepDownHoldSeconds = 0.05;
+    TranscriptionHost host(slow.Factory(), options);
+    host.Start(kMic);
+
+    CHECK(WaitUntil([&] { return host.Status(StreamId::Microphone).state == TranscriptState::CatchingUp; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));        /* long past the hold time */
+    CHECK_EQ(slow.Started(), std::size_t(1));
+    CHECK(!host.Status(StreamId::Microphone).smallerModel);
+    host.Stop();
+}
+
+TEST(Host_ALagThatRecoversChangesNothing)
+{
+    FakeHelpers helpers;
+    TranscriptionHost::Options options = Quick();
+    options.stepDownHoldSeconds = 0.15;
+    FakeHelpers small;
+    small.behavior = WellBehaved;
+    options.fallbacks.push_back({L"C:\\Models\\smaller.bin", small.Factory()});
+    helpers.behavior = [&](Instance &helper, int) {
+        Send(helper, Ready());
+        for (int i = 0; i < 30; ++i) {                  /* behind for 60 ms, then fine, again and again */
+            const float lag = i % 12 < 6 ? 9.0f : 0.5f;
+            if (!Send(helper, StatusFor(StreamId::Microphone, TranscriptState::Live, lag)))
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        Serve(helper, [&](const asr::Message &m) { return m.type != asr::Type::Stop; });
+    };
+    TranscriptionHost host(helpers.Factory(), options);
+    host.Start(kMic);
+    CHECK(WaitUntil([&] { return helpers.Started() == 1; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(450));
+    CHECK_EQ(small.Started(), std::size_t(0));
+    host.Stop();
 }

@@ -41,7 +41,15 @@ class DecodeQueue {
 public:
     static constexpr std::size_t kMaxFinals = 4;
 
-    void Push(DecodeJob &&job);
+    /* The phrase of a Final that was pushed out of the queue to make room, if one was. */
+    struct Lost {
+        StreamId      stream = StreamId::Microphone;
+        std::uint32_t id = 0;
+        std::uint64_t startSample = 0;
+    };
+
+    /* Returns true if that cost a Final its place, and says whose in *lost (if given). */
+    bool Push(DecodeJob &&job, Lost *lost = nullptr);
 
     /* Takes the next job to do; false if there is none. */
     bool Pop(DecodeJob *job);
