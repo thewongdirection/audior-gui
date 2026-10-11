@@ -179,8 +179,9 @@ the program, or to the file or pipe it was redirected to
   about half a second, its volume steps (40 to 45 on the one tested) and the sound is
   thinner. That is the headset and Windows, not this program, and it cannot be avoided
   while the microphone is open, so the microphone pane says so when the chosen
-  microphone is Bluetooth. Recording **system audio only** (untick **Microphone**) does
-  not trigger it, nor does a microphone that is not Bluetooth. Measurements in
+  microphone is Bluetooth, with a **Record system audio only** link that unticks the
+  microphone and ticks system audio in one click. System audio only does not trigger
+  the switch, nor does a microphone that is not Bluetooth. Measurements in
   [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
 - **Closing the window, `--stop`, or Stop** all finalise the files and release
   the devices (a Bluetooth headset returns to normal playback).

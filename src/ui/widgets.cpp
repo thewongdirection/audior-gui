@@ -21,6 +21,19 @@ D2D1_COLOR_F Dim(const D2D1_COLOR_F &c, bool enabled)
 
 void Button::Paint(Painter &p, const WidgetState &st) const
 {
+    if (style == Style::Link) {
+        const D2D1_COLOR_F ink = Dim(st.pressed ? Rgb(0x8B6CF0) : st.hot ? Rgb(0xC4B5FD) : theme::kSystem, enabled);
+        p.Text(text, rect, Font::Small, ink, Align::Right);
+        if (st.hot || st.focused) {                             /* underlined under the pointer or the focus */
+            DWRITE_TEXT_METRICS metrics = {};
+            if (SUCCEEDED(p.Layout(Font::Small, text)->GetMetrics(&metrics))) {
+                const float y = (rect.top + rect.bottom) * 0.5f + 7.5f;
+                p.Line(rect.right - metrics.width, y, rect.right, y, ink, 1.0f);
+            }
+        }
+        return;
+    }
+
     D2D1_COLOR_F fill, ink = theme::kText;
     bool outlined = true;
     switch (style) {

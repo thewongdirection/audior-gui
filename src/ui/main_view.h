@@ -82,7 +82,7 @@ public:
     bool Capturing() const { return pressed_ != nullptr; }
 
 private:
-    static constexpr int kWidgetCount = 15;
+    static constexpr int kWidgetCount = 16;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -113,7 +113,7 @@ private:
     float               width_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
-    Button    micField_, systemField_, folderField_, bitrateField_;
+    Button    micField_, systemField_, folderField_, bitrateField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_;
     Segmented formatSeg_, mixSeg_;
     Slider    shareSlider_;
