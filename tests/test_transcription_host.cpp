@@ -11,7 +11,9 @@
 #include <thread>
 #include <vector>
 
+#include "../src/engine/transcript_file.h"
 #include "../src/engine/transcription_host.h"
+#include "temp_dir.h"
 #include "test_support.h"
 
 using namespace audiorgui;
@@ -454,6 +456,114 @@ TEST(Host_EventsGoToTheirStreamInOrder)
     CHECK(mic[1].isFinal);
     CHECK_EQ(system.size(), std::size_t(1));
     CHECK_EQ(std::wstring(system[0].text), std::wstring(L"over there"));
+}
+
+TEST(Host_TellsTheArchiveOfEveryEventInOrder)
+{
+    FakeHelpers helpers;
+    helpers.behavior = [&](Instance &helper, int) {
+        Serve(helper, [&](const asr::Message &m) {
+            if (m.type == asr::Type::Hello) {
+                Send(helper, Ready());
+                Send(helper, EventFor(StreamId::Microphone, 0, false, L"hel"));
+                Send(helper, EventFor(StreamId::System, 3, true, L"over there"));
+                Send(helper, EventFor(StreamId::Microphone, 0, true, L"hello"));
+                Send(helper, EventFor(StreamId::Microphone, 1, true, L"and goodbye"));
+            }
+            return m.type != asr::Type::Stop;
+        });
+    };
+    struct Told {
+        StreamId     stream;
+        bool         isFinal;
+        double       start;
+        std::wstring text;
+    };
+    std::mutex mutex;
+    std::vector<Told> told;
+    TranscriptionHost::Options options = Quick();
+    options.onEvent = [&](StreamId stream, const TranscriptEvent &e) {
+        std::lock_guard<std::mutex> lock(mutex);
+        told.push_back({stream, e.isFinal, e.startSeconds, e.text});
+    };
+    TranscriptionHost host(helpers.Factory(), options);
+    host.Start(kMic | kSystem);
+
+    CHECK(WaitUntil([&] {
+        std::lock_guard<std::mutex> lock(mutex);
+        return told.size() >= 4;
+    }));
+    host.Stop();
+
+    std::lock_guard<std::mutex> lock(mutex);
+    CHECK_EQ(told.size(), std::size_t(4));                      /* drafts too, in the order they came */
+    CHECK(told[0].stream == StreamId::Microphone && !told[0].isFinal);
+    CHECK_EQ(told[0].text, std::wstring(L"hel"));
+    CHECK(told[1].stream == StreamId::System && told[1].isFinal);
+    CHECK_EQ(told[1].text, std::wstring(L"over there"));
+    CHECK_NEAR(told[1].start, 3.0, 0.0);
+    CHECK_EQ(told[2].text, std::wstring(L"hello"));
+    CHECK_EQ(told[3].text, std::wstring(L"and goodbye"));
+}
+
+TEST(Host_TheArchiveGetsEveryEventEvenIfNobodyTakesThem)
+{
+    constexpr int kUtterances = 400;                            /* far more than the queue the window reads from keeps */
+    FakeHelpers helpers;
+    helpers.behavior = [&](Instance &helper, int) {
+        Serve(helper, [&](const asr::Message &m) {
+            if (m.type == asr::Type::Hello) {
+                Send(helper, Ready());
+                for (int i = 0; i < kUtterances; ++i)
+                    Send(helper, EventFor(StreamId::Microphone, static_cast<std::uint32_t>(i), true, L"words"));
+            }
+            return m.type != asr::Type::Stop;
+        });
+    };
+    std::atomic<int> count{0};
+    TranscriptionHost::Options options = Quick();
+    options.onEvent = [&](StreamId, const TranscriptEvent &) { ++count; };
+    TranscriptionHost host(helpers.Factory(), options);
+    host.Start(kMic);                                           /* and nothing ever calls TakeEvents */
+
+    CHECK(WaitUntil([&] { return count.load() >= kUtterances; }));
+    host.Stop();
+    CHECK_EQ(count.load(), kUtterances);
+}
+
+TEST(Host_TheLastWordsAtStopReachTheTranscriptFileBeforeItIsClosed)
+{
+    /* The order WasapiEngine::Stop() uses: the host stops (the helper says its last words, which the host
+     * passes on), and only then is the file closed.  The other way round, the end of the talk is lost. */
+    FakeHelpers helpers;
+    helpers.behavior = [&](Instance &helper, int) {
+        Serve(helper, [&](const asr::Message &m) {
+            if (m.type == asr::Type::Hello) {
+                Send(helper, Ready());
+                Send(helper, EventFor(StreamId::Microphone, 0, true, L"Settled early."));
+                Send(helper, EventFor(StreamId::Microphone, 1, false, L"still being sp"));
+            }
+            if (m.type == asr::Type::Stop) {
+                Send(helper, EventFor(StreamId::Microphone, 1, true, L"Said right at the end."));
+                return false;
+            }
+            return true;
+        });
+    };
+    TempDir dir;
+    TranscriptFile file(dir.Path(L"t.txt"));
+    TranscriptionHost::Options options = Quick();
+    options.onEvent = [&](StreamId, const TranscriptEvent &e) { file.Add(e); };
+    TranscriptionHost host(helpers.Factory(), options);
+    host.Start(kMic);
+    CHECK(WaitUntil([&] { return host.Status(StreamId::Microphone).state == TranscriptState::Live; }));
+
+    host.Stop();
+    file.Close();
+
+    const std::vector<std::uint8_t> bytes = ReadFileBytes(dir.Path(L"t.txt"));
+    CHECK_EQ(std::string(bytes.begin(), bytes.end()),
+             std::string("\xEF\xBB\xBF[0:00] Settled early.\r\n[0:01] Said right at the end.\r\n"));
 }
 
 TEST(Host_AnEventForAStreamNobodyAskedForIsDropped)

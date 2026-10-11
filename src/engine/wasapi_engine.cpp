@@ -46,6 +46,8 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
 
     session_.reset();                                   /* the previous recording's threads and results */
     host_.reset();
+    for (std::unique_ptr<TranscriptFile> &file : transcriptFiles_)
+        file.reset();                                   /* (after host_, which writes to them) */
     stopSignal_.Close();
     if (!stopSignal_.Create()) {
         *error = L"The recording could not be started.";
@@ -73,6 +75,14 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         options.vadModel = asr.vadPath;
         options.language = s.transcribeLanguage;
         options.gpu = s.transcribeGpu;
+        for (int i = 0; i < kStreamCount; ++i) {        /* a text file for each transcript, beside the recording */
+            if (plan.speech & (1u << i))
+                transcriptFiles_[i] = std::make_unique<TranscriptFile>(PlannedTranscriptFile(outputPath, static_cast<StreamId>(i)));
+        }
+        options.onEvent = [this](StreamId stream, const TranscriptEvent &event) {
+            if (TranscriptFile *file = transcriptFiles_[StreamIndex(stream)].get())
+                file->Add(event);
+        };
         for (const AsrModel *smaller :                  /* what to change to if this model cannot keep up */
              SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()),
                            s.transcribeLanguage == SpeechLanguage::Auto)) {
@@ -101,7 +111,30 @@ void WasapiEngine::Stop()
         session_->Stop();                               /* the captures end first: no more audio for... */
     if (host_)
         host_->Stop();                                  /* ...the transcriber, which says its last words */
+    for (std::unique_ptr<TranscriptFile> &file : transcriptFiles_) {
+        if (file)
+            file->Close();                              /* and they are in the transcript files */
+    }
     stopSignal_.Close();                                /* `--stop` finds nothing to stop from now on */
+}
+
+std::vector<std::wstring> WasapiEngine::TranscriptFiles()
+{
+    std::vector<std::wstring> paths;
+    for (const std::unique_ptr<TranscriptFile> &file : transcriptFiles_) {
+        if (file && file->Written())
+            paths.push_back(file->Path());
+    }
+    return paths;
+}
+
+std::wstring WasapiEngine::TranscriptFileProblem()
+{
+    for (const std::unique_ptr<TranscriptFile> &file : transcriptFiles_) {
+        if (file && file->Error() != 0)
+            return L"transcript not saved (Windows error " + std::to_wstring(file->Error()) + L")";
+    }
+    return std::wstring();
 }
 
 std::size_t WasapiEngine::TakePeaks(StreamId stream, PeakBin *out, std::size_t capacity)

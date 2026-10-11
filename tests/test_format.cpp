@@ -97,3 +97,20 @@ TEST(FormatBytes_NeverShowsTheNextUnitAs1024)
     CHECK_EQ(FormatBytes(1048576), std::wstring(L"1.0 MB"));
     CHECK_EQ(FormatBytes(1023 * 1024), std::wstring(L"1023.0 KB"));
 }
+
+TEST(FormatTranscriptLine_HasTheClockThePanesShow)
+{
+    CHECK_EQ(FormatTranscriptLine(0.0, L"Hello."), std::wstring(L"[0:00] Hello."));
+    CHECK_EQ(FormatTranscriptLine(6.9, L"The weather today."), std::wstring(L"[0:06] The weather today."));
+    CHECK_EQ(FormatTranscriptLine(754.0, L"Twelve minutes in."), std::wstring(L"[12:34] Twelve minutes in."));
+    CHECK_EQ(FormatTranscriptLine(3725.0, L"An hour in."), std::wstring(L"[1:02:05] An hour in."));
+    CHECK_EQ(FormatTranscriptLine(-3.0, L"Before the start."), std::wstring(L"[0:00] Before the start."));
+}
+
+TEST(FormatTranscriptLine_IsOneLineAndNeverEmpty)
+{
+    CHECK_EQ(FormatTranscriptLine(1.0, L"one\r\ntwo\tthree"), std::wstring(L"[0:01] one  two three"));
+    CHECK_EQ(FormatTranscriptLine(1.0, L"…"), std::wstring(L"[0:01] …"));                /* a phrase that was not decoded */
+    CHECK(FormatTranscriptLine(1.0, L"").empty());                                          /* a phrase taken back */
+    CHECK(FormatTranscriptLine(1.0, L"  \t\r\n ").empty());
+}

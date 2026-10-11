@@ -10,6 +10,7 @@
 #include <cwchar>
 
 #include "../core/format.h"
+#include "../core/window_fit.h"
 
 namespace audiorgui::ui {
 
@@ -36,6 +37,20 @@ UINT TaskbarCreatedMessage()
 {
     static const UINT message = RegisterWindowMessageW(L"TaskbarCreated");      /* Explorer restarted */
     return message;
+}
+
+/* Windows cascades a window made with CW_USEDEFAULT without asking whether all of it fits: on a big
+ * monitor its bottom edge (and the Start button) can land under the taskbar. */
+void KeepOnItsMonitor(HWND window)
+{
+    RECT r;
+    MONITORINFO monitor = {sizeof(monitor)};
+    if (!GetWindowRect(window, &r) || !GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor))
+        return;
+    const PixelRect fitted = FitIntoWorkArea({r.left, r.top, r.right, r.bottom},
+                                             {monitor.rcWork.left, monitor.rcWork.top, monitor.rcWork.right,
+                                              monitor.rcWork.bottom});
+    SetWindowPos(window, nullptr, fitted.left, fitted.top, fitted.Width(), fitted.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 }  // namespace
@@ -87,6 +102,7 @@ bool AppWindow::Create(HINSTANCE instance, int showCommand)
                             nullptr, nullptr, instance, this);
     if (!hwnd_)
         return false;
+    KeepOnItsMonitor(hwnd_);
 
     windowIcons_[0] = MakeAppIcon(GetSystemMetrics(SM_CXSMICON), false);
     windowIcons_[1] = MakeAppIcon(GetSystemMetrics(SM_CXICON), false);

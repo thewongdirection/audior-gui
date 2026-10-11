@@ -79,6 +79,39 @@ std::wstring WideFromUtf8(const std::string &utf8)
     return out;
 }
 
+std::string Utf8FromWide(const std::wstring &text)
+{
+    std::string out;
+    out.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        unsigned long codePoint = static_cast<unsigned short>(text[i]);
+        const bool high = codePoint >= 0xD800 && codePoint <= 0xDBFF;
+        const unsigned long next = i + 1 < text.size() ? static_cast<unsigned short>(text[i + 1]) : 0;
+        if (high && next >= 0xDC00 && next <= 0xDFFF) {
+            codePoint = 0x10000 + ((codePoint - 0xD800) << 10) + (next - 0xDC00);
+            ++i;
+        } else if (codePoint >= 0xD800 && codePoint <= 0xDFFF) {
+            codePoint = 0xFFFD;                         /* a surrogate with no partner */
+        }
+        if (codePoint < 0x80) {
+            out += static_cast<char>(codePoint);
+        } else if (codePoint < 0x800) {
+            out += static_cast<char>(0xC0 | (codePoint >> 6));
+            out += static_cast<char>(0x80 | (codePoint & 0x3F));
+        } else if (codePoint < 0x10000) {
+            out += static_cast<char>(0xE0 | (codePoint >> 12));
+            out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (codePoint & 0x3F));
+        } else {
+            out += static_cast<char>(0xF0 | (codePoint >> 18));
+            out += static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (codePoint & 0x3F));
+        }
+    }
+    return out;
+}
+
 namespace {
 
 constexpr std::size_t kMaxPhraseWords = 12;
