@@ -65,6 +65,13 @@ struct RecordingSettings {
  * tracks mean anything. */
 inline bool RecordsBoth(const RecordingSettings &s) { return s.includeMicrophone && s.includeSystemAudio; }
 
+/* Record only what the PC plays: the microphone off, the system audio on. */
+inline void UseSystemAudioOnly(RecordingSettings *s)
+{
+    s->includeMicrophone = false;
+    s->includeSystemAudio = true;
+}
+
 /* An empty string when the settings are valid, else a message for the user. */
 std::wstring Validate(const RecordingSettings &settings);
 

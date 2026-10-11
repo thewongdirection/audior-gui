@@ -239,8 +239,12 @@ carries a `bluetooth` flag, read from the bus Windows reports for its endpoint (
 headset's microphone, `BTHENUM` for its playback side, `HDAUDIO` for the PC's own and the monitor's;
 anything starting `BTH` counts). When the microphone that would be recorded is Bluetooth, the
 microphone pane shows *Bluetooth microphone: the headset switches to call mode while recording.*
-under its drop-down. Five unit tests cover the detection and the choice of microphone (default or
-a chosen one), and the `bluetooth-mic` screenshot scenario renders the note (also in CI).
+under its drop-down, with a **Record system audio only** link on the same line that unticks the
+microphone and ticks system audio in one click (`UseSystemAudioOnly`; hidden while recording,
+because the settings are locked then). Five unit tests cover the detection and the choice of
+microphone (default or a chosen one), one the link's settings change, and the `bluetooth-mic`
+screenshot scenario renders the note and the link (also in CI). Checked by clicking the link in the
+real window on the real hardware: the microphone unticked, system audio ticked, the note went.
 
 **What avoids it.** Record **System audio only** (untick **Microphone**), or use a microphone that
 is not Bluetooth (a USB or wired one) and keep the headset only for listening.
