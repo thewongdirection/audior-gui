@@ -50,6 +50,10 @@ puts them there). T12 also uses the other architecture's build if it is built.
   forward, and whether a mouse button was down (`tests/hardware/focus_log.h`, unit-tested in
   `tests/test_focus_log.cpp`). Input another program injects, such as a UI-automation session,
   counts as input, so it reads as "someone".
+- **Leaves your settings alone.** The program remembers the settings of its last run in
+  `Audior-GUI.ini` beside the exe. Every window the tests start is run with `--defaults`, which
+  starts from audior's defaults whatever that file holds and never writes it, so the tests mean
+  the same on every PC and your own settings are the same afterwards.
 - **Nothing else may record meanwhile.** Every `Audior-GUI.exe` ends on the same machine-wide stop
   event (`Local\AudiorStopEvent`) and the microphone is shared, so a second instance recording or
   sending `--stop` cuts these recordings short. The tests refuse to start while another

@@ -31,6 +31,21 @@ void RecorderController::RefreshDevices()
     devices_[1] = engine_.ListDevices(DeviceKind::Playback);
 }
 
+void RecorderController::DropUnavailableDevices()
+{
+    const auto listed = [](const std::vector<DeviceInfo> &devices, const std::wstring &id) {
+        for (const DeviceInfo &d : devices) {
+            if (d.id == id)
+                return true;
+        }
+        return false;
+    };
+    if (!listed(Devices(DeviceKind::Microphone), settings_.microphoneId))
+        settings_.microphoneId.clear();
+    if (!listed(Devices(DeviceKind::Playback), settings_.systemDeviceId))
+        settings_.systemDeviceId.clear();
+}
+
 const RecordingSettings &RecorderController::Active() const
 {
     return phase_ == Phase::Recording ? active_ : settings_;

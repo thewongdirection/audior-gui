@@ -1,5 +1,6 @@
 /*
- * format.h - Text formatting for the numbers the window displays.
+ * format.h - Text formatting for the numbers the window displays, and reading
+ * back whole numbers typed or saved as text.
  */
 #pragma once
 
@@ -25,5 +26,9 @@ float LinearToDb(float linear);
 
 /* "-12 dB", or "-inf dB" (with the infinity sign) for silence. */
 std::wstring FormatDb(float db);
+
+/* A whole number written as ASCII digits only, at most nine so that it fits an int; false (leaving
+ * *value alone) for anything else, a sign and the empty string included. */
+bool ParseWholeNumber(const std::wstring &text, int *value);
 
 }  // namespace audiorgui

@@ -347,3 +347,12 @@ TEST(Validate_ChecksTheFileName)
     s.fileName = L"a?b";
     CHECK(!Validate(s).empty());
 }
+
+TEST(IsAbsolutePath_NeedsADriveOrARoot)
+{
+    for (const wchar_t *path : {L"C:\\Rec", L"C:", L"\\Rec", L"/Rec", L"\\\\server\\share\\Rec"})
+        CHECK(IsAbsolutePath(path));
+    for (const wchar_t *path : {L"", L"Rec", L"Rec\\sub", L".\\Rec", L"..\\Rec", L"R"})
+        CHECK(!IsAbsolutePath(path));
+}
+

@@ -80,4 +80,18 @@ std::wstring FormatDb(float db)
     return buf;
 }
 
+bool ParseWholeNumber(const std::wstring &text, int *value)
+{
+    if (text.empty() || text.size() > 9)
+        return false;
+    int v = 0;
+    for (wchar_t c : text) {
+        if (c < L'0' || c > L'9')
+            return false;
+        v = v * 10 + (c - L'0');
+    }
+    *value = v;
+    return true;
+}
+
 }  // namespace audiorgui

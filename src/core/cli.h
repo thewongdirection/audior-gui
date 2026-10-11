@@ -12,8 +12,16 @@
  *
  * and a few of its own:  --system-amplify <0-300>,  --transcribe-mic,
  * --transcribe-system (live transcripts, with --transcribe-model <file> and
- * --transcribe-language auto|en, --transcribe-cpu),  --demo (simulated audio).
- * The options only preset the window; everything stays editable there.
+ * --transcribe-language auto|en, --transcribe-cpu),  --defaults (see below),
+ * --demo (simulated audio).  The options only preset the window; everything
+ * stays editable there.
+ *
+ * The window starts from the settings of the last run (see saved_settings.h)
+ * and the options change those, so `settings` below holds them when it is
+ * passed in.  --defaults is for scripts: it asks to start from the built-in
+ * defaults instead and to leave the saved settings alone.  ParseCommandLine
+ * cannot do that itself, as it works on the settings it is given; it only
+ * reports the option, and ParseOverSavedSettings parses again over the defaults.
  *
  * Parsing is plain C++ over a list of strings, so it is unit-tested.
  */
@@ -22,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "saved_settings.h"
 #include "settings.h"
 #include "types.h"
 
@@ -32,6 +41,7 @@ struct CliResult {
 
     Command command = Command::Run;
     bool    demo    = false;                    /* --demo: simulated audio, nothing is written    */
+    bool    defaults = false;                   /* --defaults: the saved settings are not wanted   */
     bool    start   = false;                    /* --output was given: begin recording at once    */
 
     /* Device choices still to be matched against the machine's devices (see
@@ -49,10 +59,15 @@ struct CliResult {
 };
 
 /* Parses `args` (without the program name) into `settings`, which holds the
- * defaults and is changed only by the options given.  `workingDirectory` is
- * what a relative --output is relative to. */
+ * settings to start from and is changed only by the options given.
+ * `workingDirectory` is what a relative --output is relative to. */
 CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wstring &workingDirectory,
                            RecordingSettings *settings);
+
+/* The command line over the settings of the last run: *start becomes `saved` with the options applied.  With
+ * --defaults it becomes `builtIn` with the options applied instead, hotkeys included. */
+CliResult ParseOverSavedSettings(const std::vector<std::wstring> &args, const std::wstring &workingDirectory,
+                                 const SavedSettings &saved, const SavedSettings &builtIn, SavedSettings *start);
 
 /* Finds the device a --mic / --output-device value names: a list index, else
  * (part of) an endpoint ID, else (part of) a friendly name, ignoring case.

@@ -244,6 +244,105 @@ TEST(Cli_DeveloperOptions)
     CHECK(!Parse({L"--size", L"big"}).result.error.empty());
 }
 
+TEST(Cli_OptionsChangeOnlyWhatTheyNameOfTheSettingsTheyStartFrom)
+{
+    RecordingSettings s;                                /* what the last run left */
+    s.outputDirectory = L"D:\\Takes";
+    s.format = Format::Wav;
+    s.includeSystemAudio = true;
+    s.mixMode = MixMode::Separate;
+    s.micAmplifyPercent = 120;
+    s.transcribeSystem = true;
+
+    const CliResult r = ParseCommandLine({L"-b", L"192", L"--amplify", L"50"}, kCwd, &s);
+    CHECK(r.error.empty());
+    CHECK_EQ(s.mp3BitrateKbps, 192);
+    CHECK_EQ(s.micAmplifyPercent, 50);
+    CHECK_EQ(s.outputDirectory, std::wstring(L"D:\\Takes"));
+    CHECK(s.format == Format::Wav);
+    CHECK(s.includeSystemAudio);
+    CHECK(s.mixMode == MixMode::Separate);
+    CHECK(s.transcribeSystem);
+    CHECK(!r.start);
+}
+
+TEST(Cli_DefaultsOnlyReportsThatTheSavedSettingsAreNotWanted)
+{
+    const Parsed p = Parse({L"--defaults"});
+    CHECK(p.result.error.empty());
+    CHECK(p.result.defaults);
+    CHECK(p.settings.format == Format::Mp3);            /* the caller parses again over the defaults */
+    CHECK(!Parse({}).result.defaults);
+    CHECK(Parse({L"-o", L"talk.wav", L"--defaults"}).result.start);
+}
+
+namespace {
+
+/* The settings of a last run that used system audio, WAV and its own hotkeys, and the built-in ones. */
+struct LastRun {
+    SavedSettings saved, builtIn;
+
+    LastRun()
+    {
+        builtIn.recording.outputDirectory = L"C:\\Docs\\Audior-GUI";
+        saved = builtIn;
+        saved.recording.format = Format::Wav;
+        saved.recording.includeSystemAudio = true;
+        saved.recording.mp3BitrateKbps = 320;
+        saved.hotkeys[0] = {kModAlt, 'M'};
+    }
+
+    CliResult Parse(const std::vector<std::wstring> &args, SavedSettings *start) const
+    {
+        return ParseOverSavedSettings(args, kCwd, saved, builtIn, start);
+    }
+};
+
+}  // namespace
+
+TEST(Cli_OptionsAreAppliedOverTheSettingsOfTheLastRun)
+{
+    const LastRun last;
+    SavedSettings start;
+    const CliResult r = last.Parse({L"-b", L"192"}, &start);
+    CHECK(r.error.empty());
+    CHECK(!r.defaults);
+    CHECK_EQ(start.recording.mp3BitrateKbps, 192);                      /* the option wins */
+    CHECK(start.recording.format == Format::Wav);                       /* the rest is the last run's */
+    CHECK(start.recording.includeSystemAudio);
+    CHECK(start.hotkeys[0] == (Hotkey{kModAlt, 'M'}));
+}
+
+TEST(Cli_DefaultsStartsOverTheBuiltInSettingsInstead)
+{
+    const LastRun last;
+    SavedSettings start;
+    const CliResult r = last.Parse({L"--defaults", L"-b", L"192", L"-o", L"talk.mp3"}, &start);
+    CHECK(r.error.empty());
+    CHECK(r.defaults);
+    CHECK(r.start);                                                     /* the other options still count */
+    CHECK_EQ(start.recording.mp3BitrateKbps, 192);
+    CHECK(start.recording.format == Format::Mp3);                       /* not the last run's */
+    CHECK(!start.recording.includeSystemAudio);
+    CHECK(start.hotkeys[0] == DefaultHotkey(HotkeyAction::Start));
+    CHECK_EQ(start.recording.outputDirectory, std::wstring(kCwd));      /* from -o */
+
+    last.Parse({L"--defaults"}, &start);
+    CHECK_EQ(start.recording.outputDirectory, std::wstring(L"C:\\Docs\\Audior-GUI"));
+}
+
+TEST(Cli_ReadingTheOptionsTwiceForDefaultsReportsEachProblemOnce)
+{
+    const LastRun last;
+    SavedSettings start;
+    CliResult r = last.Parse({L"--defaults", L"--amplify", L"500"}, &start);
+    CHECK_EQ(r.warnings.size(), std::size_t(1));
+    CHECK_EQ(start.recording.micAmplifyPercent, kMaxAmplifyPercent);
+
+    r = last.Parse({L"--defaults", L"--frobnicate"}, &start);
+    CHECK(!r.error.empty());
+}
+
 TEST(Cli_AFullAudiorCommandLine)
 {
     const Parsed p = Parse({L"--output", L"call.wav", L"--format", L"wav", L"--include-output", L"--separate",
@@ -318,6 +417,7 @@ TEST(HelpText_MentionsEveryOption)
     const wchar_t *const options[] = {L"--output", L"--format", L"--bitrate", L"--mic", L"--amplify",
                                       L"--include-output", L"--output-device", L"--merge", L"--separate",
                                       L"--list-devices", L"--stop", L"--help", L"--system-amplify", L"--demo",
+                                      L"--defaults",
                                       L"-o,", L"-f,", L"-b,", L"-m,", L"-a,", L"-i,", L"-d,", L"-l,", L"-s,", L"-h,"};
     for (const wchar_t *option : options)
         CHECK(help.find(option) != std::wstring::npos);
