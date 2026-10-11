@@ -30,11 +30,26 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 
 ## Requirements
 
+### To run
+
 | | |
 |---|---|
-| Runs on | Windows 10 and Windows 11, x64 or x86 |
-| Needs | Nothing to install: no .NET, no Visual C++ redistributable, no third-party library |
-| Builds with | Visual Studio 2022 or its Build Tools (C++ workload) |
+| Windows | Windows 10 or 11, x64 or x86, any edition. A Windows N edition lacks Media Foundation, so MP3 is unavailable there until the Media Feature Pack is installed; WAV works |
+| Audio hardware | At least one device: a **microphone** (any capture device) and/or a **playback device**, whose output is recorded as *System audio* (WASAPI loopback). With neither, `--demo` runs the window on simulated audio |
+| Windows privacy | Settings → Privacy & security → Microphone must let desktop apps use the microphone. If Windows blocks it, the recorder reports `access was denied (check Windows privacy settings)` or gets no microphone audio |
+| Rights | An ordinary user account: no administrator rights, installer, driver or service |
+| Display | Direct2D and DirectWrite, which are part of Windows. No GPU is required (Direct2D falls back to software). Segoe UI Variable on Windows 11, Segoe UI on Windows 10 |
+| Disk | A writable folder (default `Documents\audior`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
+| Memory | Fixed: each stream buffers at most 8 seconds, whatever the length of the recording |
+| Network | **None.** No connection, account or API key. See [below](#what-works-offline-and-what-needs-the-internet) |
+| Not needed | .NET, the Visual C++ redistributable, WebView2, any third-party library |
+
+### To build
+
+Visual Studio 2022 or its Build Tools with the *Desktop development with C++*
+workload (MSVC for x86 and x64, and the Windows SDK), plus the in-box Windows
+PowerShell, which runs the import check. `build.bat` finds Visual Studio itself and
+downloads nothing: there is no package manager and no third-party code to fetch.
 
 Like audior, the app uses **only WASAPI (for audio) and libraries that ship with
 Windows**: Media Foundation for MP3, Win32 with Direct2D, DirectWrite and WIC for
@@ -42,6 +57,31 @@ the window. `tests/check_imports.ps1` fails the build if the executable ever
 imports a DLL outside an allowlist of in-box Windows DLLs. Media Foundation is
 loaded on demand, so the program also starts on a Windows N edition without it
 (MP3 recording then says so; WAV works).
+
+## What works offline, and what needs the internet
+
+**Today everything is local.** Recording both streams, the gains, the merge, WAV and
+MP3 encoding, the waveforms and every command-line option work with no connection,
+no account and no key. The program sends nothing anywhere: it contains no networking
+code, and `tests\check_imports.ps1` fails the build if the executable ever imports a
+networking DLL. Unplugging the network changes nothing.
+
+**Live transcription is planned, not built.** `main` has no transcription code yet.
+The design is a live transcript scrolling in each stream's pane, local first; details
+may change before it ships.
+
+| | Offline: only what is installed on the PC | Online: an internet connection and an API key |
+|---|---|---|
+| Recording, mixing, MP3 and WAV, waveforms, command line | All of it (available now) | No difference: recording never uses the network |
+| Live transcript (planned) | A speech-to-text model that runs on your own CPU, with GPU acceleration to follow. You download the model file once; it is never bundled with the program. After that no connection is needed and your audio never leaves the PC | Streaming transcription by a cloud service (Deepgram is the first planned). Needs a connection and your own API key, and your audio is sent to that service. Off unless you switch it on, and the pane shows when it is in use |
+| Where the key lives (planned) | Not needed | Windows Credential Manager. Never in the settings, on the command line or in a log |
+
+The internet would be used for exactly two things: the one-time download of a model,
+and cloud transcription if you turn it on. An *Auto* choice would pick a local model
+from what the PC has free (GPU memory, CPU, battery) and never use the cloud unless
+you enabled it. Transcription would run in a separate helper program, so neither a
+model nor a GPU driver problem can touch a recording, and the recorder itself stays
+dependency-free. A transcription problem never stops or damages a recording.
 
 ## Build and run
 
