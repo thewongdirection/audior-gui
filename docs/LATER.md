@@ -30,7 +30,9 @@ blocks using it; each item is worth doing when it starts to matter.
 - The first use of the card takes about eight seconds (the driver builds its shader
   code); a pipeline cache kept between runs, or starting the helper earlier, would hide it.
 - The large (turbo) model on the RTX 5080 keeps up (53 s of speech in 2.2 s when given at
-  once, against 42.6 s on the processor).
+  once, against 42.6 s on the processor), and also at the pace of speech through the whole
+  path: 0.3 s behind on average, 0.5 s at most, against 1.7 s and 4.3 s on the processor
+  (`hardware_tests.exe --only T17`).
 - Nothing yet stops the card being shared badly with a game or a video encode: no check
   of free video memory, no lower GPU priority. The planned *Auto* choice would pick
   processor or card from what is free (video memory, load, battery).
