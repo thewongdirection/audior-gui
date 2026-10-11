@@ -118,6 +118,9 @@ private:
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
+    /* The transcript files this recording will make: none where the engine cannot transcribe, however the
+     * (saved) switches stand: their boxes are hidden then, so they cannot be switched off. */
+    std::vector<std::wstring> PlannedTranscripts(const std::wstring &path) const;
 
     IRecordingEngine  &engine_;
     Clock              clock_;

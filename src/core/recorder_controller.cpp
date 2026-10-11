@@ -57,13 +57,18 @@ bool RecorderController::StreamEnabled(StreamId stream) const
     return stream == StreamId::Microphone ? s.includeMicrophone : s.includeSystemAudio;
 }
 
+std::vector<std::wstring> RecorderController::PlannedTranscripts(const std::wstring &path) const
+{
+    return engine_.CanTranscribe() ? PlannedTranscriptFiles(settings_, path) : std::vector<std::wstring>();
+}
+
 bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
 {
     for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
         if (fileExists_(file))
             return true;
     }
-    for (const std::wstring &file : PlannedTranscriptFiles(settings_, path)) {       /* a transcript keeps its recording's name */
+    for (const std::wstring &file : PlannedTranscripts(path)) {                      /* a transcript keeps its recording's name */
         if (fileExists_(file))
             return true;
     }
@@ -114,7 +119,7 @@ bool RecorderController::Start()
             return false;
         }
     }
-    for (const std::wstring &file : PlannedTranscriptFiles(settings_, path)) {      /* their names are the longer ones */
+    for (const std::wstring &file : PlannedTranscripts(path)) {                     /* their names are the longer ones */
         if (file.size() > kMaxOutputPathChars) {
             outcome_.kind = Outcome::Kind::Failed;
             outcome_.message = L"The transcript's path would be too long (the limit is " + limit +

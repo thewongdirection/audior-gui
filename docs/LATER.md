@@ -43,3 +43,41 @@ blocks using it; each item is worth doing when it starts to matter.
 - The helper is built for x64 only, and CI does not build it.
 - Models are downloaded by hand; the recorder has no networking code, so an in-app
   download would have to be a separate small program.
+
+## Found in the review of the saved settings, the saved transcripts and the window fit
+
+None of these loses a recording; each is worth doing when it starts to matter.
+
+- **The window fit and the minimum size.** `FitToWorkArea` (`core/window_fit`) cuts the
+  window down to the work area, but the window refuses to be smaller than
+  `kMinHeight + ExtraMinHeight` (`WM_GETMINMAXINFO`): on a 1366x768 screen at 100 % the
+  work area is shorter than that, so the bottom edge (the Start button) can end up under
+  the taskbar. Give the fit the minimum size and keep the title bar inside the work area.
+- **File writes on the wrong threads.** A transcript line is written to disk on the host's
+  reader thread (`TranscriptFile::Add`): a stalled target (an offline share, a sleeping USB
+  disk) holds up the helper's output and, on Stop, the UI thread. The settings file is
+  read and written on the UI thread too, and its folder is looked at before even
+  `--stop` or `--help` run (a saved folder on a dead share stalls every launch). A small
+  writer thread, or a bounded queue, would take both off the UI.
+- **A fallback is saved as if it were a choice.** A device that is not listed (the audio
+  service not up yet, a USB microphone unplugged) or a folder that cannot be reached is
+  replaced by the default and saved that way at exit, so the next run has forgotten it.
+  Keep the loaded value in the file until the person changes it.
+- **Saved settings and command-line runs.** The command line is applied over the saved
+  settings, and `-i` or `--transcribe-*` can only switch things on: after a run with the
+  system audio only, `-o call.mp3 -m 2` records no microphone, and a saved `wav` format
+  turns `call.mp3` into `call.wav`. `--defaults` is the way out and is documented; a
+  warning when `-o` starts a recording from saved settings that disagree would be kinder.
+- **Smaller things.** A path such as `\Rec` or `C:Rec` counts as absolute
+  (`IsAbsolutePath`) though it depends on where the program starts, and
+  `saved_settings.cpp` says it is refused. The hotkeys kept in the registry by earlier
+  versions are not carried over to the settings file. A failed save (a sync client holding
+  the file, Controlled Folder Access) is silent and not retried, and a file the program
+  does not accept (over 16 KB, UTF-16 without a mark) is replaced at exit; comments in it
+  are not kept. The helper's lag report can reach the recorder out of order (a stale
+  "catching up" can follow a later "live"). If the decode queue overflows, the transcript
+  file can show a phrase twice or out of order. The " (2)" fallback of a transcript name
+  is not checked against the path limit, and only "file exists" tries the next number.
+  Nothing makes a new `RecordingSettings` field a field of the settings file: add a test
+  that fails on a field it does not know. `hardware_tests.exe --only T15` records with
+  the first installed model, so a slow PC can fail it for speed, not for a bug.

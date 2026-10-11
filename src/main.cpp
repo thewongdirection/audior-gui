@@ -161,6 +161,11 @@ int Run(HINSTANCE instance, int showCommand)
     SavedSettings saved = builtIn;                      /* what the last run left, over that */
     const Preferences prefs;
     prefs.Load(&saved);
+    /* A model the last run chose that is gone now would stop every recording that transcribes, while the window
+     * shows the first one installed in its place: forget it (a --transcribe-model given now is kept, and checked). */
+    if (!saved.recording.transcribeModel.empty() &&
+        !ModelInstalled(ModelsDirectory(), saved.recording.transcribeModel))
+        saved.recording.transcribeModel.clear();
 
     SavedSettings start;
     const CliResult cli = ParseOverSavedSettings(Arguments(), CurrentDirectory(), saved, builtIn, &start);

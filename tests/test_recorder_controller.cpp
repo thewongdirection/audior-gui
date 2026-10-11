@@ -358,6 +358,35 @@ TEST(Controller_ATranscriptFileThatWouldBeTooLongIsRefusedBeforeRecording)
     CHECK(rig.ctl.Start());
 }
 
+/* An engine without the helper or a model: the transcript switches are hidden, whatever the saved settings say. */
+class DeafEngine : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    bool CanTranscribe() const override { return false; }
+};
+
+TEST(Controller_AnEngineThatCannotTranscribeLeavesTheTranscriptSwitchesOutOfTheNames)
+{
+    std::set<std::wstring> existing;
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10;
+    DeafEngine engine([] { return 0.0; });
+    RecorderController ctl(engine, [&time] { return time; },
+                           [&existing](const std::wstring &path) { return existing.count(path) > 0; });
+    ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    ctl.Settings().fileName = std::wstring(8, L'n');            /* with a transcript name this would be 269 */
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(ctl.Start());                                         /* not refused for a transcript it cannot make */
+    ctl.Stop();
+
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().fileName = L"a";
+    existing.insert(L"C:\\Rec\\a - microphone.txt");            /* a leftover transcript does not take a number */
+    CHECK(ctl.Start());
+    ctl.Stop();
+    CHECK_EQ(ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\a.mp3"));
+}
+
 TEST(Controller_TheSystemTranscriptsLongerNameCanBeTheOnlyOneOverTheLimit)
 {
     Rig rig;

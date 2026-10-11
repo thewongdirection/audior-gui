@@ -48,6 +48,10 @@ std::wstring ModelsDirectory();
 std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models = kAsrModels,
                                               std::size_t modelCount = kAsrModelCount);
 
+/* Is the model of the table named `file` (any case) whole in `modelsDir`? */
+bool ModelInstalled(const std::wstring &modelsDir, const std::wstring &file, const AsrModel *models = kAsrModels,
+                    std::size_t modelCount = kAsrModelCount);
+
 /* Is the helper with its manifest in `programDir`, and a whole model in `modelsDir`: the file
  * named `preferred` (any case), or if that is empty the first one of the table that is there?
  * The voice-activity model `vad` is noted too if it is there whole. */
