@@ -54,6 +54,14 @@ public:
         return gfx_.Layout(font, text.c_str(), static_cast<UINT32>(text.size()));
     }
 
+    ComPtr<IDWriteTextLayout> WrappedLayout(Font font, const wchar_t *text, UINT32 length, float width) const
+    {
+        return gfx_.WrappedLayout(font, text, length, width);
+    }
+
+    /* A prepared layout with its top left corner at (x, y). */
+    void Draw(IDWriteTextLayout *layout, float x, float y, const D2D1_COLOR_F &color);
+
     void PushClip(const D2D1_RECT_F &r);
     void PopClip();
 

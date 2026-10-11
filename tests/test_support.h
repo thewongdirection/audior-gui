@@ -22,6 +22,7 @@ struct Case {
 
 std::vector<Case> &Registry();
 void ReportFailure(const char *file, int line, const std::string &message);
+void ReportSkip(const std::string &reason);
 
 struct Registrar {
     Registrar(const char *name, void (*fn)()) { Registry().push_back({name, fn}); }
@@ -75,6 +76,14 @@ inline void CheckNear(const char *file, int line, const char *expression, double
     static void name();                                               \
     static ::testing::Registrar registrar_##name(#name, name);        \
     static void name()
+
+/* For a test that needs something this machine does not have (a model, a helper): it says so and is
+ * counted as skipped, not as passed. */
+#define SKIP(reason)                        \
+    do {                                    \
+        ::testing::ReportSkip(reason);      \
+        return;                             \
+    } while (0)
 
 #define CHECK(cond)                                                                  \
     do {                                                                             \

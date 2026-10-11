@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "../src/engine/pcm.h"
@@ -184,6 +185,25 @@ void RecordBriefly(RecordingSession &session, Rig &rig, bool withMic, bool withS
     session.Stop();
 }
 
+/* A speech sink that keeps what it is given. */
+class SpySink final : public ISpeechSink {
+public:
+    void Push(StreamId stream, const std::int16_t *samples, std::size_t count) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        received_[StreamIndex(stream)].insert(received_[StreamIndex(stream)].end(), samples, samples + count);
+    }
+    std::vector<std::int16_t> Received(StreamId stream)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return received_[StreamIndex(stream)];
+    }
+
+private:
+    std::mutex                mutex_;
+    std::vector<std::int16_t> received_[kStreamCount];
+};
+
 }  // namespace
 
 /* ---- the plan ---- */
@@ -208,6 +228,74 @@ TEST(MakePlan_FollowsTheSettings)
     plan = MakePlan(s, L"C:\\r\\x.mp3");
     CHECK(!plan.microphone && plan.system && !plan.merge);
     CHECK_EQ(plan.files.size(), std::size_t(1));
+}
+
+TEST(MakePlan_SendsOnlyTheTranscribedStreamsToTheSpeechSink)
+{
+    RecordingSettings s;
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 0);
+
+    s.transcribeMicrophone = true;
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 1);
+
+    s.transcribeSystem = true;                      /* system audio is not recorded: nothing to transcribe */
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 1);
+
+    s.includeSystemAudio = true;
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 3);
+
+    s.includeMicrophone = false;
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 2);
+}
+
+/* ---- the speech tap ---- */
+
+TEST(Session_GivesTheSpeechSinkMonoAt16kHz)
+{
+    Rig rig;                                        /* microphone 1000, system 3000 */
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, false);
+    plan.speech = 1;                                /* the microphone only */
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    const std::vector<std::int16_t> mic = spy.Received(StreamId::Microphone);
+    CHECK_EQ(mic.size(), static_cast<std::size_t>(rig.Frames(StreamId::Microphone) / 3));   /* 48 kHz to 16 kHz */
+    CHECK(mic.size() > 100);
+    CHECK(AllEqual(mic, mic.size() - 50, mic.size(), 1000, 1));    /* the level, after the filter settles */
+    CHECK(spy.Received(StreamId::System).empty());                  /* not asked for */
+}
+
+TEST(Session_TheSpeechTapDoesNotDisturbTheRecording)
+{
+    Rig rig;
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, false);
+    plan.speech = 3;
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    CHECK(session.Failure().empty());
+    CHECK_EQ(rig.sinks.size(), std::size_t(2));
+    CHECK_EQ(rig.sinks[0]->samples.size(), static_cast<std::size_t>(rig.Frames(StreamId::Microphone)) * kPcmChannels);
+    CHECK(AllEqual(rig.sinks[0]->samples, 0, rig.sinks[0]->samples.size(), 1000));      /* the file is untouched */
+    CHECK(!spy.Received(StreamId::System).empty());
+}
+
+TEST(Session_WithoutASpeechSinkTheMaskIsIgnored)
+{
+    Rig rig;
+    RecordingSession session(rig.Sources(), rig.Sinks());
+    SessionPlan plan = Plan(true, false, false);
+    plan.speech = 3;
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, false);
+    CHECK(session.Failure().empty());
 }
 
 /* ---- recording ---- */

@@ -22,6 +22,33 @@ TEST(FormatDuration_HoursGrowBeyondTwoDigits)
     CHECK_EQ(FormatDuration(100.0 * 3600), std::wstring(L"100:00:00"));
 }
 
+TEST(FormatClock_Basics)
+{
+    CHECK_EQ(FormatClock(0), std::wstring(L"0:00"));
+    CHECK_EQ(FormatClock(7.9), std::wstring(L"0:07"));
+    CHECK_EQ(FormatClock(754), std::wstring(L"12:34"));
+    CHECK_EQ(FormatClock(3599), std::wstring(L"59:59"));
+    CHECK_EQ(FormatClock(3600), std::wstring(L"1:00:00"));
+    CHECK_EQ(FormatClock(3723), std::wstring(L"1:02:03"));
+}
+
+TEST(FormatClock_ClampsNonsense)
+{
+    CHECK_EQ(FormatClock(-3), std::wstring(L"0:00"));
+    CHECK_EQ(FormatClock(std::numeric_limits<double>::quiet_NaN()), std::wstring(L"0:00"));
+    CHECK(!FormatClock(1e300).empty());
+}
+
+TEST(FormatLag_RoundsToATenth)
+{
+    CHECK_EQ(FormatLag(0.0f), std::wstring(L"0.0 s"));
+    CHECK_EQ(FormatLag(0.4f), std::wstring(L"0.4 s"));
+    CHECK_EQ(FormatLag(1.26f), std::wstring(L"1.3 s"));
+    CHECK_EQ(FormatLag(12.0f), std::wstring(L"12.0 s"));
+    CHECK_EQ(FormatLag(-1.0f), std::wstring(L"0.0 s"));
+    CHECK_EQ(FormatLag(std::numeric_limits<float>::infinity()).empty(), false);
+}
+
 TEST(FormatDuration_ClampsNonsense)
 {
     CHECK_EQ(FormatDuration(-5), std::wstring(L"00:00:00"));

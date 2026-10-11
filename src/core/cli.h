@@ -10,7 +10,8 @@
  *   -a, --amplify <0-300>      -d, --output-device <id|index|name>
  *   -l, --list-devices         -s, --stop                 -h, --help
  *
- * and a few of its own:  --system-amplify <0-300>,  --demo (simulated audio).
+ * and a few of its own:  --system-amplify <0-300>,  --transcribe-mic,
+ * --transcribe-system (live transcripts),  --demo (simulated audio).
  * The options only preset the window; everything stays editable there.
  *
  * Parsing is plain C++ over a list of strings, so it is unit-tested.

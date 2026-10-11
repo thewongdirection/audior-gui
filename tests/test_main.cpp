@@ -14,12 +14,15 @@
 #include <cstdio>
 #include <cstring>
 
+#include "fake_asr_helper.h"
 #include "test_support.h"
 
 namespace testing {
 
 namespace {
-bool g_currentFailed = false;
+bool        g_currentFailed = false;
+bool        g_currentSkipped = false;
+std::string g_skipReason;
 }
 
 std::vector<Case> &Registry()
@@ -34,11 +37,19 @@ void ReportFailure(const char *file, int line, const std::string &message)
     std::printf("    %s(%d): %s\n", file, line, message.c_str());
 }
 
+void ReportSkip(const std::string &reason)
+{
+    g_currentSkipped = true;
+    g_skipReason = reason;
+}
+
 }  // namespace testing
 
 int main(int argc, char **argv)
 {
     using namespace testing;
+    if (argc > 2 && std::strcmp(argv[1], kFakeAsrHelperFlag) == 0)      /* started by a test, to play the helper */
+        return RunFakeAsrHelper(argv[2]);
     const char *filter = argc > 1 ? argv[1] : nullptr;
 
     if (filter && std::strcmp(filter, "--list") == 0) {
@@ -50,19 +61,26 @@ int main(int argc, char **argv)
     /* Some tests use the audio device APIs, which need COM. */
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-    int run = 0, failed = 0;
+    int run = 0, failed = 0, skipped = 0;
     for (const Case &c : Registry()) {
         if (filter && !std::strstr(c.name, filter))
             continue;
         g_currentFailed = false;
+        g_currentSkipped = false;
         c.fn();
         ++run;
         if (g_currentFailed) {
             ++failed;
             std::printf("  FAIL  %s\n", c.name);
+        } else if (g_currentSkipped) {
+            ++skipped;
+            std::printf("  skip  %s (%s)\n", c.name, g_skipReason.c_str());
         }
     }
-    std::printf("%d tests, %d passed, %d failed\n", run, run - failed, failed);
+    std::printf("%d tests, %d passed, %d failed", run, run - failed - skipped, failed);
+    if (skipped > 0)
+        std::printf(", %d skipped", skipped);
+    std::printf("\n");
     if (SUCCEEDED(com))
         CoUninitialize();
     return failed;

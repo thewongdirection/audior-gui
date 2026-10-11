@@ -178,6 +178,23 @@ bool Checkbox::Key(UINT vk)
     return true;
 }
 
+/* ---- Switch ---------------------------------------------------------- */
+
+void Switch::Paint(Painter &p, const WidgetState &st) const
+{
+    const float radius = Height(rect) * 0.5f, cy = (rect.top + rect.bottom) * 0.5f;
+    const D2D1_COLOR_F fill = checked ? WithAlpha(accent, 0.16f) : st.hot ? theme::kHover : theme::kRaised;
+    p.FillRound(rect, radius, Dim(fill, enabled));
+    p.StrokeRound(rect, radius, Dim(checked ? WithAlpha(accent, 0.7f) : theme::kBorder, enabled));
+
+    const D2D1_RECT_F track = RectXYWH(rect.left + 9.0f, cy - 6.0f, 22.0f, 12.0f);
+    p.FillRound(track, 6.0f, Dim(checked ? accent : Rgb(0x343C4B), enabled));
+    p.FillCircle(checked ? track.right - 6.0f : track.left + 6.0f, cy, 4.0f,
+                 Dim(checked ? theme::kBackground : theme::kTextMuted, enabled));
+    p.Text(text, RectF(track.right + 8.0f, rect.top, rect.right - 10.0f, rect.bottom), Font::Small,
+           Dim(checked ? theme::kText : theme::kTextMuted, enabled));
+}
+
 /* ---- Slider ---------------------------------------------------------- */
 
 void Slider::Paint(Painter &p, const WidgetState &st) const

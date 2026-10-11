@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "settings.h"
+#include "transcript.h"
 #include "types.h"
 
 namespace audiorgui {
@@ -70,6 +71,40 @@ public:
 
     /* The files the current or last recording wrote. */
     virtual std::vector<std::wstring> OutputFiles() = 0;
+
+    /* ---- live transcript (optional) -------------------------------------
+     * An engine that can turn a stream's speech into text says so with
+     * CanTranscribe(); the others keep these defaults.  Start() receives which
+     * streams to transcribe in its settings (see Transcribes()).  The text
+     * reaches the GUI the way peaks do, pulled with TakeTranscript() (see
+     * transcript.h for the events).  Trouble with transcription never ends the
+     * recording: it only turns that stream's status into Failed. */
+    virtual bool CanTranscribe() const { return false; }
+
+    /* Where the stream's transcription stands.  Off for a stream that is not
+     * being transcribed, and for every stream once the recording has stopped. */
+    virtual TranscriptStatus Transcription(StreamId stream)
+    {
+        (void)stream;
+        return TranscriptStatus();
+    }
+
+    /* Why the stream's transcription is Failed. */
+    virtual std::wstring TranscriptionProblem(StreamId stream)
+    {
+        (void)stream;
+        return std::wstring();
+    }
+
+    /* Move up to `capacity` transcript events that have arrived since the last
+     * call into `out`; returns how many. */
+    virtual std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity)
+    {
+        (void)stream;
+        (void)out;
+        (void)capacity;
+        return 0;
+    }
 };
 
 }  // namespace audiorgui

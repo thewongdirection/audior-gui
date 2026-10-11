@@ -21,6 +21,9 @@
  *   --merge <percent>       mergeMicPercent     0..100 (the microphone's share)
  *   -o, --output            outputDirectory + fileName   (the folder is picked;
  *                           an empty name means a timestamped one)
+ *   (not in audior)         transcribeMicrophone / transcribeSystem: a live
+ *                           transcript of that stream, for engines that can
+ *   --transcribe-mic / --transcribe-system   make one (see IRecordingEngine)
  */
 #pragma once
 
@@ -59,11 +62,20 @@ struct RecordingSettings {
     int          systemAmplifyPercent = 0;
     MixMode      mixMode            = MixMode::Merge;
     int          mergeMicPercent    = kDefaultMergeMicPercent;
+    bool         transcribeMicrophone = false;
+    bool         transcribeSystem   = false;
 };
 
 /* True when both streams are recorded: only then do merging and separate
  * tracks mean anything. */
 inline bool RecordsBoth(const RecordingSettings &s) { return s.includeMicrophone && s.includeSystemAudio; }
+
+/* True when `stream` is recorded and its live transcript is switched on. */
+inline bool Transcribes(const RecordingSettings &s, StreamId stream)
+{
+    return stream == StreamId::Microphone ? s.includeMicrophone && s.transcribeMicrophone
+                                          : s.includeSystemAudio && s.transcribeSystem;
+}
 
 /* Record only what the PC plays: the microphone off, the system audio on. */
 inline void UseSystemAudioOnly(RecordingSettings *s)

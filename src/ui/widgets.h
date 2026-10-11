@@ -102,6 +102,15 @@ private:
     void Flip();
 };
 
+/* A checkbox drawn as a labelled switch in a pill, for turning a feature of a
+ * stream on and off.  Behaves as a Checkbox does. */
+class Switch : public Checkbox {
+public:
+    std::wstring text;
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+};
+
 /* A horizontal slider over an integer range. */
 class Slider : public Widget {
 public:

@@ -20,6 +20,30 @@ std::wstring FormatDuration(double seconds)
     return buf;
 }
 
+std::wstring FormatClock(double seconds)
+{
+    if (!(seconds > 0.0))
+        seconds = 0.0;
+    const unsigned long long total = static_cast<unsigned long long>(std::min(seconds, 1e12));
+    wchar_t buf[40];
+    if (total >= 3600)
+        std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%llu:%02llu:%02llu", total / 3600, total / 60 % 60,
+                      total % 60);
+    else
+        std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%llu:%02llu", total / 60, total % 60);
+    return buf;
+}
+
+std::wstring FormatLag(float seconds)
+{
+    if (!(seconds > 0.0f))
+        seconds = 0.0f;
+    const long tenths = std::lround(std::min(seconds, 99999.0f) * 10.0f);
+    wchar_t buf[40];
+    std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%ld.%ld s", tenths / 10, tenths % 10);
+    return buf;
+}
+
 std::wstring FormatBytes(std::uint64_t bytes)
 {
     static const wchar_t *const kUnits[] = {L"B", L"KB", L"MB", L"GB", L"TB"};

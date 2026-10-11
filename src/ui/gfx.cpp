@@ -47,6 +47,23 @@ ComPtr<IDWriteTextLayout> Gfx::Layout(Font font, const wchar_t *text, UINT32 len
     return layout;
 }
 
+ComPtr<IDWriteTextLayout> Gfx::WrappedLayout(Font font, const wchar_t *text, UINT32 length, float width) const
+{
+    ComPtr<IDWriteTextLayout> layout;
+    if (FAILED(dwrite_->CreateTextLayout(text, length, Format(font), width, 100000.0f, &layout))) {
+        layout.Reset();
+        return layout;
+    }
+    /* The shared format is set up for single lines, and Painter::Text bends its
+     * alignment: say what is wanted here. */
+    const DWRITE_TRIMMING none = {DWRITE_TRIMMING_GRANULARITY_NONE, 0, 0};
+    layout->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+    layout->SetTrimming(&none, nullptr);
+    layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+    layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+    return layout;
+}
+
 HRESULT Gfx::Init()
 {
     HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d_.GetAddressOf());

@@ -32,6 +32,10 @@ public:
      * it and finding the character under a point.  Null if it cannot be made. */
     ComPtr<IDWriteTextLayout> Layout(Font font, const wchar_t *text, UINT32 length) const;
 
+    /* `text` wrapped at `width` DIPs, as many lines as it takes, for drawing
+     * and measuring (its metrics give the height).  Null if it cannot be made. */
+    ComPtr<IDWriteTextLayout> WrappedLayout(Font font, const wchar_t *text, UINT32 length, float width) const;
+
 private:
     HRESULT MakeFormat(Font font, const wchar_t *family, float size, DWRITE_FONT_WEIGHT weight);
 

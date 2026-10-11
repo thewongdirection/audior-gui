@@ -9,8 +9,9 @@
  * a picture of the UI, and it is a quick way to look at a design change.
  *
  * Scenarios: idle, recording, mic-only, system-only, bluetooth-mic (a headset microphone chosen), clipping,
- * saved, error, named (settings changed), typing (a long file name being edited), hotkeys (a shortcut box
- * waiting for keys), hotkey-taken (a hotkey another program already owns).
+ * saved, error, transcript (both live transcripts mid-sentence), named (settings changed), typing (a long
+ * file name being edited), hotkeys (a shortcut box waiting for keys), hotkey-taken (a hotkey another
+ * program already owns).
  */
 #pragma once
 

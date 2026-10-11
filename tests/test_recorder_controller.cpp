@@ -439,3 +439,158 @@ TEST(Controller_StartNeedsAStream)
     CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
     CHECK(!rig.ctl.LastOutcome().message.empty());
 }
+
+/* ---- live transcripts ---------------------------------------------- */
+
+namespace {
+
+/* Counts how often each stream's transcript is asked for. */
+class TextSpy : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    int pulls[kStreamCount] = {0, 0};
+    std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override
+    {
+        ++pulls[StreamIndex(stream)];
+        return SimulatedEngine::TakeTranscript(stream, out, capacity);
+    }
+};
+
+}  // namespace
+
+TEST(Controller_ATranscriptFlowsIntoItsLane)
+{
+    Rig rig;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(4.5);
+
+    const TranscriptLane &mic = rig.ctl.Transcript(StreamId::Microphone);
+    CHECK_EQ(mic.Count(), std::size_t(1));
+    CHECK(mic.At(0).isFinal);
+    CHECK(std::wstring(mic.At(0).text).compare(0, 4, L"Okay") == 0);
+    CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Live);
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::System).state == TranscriptState::Off);
+}
+
+TEST(Controller_ShowsATranscriptOnlyForAStreamSwitchedOnAndRecorded)
+{
+    Rig rig;
+    CHECK(rig.ctl.CanTranscribe());
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::Microphone));          /* off until asked for */
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(rig.ctl.ShowsTranscript(StreamId::Microphone));
+
+    rig.ctl.Settings().transcribeSystem = true;                     /* system audio is not recorded */
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::System));
+    rig.ctl.Settings().includeSystemAudio = true;
+    CHECK(rig.ctl.ShowsTranscript(StreamId::System));
+}
+
+TEST(Controller_AnEngineThatCannotTranscribeShowsNoTranscript)
+{
+    RefusingEngine engine;
+    RecorderController ctl(engine, [] { return LocalTime(); });
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(!ctl.CanTranscribe());
+    CHECK(!ctl.ShowsTranscript(StreamId::Microphone));
+    CHECK(ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
+    CHECK_EQ(ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));
+}
+
+TEST(Controller_TheTranscriptSettingsAreFixedWhileRecording)
+{
+    Rig rig;
+    rig.ctl.Start();
+    rig.ctl.Settings().transcribeMicrophone = true;                 /* changed behind the recording's back */
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::Microphone));
+    rig.Run(5.0);
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));
+
+    rig.ctl.Stop();
+    CHECK(rig.ctl.ShowsTranscript(StreamId::Microphone));           /* the draft applies again */
+}
+
+TEST(Controller_TheTranscriptStaysAfterStopUntilTheNextStart)
+{
+    Rig rig;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.ctl.Start();
+    rig.Run(4.5);
+    rig.ctl.Stop();
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(1));
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
+
+    rig.ctl.Start();
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));
+}
+
+TEST(Controller_StoppingMakesTheLineBeingSpokenFinal)
+{
+    Rig rig;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.ctl.Start();
+    rig.Run(2.0);
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(1));
+    CHECK(!rig.ctl.Transcript(StreamId::Microphone).At(0).isFinal);
+    rig.ctl.Stop();
+    CHECK(rig.ctl.Transcript(StreamId::Microphone).At(0).isFinal);
+}
+
+TEST(Controller_ATranscriptionFailureDoesNotTouchTheRecording)
+{
+    Rig rig;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.engine.FailTranscriptAfter(2.0, L"The speech engine stopped responding.");
+    rig.ctl.Start();
+    rig.Run(5.0);
+
+    CHECK(rig.ctl.GetPhase() == Phase::Recording);                  /* the recording carries on */
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::None);
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Failed);
+    CHECK_EQ(rig.ctl.TranscriptionProblem(StreamId::Microphone),
+             std::wstring(L"The speech engine stopped responding."));
+    CHECK(rig.ctl.Transcript(StreamId::Microphone).Count() > 0);    /* what came before stays */
+
+    rig.ctl.Stop();
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Saved);
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Failed);   /* still marked */
+
+    rig.ctl.Start();                                                /* the next recording starts clean */
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
+    CHECK(rig.ctl.TranscriptionProblem(StreamId::Microphone).empty());
+}
+
+TEST(Controller_TheTranscriptSlideSettlesSoTheTimerCanStop)
+{
+    Rig rig;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.ctl.Start();
+    rig.Run(1.5);
+    rig.ctl.Stop();
+    rig.Run(10.0);
+    CHECK(!rig.ctl.Animating());
+}
+
+TEST(Controller_AsksOnlyForTheTranscriptsSwitchedOn)
+{
+    double now = 0.0;
+    TextSpy engine([&now] { return now; });
+    RecorderController ctl(engine, [] { return LocalTime(); });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().includeSystemAudio = true;
+
+    ctl.Start();                                                    /* nothing is switched on */
+    now = 2.0;
+    ctl.Tick(2.0);
+    ctl.Stop();
+    CHECK_EQ(engine.pulls[0] + engine.pulls[1], 0);
+
+    ctl.Settings().transcribeSystem = true;
+    ctl.Start();
+    now = 4.0;
+    ctl.Tick(2.0);
+    CHECK_EQ(engine.pulls[0], 0);
+    CHECK(engine.pulls[1] > 0);
+}

@@ -39,7 +39,30 @@ struct Rig {
         }
         return all;
     }
+
+    /* Up to `limit` transcript events the stream has produced since the last call. */
+    std::vector<TranscriptEvent> TakeText(StreamId stream, std::size_t limit = SIZE_MAX)
+    {
+        std::vector<TranscriptEvent> all;
+        TranscriptEvent chunk[8];
+        while (all.size() < limit) {
+            const std::size_t n = engine.TakeTranscript(
+                stream, chunk, std::min<std::size_t>(8, limit - all.size()));
+            if (n == 0)
+                break;
+            all.insert(all.end(), chunk, chunk + n);
+        }
+        return all;
+    }
 };
+
+int Words(const TranscriptEvent &e)
+{
+    int words = 1;
+    for (const wchar_t *c = e.text; *c; ++c)
+        words += *c == L' ';
+    return words;
+}
 
 float MaxHigh(const std::vector<PeakBin> &bins)
 {
@@ -318,6 +341,253 @@ TEST(Sim_StartNoticesAFailureNobodyHasPolledYet)
     rig.Start();
     rig.now = 5.0;                                      /* it failed at t=1; nothing looked */
     CHECK(rig.Start());                                 /* so Start() must not say "already running" */
+}
+
+/* ---- the live transcript ------------------------------------------- */
+
+TEST(Sim_CanTranscribe)
+{
+    Rig rig;
+    CHECK(rig.engine.CanTranscribe());
+}
+
+TEST(Sim_TranscribesOnlyWhatIsSwitchedOn)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.Start();
+    rig.now = 30.0;                                     /* nothing is switched on: no text, status Off */
+    CHECK(rig.TakeText(StreamId::Microphone).empty());
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Off);
+    rig.engine.Stop();
+
+    rig.settings.transcribeMicrophone = true;
+    rig.settings.transcribeSystem = true;
+    rig.Start();
+    rig.now = 60.0;                                     /* 30 s into the second recording */
+    CHECK(!rig.TakeText(StreamId::Microphone).empty());
+    CHECK(!rig.TakeText(StreamId::System).empty());
+}
+
+TEST(Sim_NoTextForAStreamThatIsNotRecorded)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.settings.transcribeSystem = true;               /* but system audio is not included */
+    rig.Start();
+    rig.now = 30.0;
+    CHECK(!rig.TakeText(StreamId::Microphone).empty());
+    CHECK(rig.TakeText(StreamId::System).empty());
+    CHECK(rig.engine.Transcription(StreamId::System).state == TranscriptState::Off);
+}
+
+TEST(Sim_TranscriptionStartsThenGoesLiveThenStops)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 0.5;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Starting);
+    rig.now = 2.0;
+    const TranscriptStatus live = rig.engine.Transcription(StreamId::Microphone);
+    CHECK(live.state == TranscriptState::Live);
+    CHECK(live.lagSeconds > 0.0f);
+
+    rig.engine.Stop();
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Off);
+}
+
+TEST(Sim_AnUtteranceIsSpokenWordByWordThenFinal)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 4.5;                                      /* the first utterance is over, the next has not begun */
+    const auto events = rig.TakeText(StreamId::Microphone);
+
+    CHECK_EQ(events.size(), std::size_t(12));           /* 11 words, then the final */
+    for (std::size_t i = 0; i < events.size(); ++i) {
+        CHECK_EQ(events[i].utterance, std::uint32_t(0));
+        CHECK_NEAR(events[i].startSeconds, 0.8, 1e-9);
+        CHECK_EQ(events[i].isFinal, i + 1 == events.size());
+        if (i + 1 < events.size())
+            CHECK_EQ(Words(events[i]), static_cast<int>(i) + 1);       /* one more word each time */
+    }
+    CHECK_EQ(std::wstring(events[10].text), std::wstring(events[11].text));    /* the final repeats the last partial */
+    CHECK(std::wstring(events[11].text).compare(0, 4, L"Okay") == 0);
+}
+
+TEST(Sim_TextAppearsAtTheScriptedTimes)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 0.7;
+    CHECK(rig.TakeText(StreamId::Microphone).empty());  /* the first word comes at 0.8 s */
+    rig.now = 0.9;
+    CHECK_EQ(rig.TakeText(StreamId::Microphone).size(), std::size_t(1));
+    rig.now = 1.1;
+    CHECK_EQ(rig.TakeText(StreamId::Microphone).size(), std::size_t(1));
+}
+
+TEST(Sim_TranscriptDoesNotDependOnHowOftenItIsPulled)
+{
+    Rig once, often;
+    for (Rig *r : {&once, &often}) {
+        r->settings.transcribeMicrophone = true;
+        r->Start();
+    }
+    std::vector<TranscriptEvent> piecewise;
+    for (int i = 1; i <= 120; ++i) {
+        often.now = i * 0.1;
+        const auto part = often.TakeText(StreamId::Microphone);
+        piecewise.insert(piecewise.end(), part.begin(), part.end());
+    }
+    once.now = 12.0;
+    const auto whole = once.TakeText(StreamId::Microphone);
+
+    CHECK_EQ(whole.size(), piecewise.size());
+    for (std::size_t i = 0; i < whole.size() && i < piecewise.size(); ++i) {
+        CHECK_EQ(whole[i].utterance, piecewise[i].utterance);
+        CHECK_EQ(whole[i].isFinal, piecewise[i].isFinal);
+        CHECK_EQ(std::wstring(whole[i].text), std::wstring(piecewise[i].text));
+    }
+}
+
+TEST(Sim_TranscriptHonoursTheCapacityGiven)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 20.0;
+    TranscriptEvent buf[8];
+    CHECK_EQ(rig.engine.TakeTranscript(StreamId::Microphone, buf, 5), std::size_t(5));
+    CHECK_EQ(rig.engine.TakeTranscript(StreamId::Microphone, buf, 0), std::size_t(0));
+    CHECK_EQ(buf[0].utterance, std::uint32_t(0));
+    CHECK_EQ(Words(buf[0]), 1);
+    CHECK_EQ(rig.engine.TakeTranscript(StreamId::Microphone, buf, 1), std::size_t(1));
+    CHECK_EQ(Words(buf[0]), 6);                         /* it carried on where it stopped */
+}
+
+TEST(Sim_AWordIsHeardWrongThenCorrected)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.transcribeSystem = true;
+    rig.Start();
+    rig.now = 30.0;
+
+    bool heardWrong = false, corrected = false, wrongAfterCorrection = false;
+    for (const TranscriptEvent &e : rig.TakeText(StreamId::System)) {
+        if (e.utterance != 1)
+            continue;
+        const std::wstring text = e.text;
+        const bool wrong = text.find(L"sign in") != std::wstring::npos;
+        const bool right = text.find(L"signing") != std::wstring::npos;
+        wrongAfterCorrection = wrongAfterCorrection || (corrected && wrong);
+        heardWrong = heardWrong || wrong;
+        corrected = corrected || right;
+        if (e.isFinal)
+            CHECK(right && !wrong);
+    }
+    CHECK(heardWrong);
+    CHECK(corrected);
+    CHECK(!wrongAfterCorrection);
+}
+
+TEST(Sim_TheConversationStartsOverAndTheIdsKeepCounting)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 41.0;
+    const auto first = rig.TakeText(StreamId::Microphone);
+    CHECK(!first.empty());
+    const std::uint32_t lastId = first.back().utterance;
+    CHECK_EQ(lastId, std::uint32_t(4));                 /* five mic utterances in the script */
+
+    rig.now = 44.0;
+    const auto next = rig.TakeText(StreamId::Microphone);
+    CHECK(!next.empty());
+    CHECK_EQ(next.front().utterance, std::uint32_t(5));
+    CHECK_NEAR(next.front().startSeconds, 42.8, 1e-9);
+    CHECK(std::wstring(next.front().text).size() > 0);
+}
+
+TEST(Sim_EachRecordingStartsTheScriptOver)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 6.0;
+    const auto a = rig.TakeText(StreamId::Microphone);
+    rig.engine.Stop();
+
+    rig.now = 100.0;
+    rig.Start();
+    rig.now = 106.0;
+    const auto b = rig.TakeText(StreamId::Microphone);
+    CHECK_EQ(a.size(), b.size());
+    CHECK(!b.empty());
+    CHECK_EQ(b.front().utterance, std::uint32_t(0));
+    CHECK_EQ(std::wstring(a.back().text), std::wstring(b.back().text));
+}
+
+TEST(Sim_StoppingFreezesTheTranscript)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 3.0;
+    rig.engine.Stop();
+    rig.now = 30.0;
+    const auto events = rig.TakeText(StreamId::Microphone);
+    CHECK(!events.empty());
+    CHECK(!events.back().isFinal);                      /* cut in the middle of the utterance */
+    CHECK(events.back().startSeconds < 3.0);
+}
+
+TEST(Sim_ATranscriptionFailureLeavesTheRecordingRunning)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.engine.FailTranscriptAfter(2.0, L"The speech engine stopped responding.");
+    rig.Start();
+    rig.now = 1.0;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state != TranscriptState::Failed);
+    const std::size_t before = rig.TakeText(StreamId::Microphone).size();
+    CHECK(before > 0);
+
+    rig.now = 10.0;
+    CHECK(rig.engine.IsRecording());                    /* the recording is untouched */
+    CHECK(rig.engine.Failure().empty());
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Failed);
+    CHECK_EQ(rig.engine.TranscriptionProblem(StreamId::Microphone),
+             std::wstring(L"The speech engine stopped responding."));
+    CHECK_EQ(rig.Take(StreamId::Microphone).size(), std::size_t(1000));    /* the audio goes on */
+
+    /* The text stopped where the failure cut it: what came before is still delivered, nothing after. */
+    Rig healthy;
+    healthy.settings.transcribeMicrophone = true;
+    healthy.Start();
+    healthy.now = 2.0;
+    const std::size_t until = healthy.TakeText(StreamId::Microphone).size();
+    CHECK_EQ(before + rig.TakeText(StreamId::Microphone).size(), until);
+}
+
+TEST(Sim_ATranscriptionFailureAppliesToOneRecordingOnly)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.engine.FailTranscriptAfter(1.0, L"boom");
+    rig.Start();
+    rig.now = 2.0;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Failed);
+    rig.engine.Stop();
+
+    rig.Start();
+    rig.now = 10.0;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Live);
 }
 
 TEST(Sim_MicrophoneStreamExistsOnlyWhenIncluded)
