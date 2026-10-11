@@ -70,6 +70,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
     if (transcribes_ && plan.speech != 0) {             /* the transcriber is told first, so it misses none of the audio */
         TranscriptionHost::Options options;
         options.model = asr.modelPath;
+        options.vadModel = asr.vadPath;
         options.language = s.transcribeLanguage;
         for (const AsrModel *smaller :                  /* what to change to if this model cannot keep up */
              SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()),

@@ -75,6 +75,7 @@ public:
 
     struct Options {
         std::wstring model;                         /* what the helper should load (sent in Hello) */
+        std::wstring vadModel;                      /* the voice-activity model, if any (sent in Hello, too) */
         std::vector<Fallback> fallbacks;            /* if a stream stays hopelessly behind (see
                                                        StepDownPolicy), the next of these takes over,
                                                        without using up a restart                  */

@@ -108,7 +108,7 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         if (!r.ok() || language > static_cast<std::uint8_t>(SpeechLanguage::English))
             return false;
         m->language = static_cast<SpeechLanguage>(language);
-        return r.String(size / sizeof(wchar_t), &m->text) && r.done();
+        return r.String(size / sizeof(wchar_t), &m->text) && r.String(size / sizeof(wchar_t), &m->vadModel) && r.done();
     }
     case Type::Audio: {
         const std::uint8_t stream = r.Get<std::uint8_t>();
@@ -179,6 +179,7 @@ std::size_t Encode(const Message &m, std::uint8_t *out, std::size_t capacity)
         w.Put(m.streams);
         w.Put(static_cast<std::uint8_t>(m.language));
         w.String(m.text.c_str(), m.text.size());
+        w.String(m.vadModel.c_str(), m.vadModel.size());
         break;
     case Type::Audio:
         if (m.sampleCount > kMaxAudioSamples) {

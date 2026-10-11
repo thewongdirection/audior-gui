@@ -32,6 +32,8 @@ struct AsrSetup {
     std::wstring    helper;             /* the helper's full path              */
     const AsrModel *model = nullptr;    /* its entry in kAsrModels             */
     std::wstring    modelPath;
+    const AsrModel *vad = nullptr;      /* the voice-activity model, if it is there too (it is optional) */
+    std::wstring    vadPath;
 };
 
 /* The folder the program runs from, and the folder models are looked for in:
@@ -45,10 +47,11 @@ std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, con
                                               std::size_t modelCount = kAsrModelCount);
 
 /* Is the helper with its manifest in `programDir`, and a whole model in `modelsDir`: the file
- * named `preferred` (any case), or if that is empty the first one of the table that is there? */
+ * named `preferred` (any case), or if that is empty the first one of the table that is there?
+ * The voice-activity model `vad` is noted too if it is there whole. */
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup,
              const AsrModel *models = kAsrModels, std::size_t modelCount = kAsrModelCount,
-             const std::wstring &preferred = std::wstring());
+             const std::wstring &preferred = std::wstring(), const AsrModel *vad = &kVadModel);
 
 /* The SHA-256 of a whole file, read in small pieces.  False if it cannot be
  * read, or if `stopping` (when given) says so between two pieces. */

@@ -185,6 +185,38 @@ TEST(Asr_TheModelAskedForIsTheOneFound)
     CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* the first is still fine  */
 }
 
+TEST(Asr_TheVoiceActivityModelIsNotedOnlyWhenItIsWhole)
+{
+    Pack pack;
+    const std::string vadContent = "pretend voice-activity weights", vadHash = Sha256Hex(vadContent.data(), vadContent.size());
+    AsrModel vad = {L"vad.bin", vadHash.c_str(), vadContent.size(), L"A test detector", L"MIT", L"https://example.test"};
+    auto find = [&](AsrSetup *setup) {
+        return FindAsr(pack.programDir.Dir(), pack.modelsDir.Dir(), setup, &pack.standIn.model, 1, std::wstring(), &vad);
+    };
+
+    AsrSetup setup;
+    CHECK(find(&setup));                                /* it is optional: no file, no detector */
+    CHECK(setup.vad == nullptr && setup.vadPath.empty());
+
+    Write(pack.modelsDir.Path(L"vad.bin"), vadContent.substr(0, 4));
+    CHECK(find(&setup) && setup.vad == nullptr);        /* not whole */
+
+    Write(pack.modelsDir.Path(L"vad.bin"), vadContent);
+    CHECK(find(&setup));
+    CHECK(setup.vad == &vad);
+    CHECK_EQ(setup.vadPath, pack.modelsDir.Path(L"vad.bin"));
+    CHECK(VerifyAsr(setup, true).empty());
+
+    Write(pack.modelsDir.Path(L"vad.bin"), std::string(vadContent.size(), 'x'));    /* the right size, other content */
+    CHECK(find(&setup) && setup.vad == &vad);
+    const std::wstring why = VerifyAsr(setup, true);
+    CHECK(why.find(L"vad.bin") != std::wstring::npos);
+    CHECK(VerifyAsr(setup, false).empty());             /* checked together with the model, once */
+
+    CHECK(FindAsr(pack.programDir.Dir(), pack.modelsDir.Dir(), &setup, &pack.standIn.model, 1, std::wstring(), nullptr));
+    CHECK(setup.vad == nullptr);                        /* a caller that wants none gets none */
+}
+
 TEST(Asr_TheRealTableIsNotFoundInAnEmptyFolder)
 {
     TempDir programs, models;

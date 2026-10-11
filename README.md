@@ -151,6 +151,12 @@ has a built-in script and always shows it):
    Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
    are used.
 
+Optionally, `ggml-silero-v5.1.2.bin` (864 KiB, from
+<https://huggingface.co/ggml-org/whisper-vad>) in the same folder. Without it a
+phrase begins when the stream gets clearly louder than the room and ends at a
+pause; with it the *Silero* voice detector decides where speech is, which copes
+better with a fan, music or a keyboard in the background.
+
 With a model in place the settings panel gets a **Transcript** section: the model
 (when more than one is installed; the first one found is the default;
 `--transcribe-model <file>`) and the language (`--transcribe-language auto|en`):

@@ -91,9 +91,26 @@ TEST(Asr_HelloRoundTrips)
     CHECK_EQ(int(r.streams), 3);
     CHECK(r.language == SpeechLanguage::Auto);
     CHECK_EQ(r.text, m.text);
+    CHECK(r.vadModel.empty());                          /* none unless one is given */
 
     m.language = SpeechLanguage::English;
-    CHECK(ReadOne(Frame(m)).language == SpeechLanguage::English);
+    m.vadModel = L"C:\\Models\\ggml-silero-v5.1.2.bin";
+    const Message again = ReadOne(Frame(m));
+    CHECK(again.language == SpeechLanguage::English);
+    CHECK_EQ(again.text, m.text);
+    CHECK_EQ(again.vadModel, m.vadModel);
+}
+
+TEST(Asr_AHelloWithoutItsSecondPathIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    std::vector<std::uint8_t> bytes = Frame(hello);
+    bytes.resize(bytes.size() - sizeof(std::uint16_t));                 /* cut the (empty) second string off */
+    const std::uint32_t payload = static_cast<std::uint32_t>(bytes.size() - kFrameHeader);
+    std::memcpy(bytes.data(), &payload, sizeof(payload));
+    CHECK(IsInvalid(bytes));
 }
 
 TEST(Asr_AnUnknownLanguageIsRefused)

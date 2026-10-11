@@ -64,7 +64,7 @@ std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, con
 }
 
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
-             std::size_t modelCount, const std::wstring &preferred)
+             std::size_t modelCount, const std::wstring &preferred, const AsrModel *vad)
 {
     std::uint64_t bytes = 0;
     const std::wstring helper = Join(programDir, kHelperFile);
@@ -77,6 +77,12 @@ bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrS
             setup->helper = helper;
             setup->model = model;
             setup->modelPath = Join(modelsDir, model->file);
+            setup->vad = nullptr;
+            setup->vadPath.clear();
+            if (vad && FileSize(Join(modelsDir, vad->file), &bytes) && bytes == vad->bytes) {
+                setup->vad = vad;
+                setup->vadPath = Join(modelsDir, vad->file);
+            }
             return true;
         }
     }
@@ -149,6 +155,13 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
             return L"The model \"" + std::wstring(setup.model->file) + L"\" cannot be read.";
         if (actual != setup.model->sha256)
             return L"The model \"" + std::wstring(setup.model->file) + L"\" is damaged or is not the published file.";
+        if (setup.vad) {                                /* optional, but not to be used unchecked */
+            if (!HashFile(setup.vadPath, &actual, stopping))
+                return L"The model \"" + std::wstring(setup.vad->file) + L"\" cannot be read.";
+            if (actual != setup.vad->sha256)
+                return L"The model \"" + std::wstring(setup.vad->file) +
+                       L"\" is damaged or is not the published file (remove it to go without).";
+        }
     }
     return std::wstring();
 }

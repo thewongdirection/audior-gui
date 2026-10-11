@@ -36,6 +36,7 @@
 #include "../core/decode_queue.h"
 #include "../core/lag_governor.h"
 #include "../core/utterance_tracker.h"
+#include "silero_classifier.h"
 #include "whisper_decoder.h"
 
 using namespace audiorgui;
@@ -177,9 +178,15 @@ private:
 
 class Transcriber {
 public:
-    Transcriber(IEvents &events, WhisperDecoder &decoder, std::uint8_t streams)
+    /* `classifiers`: who decides what is speech, per stream (a null one: loudness decides). */
+    Transcriber(IEvents &events, WhisperDecoder &decoder, std::uint8_t streams, const TrackerConfig &config,
+                std::unique_ptr<FrameClassifier> (&classifiers)[kStreamCount])
         : events_(events), decoder_(decoder), streams_(streams), worker_(&Transcriber::Work, this)
     {
+        for (int s = 0; s < kStreamCount; ++s) {        /* (the worker does not look at the trackers) */
+            if (streams_ & (1u << s))
+                trackers_[s] = std::make_unique<UtteranceTracker>(config, std::move(classifiers[s]));
+        }
     }
 
     ~Transcriber()
@@ -198,7 +205,7 @@ public:
     void Audio(StreamId stream, std::uint64_t firstSample, const std::int16_t *samples, std::size_t count)
     {
         if (streams_ & (1u << StreamIndex(stream)))
-            trackers_[StreamIndex(stream)].Add(samples, count, firstSample, Sink(stream));
+            trackers_[StreamIndex(stream)]->Add(samples, count, firstSample, Sink(stream));
     }
 
     /* No more audio: what is being spoken is settled, everything waiting is decoded, and the worker ends. */
@@ -206,7 +213,7 @@ public:
     {
         for (int s = 0; s < kStreamCount; ++s) {
             if (streams_ & (1u << s))
-                trackers_[s].Flush(Sink(static_cast<StreamId>(s)));
+                trackers_[s]->Flush(Sink(static_cast<StreamId>(s)));
         }
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -275,7 +282,7 @@ private:
     IEvents          &events_;
     WhisperDecoder   &decoder_;
     const std::uint8_t streams_;
-    UtteranceTracker trackers_[kStreamCount];           /* the protocol thread only */
+    std::unique_ptr<UtteranceTracker> trackers_[kStreamCount];      /* of the streams transcribed; the protocol thread only */
     LagGovernor      governors_[kStreamCount];          /* the worker only */
 
     std::mutex              mutex_;
@@ -293,8 +300,25 @@ bool Begin(const asr::Message &hello, IEvents &events, WhisperDecoder &decoder, 
         events.Problem(true, StreamId::Microphone, WideFromUtf8(error));
         return false;
     }
-    events.Ready(FileNameOf(hello.text) + L" · CPU, " + std::to_wstring(decoder.Threads()) + L" threads");
-    *work = std::make_unique<Transcriber>(events, decoder, hello.streams);
+
+    /* Phrases are cut where Silero hears speech if its model is there and loads; otherwise by loudness. */
+    std::unique_ptr<FrameClassifier> classifiers[kStreamCount];
+    bool silero = !hello.vadModel.empty();
+    for (int s = 0; s < kStreamCount && silero; ++s) {
+        if (hello.streams & (1u << s)) {
+            classifiers[s] = audiorasr::MakeSileroClassifier(Utf8(hello.vadModel));
+            silero = classifiers[s] != nullptr;
+        }
+    }
+    if (!silero) {
+        for (std::unique_ptr<FrameClassifier> &classifier : classifiers)
+            classifier.reset();
+    }
+
+    events.Ready(FileNameOf(hello.text) + L" · CPU, " + std::to_wstring(decoder.Threads()) + L" threads" +
+                 (silero ? L" · Silero" : L""));
+    *work = std::make_unique<Transcriber>(events, decoder, hello.streams,
+                                          silero ? audiorasr::SileroTrackerConfig() : TrackerConfig(), classifiers);
     return true;
 }
 

@@ -31,8 +31,8 @@ These are OpenAI's Whisper weights (MIT) converted to the ggml format by the
 whisper.cpp project, whose repository declares the MIT licence.
 
 The voice-activity model of the same project (`ggml-silero-v5.1.2.bin`, MIT,
-https://huggingface.co/ggml-org/whisper-vad) is listed in the table but not used
-yet.
+https://huggingface.co/ggml-org/whisper-vad, the Silero VAD) is optional: if it is
+in the models folder, the helper uses it to decide where speech is.
 
 Adding a library or a model means adding it here, and to `third_party/README.md`
 or `src/core/asr_models.h`; a test fails if a model has no licence.

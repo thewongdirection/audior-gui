@@ -264,3 +264,105 @@ TEST(Tracker_ThePiecesTheAudioComesInDoNotMatter)
         CHECK(run.seen == whole.seen);
     }
 }
+
+/* ---- a classifier of the caller's own ---- */
+
+namespace {
+
+constexpr int kScriptFrame = 512;                       /* a neural detector's window: not the energy one's 320 */
+
+/* Says "speech" where a script says so, and notes what it was asked. */
+struct ScriptLog {
+    std::vector<std::int16_t> firstSamples;             /* the first sample of every frame it was shown */
+    int                       resets = 0;
+};
+
+class ScriptedClassifier final : public FrameClassifier {
+public:
+    ScriptedClassifier(std::vector<bool> script, std::shared_ptr<ScriptLog> log) : script_(std::move(script)), log_(std::move(log)) {}
+    int FrameSamples() const override { return kScriptFrame; }
+    bool Speech(const std::int16_t *frame) override
+    {
+        log_->firstSamples.push_back(frame[0]);
+        return next_ < script_.size() && script_[next_++];
+    }
+    void Reset() override { ++log_->resets; }
+
+private:
+    std::vector<bool>          script_;
+    std::size_t                next_ = 0;
+    std::shared_ptr<ScriptLog> log_;
+};
+
+/* A ramp, so that a frame can be told by its first sample. */
+Signal Ramp(std::size_t count, std::int16_t from = 0)
+{
+    Signal s(count);
+    for (std::size_t i = 0; i < count; ++i)
+        s[i] = static_cast<std::int16_t>(from + static_cast<int>(i));
+    return s;
+}
+
+std::vector<bool> Frames(int quiet, int speech, int quietAfter)
+{
+    std::vector<bool> script(static_cast<std::size_t>(quiet), false);
+    script.insert(script.end(), static_cast<std::size_t>(speech), true);
+    script.insert(script.end(), static_cast<std::size_t>(quietAfter), false);
+    return script;
+}
+
+}  // namespace
+
+TEST(Tracker_AClassifierDecidesWhatIsSpeechAndSeesEveryFrameOnce)
+{
+    auto log = std::make_shared<ScriptLog>();
+    TrackerConfig config;
+    config.startFrames = 3;
+    UtteranceTracker tracker(config, std::make_unique<ScriptedClassifier>(Frames(10, 40, 40), log));
+
+    std::vector<Seen> seen;
+    auto sink = [&](const UtteranceTracker::Step &s) { seen.push_back({s.kind, s.id, s.startSample, Signal(s.audio, s.audio + s.count)}); };
+    const Signal audio = Ramp(90 * kScriptFrame);
+    for (std::size_t at = 0; at < audio.size(); at += 1600)                 /* pieces that are no multiple of the frame */
+        tracker.Add(audio.data() + at, std::min<std::size_t>(1600, audio.size() - at), at, sink);
+
+    CHECK_EQ(log->firstSamples.size(), std::size_t(90));
+    for (std::size_t i = 0; i < log->firstSamples.size(); ++i)
+        CHECK_EQ(int(log->firstSamples[i]), int(static_cast<std::int16_t>(i * kScriptFrame)));     /* whole frames, in order, none twice (the ramp wraps) */
+
+    std::vector<Seen> finals;
+    for (const Seen &s : seen) {
+        if (s.kind == UtteranceTracker::Step::Kind::Final)
+            finals.push_back(s);
+    }
+    CHECK_EQ(finals.size(), std::size_t(1));
+    if (finals.size() == 1) {
+        const std::uint64_t speechStart = 10 * kScriptFrame;
+        CHECK_EQ(finals[0].start, speechStart - 240 * kMs);                 /* the pre-roll, from the first speaking frame */
+        CHECK(finals[0].start + finals[0].audio.size() >= 50 * kScriptFrame);       /* and the speech to its end */
+    }
+}
+
+TEST(Tracker_AClassifierThatNeverHearsSpeechMakesNoUtterances)
+{
+    auto log = std::make_shared<ScriptLog>();
+    UtteranceTracker tracker(TrackerConfig(), std::make_unique<ScriptedClassifier>(std::vector<bool>(), log));
+    int steps = 0;
+    const Signal loud = Tone(5000, -10.0);                                  /* however loud it is */
+    tracker.Add(loud.data(), loud.size(), 0, [&](const UtteranceTracker::Step &) { ++steps; });
+    CHECK_EQ(steps, 0);
+}
+
+TEST(Tracker_AClassifierIsToldWhenAudioWasLost)
+{
+    auto log = std::make_shared<ScriptLog>();
+    UtteranceTracker tracker(TrackerConfig(), std::make_unique<ScriptedClassifier>(std::vector<bool>(), log));
+    const Signal audio = Ramp(2048);
+    auto ignore = [](const UtteranceTracker::Step &) {};
+    tracker.Add(audio.data(), audio.size(), 0, ignore);
+    CHECK_EQ(log->resets, 0);
+    tracker.Add(audio.data(), audio.size(), 2048, ignore);                  /* the next audio, in step */
+    CHECK_EQ(log->resets, 0);
+    tracker.Add(audio.data(), audio.size(), 9999, ignore);                  /* some never arrived */
+    CHECK_EQ(log->resets, 1);
+}

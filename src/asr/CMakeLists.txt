@@ -28,6 +28,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../third_party/whisper.cpp whisper
 
 add_executable(audior_asr
     helper.cpp
+    silero_classifier.cpp
     whisper_decoder.cpp
     ../core/asr_protocol.cpp
     ../core/asr_text.cpp
