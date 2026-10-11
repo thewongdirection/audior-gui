@@ -35,6 +35,8 @@ puts them there). T12 also uses the other architecture's build if it is built.
   under `%TEMP%` that is deleted at the end.
 - **Plays a quiet 440 Hz tone** on the default playback device: 5% of full scale (-26 dBFS), 2 s
   per recording, 12 s once. That is the signal the loopback checks look for.
+- **Speaks a sentence** (about 8 s, Windows' own speech voice, at 60% volume) on the default playback
+  device, once or twice, for T15. Only if the transcription helper and a model are in place.
 - **Opens the application windows behind everything else, without taking the focus.** They are
   visible and fully usable (click one in the taskbar to watch it), but they never cover the window
   you are working in and the keyboard focus never moves. The program passes its launch
@@ -82,6 +84,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T12 | The other architecture's build | mic + system, 30 s+, clock, tone captured, tracks the same length |
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
 | T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
+| T15 | Live transcript of the system audio | skipped (with a note) unless the helper and a model are in place. Runs the recording engine in the test process with the system stream's transcript on, once on the processor and, if the helper has the Vulkan backend, once on the graphics card, while a voice speaks a sentence: the helper becomes ready; the transcript does not fail; text appears *while* the voice is still speaking; at least 4 of the 5 key words (quick, brown, fox, lazy, dog) are in the settled text; the text is never 3 s or more behind; no `audior_asr.exe` is left after the recording ends |
 
 ### How the files are measured
 
@@ -102,7 +105,9 @@ These need a person, so they stay on the checklist in [FIRST-TEST.md](FIRST-TEST
 window looks, the resting waveforms, the CLIP flag with a loud voice, unplugging a USB
 microphone mid-recording, unticking **Microphone** (the command line always includes it), and
 the check that other programs' volume does not drop while recording (the communications
-ducking opt-out).
+ducking opt-out). The microphone's own transcript also stays a manual check (T15 uses the
+system audio, which is the same code after the capture): speak into the microphone with
+**Transcript** on, as in FIRST-TEST.md section 4.
 
 ## Results on the reference PC
 
@@ -131,6 +136,17 @@ write silence of the right length); bad devices and a stray `--stop` are rejecte
 messages; closing the window mid-recording leaves two complete MP3s; the x86 build records
 identically; over a minute the program uses 84 MB private memory (flat), about 1.4% of one core,
 37 threads, and 656 to 658 handles after warm-up.
+
+**T15 (live transcript), 2026-10-11, x64, `small.en` model with the Silero detector, the voice at
+60%:** four runs, each once on the processor and once on the graphics card (an RTX 5080 through
+the Vulkan backend). Seven of the eight passed every check: all five key words in the text, the
+first text 0.9 to 2.1 s after the voice began, at most 0.4 s behind (0.2 s on the card), no helper
+left behind. The text of the card was often word for word the sentence. The one that failed was
+the first run's card: it heard only "Plenty of rest." (and the processor's text of that run had
+two extra phrases after the sentence). Both showed text 0.1 s after the voice began, before the
+voice had said anything, so other sound on the PC (another session's, or a notification) was most
+likely mixed into the system audio at that moment; it did not come back in three more runs.
+If T15 fails, read the "heard" text in its detail and run it again.
 
 ## Findings
 

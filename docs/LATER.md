@@ -5,8 +5,11 @@ blocks using it; each item is worth doing when it starts to matter.
 
 ## Not yet checked on real hardware
 
-- A real recording with the helper (`docs/FIRST-TEST.md`, section 4): CI has no audio
-  devices, and the speech tests are skipped there for want of a model.
+- The microphone's own transcript, and the rest of `docs/FIRST-TEST.md` section 4 (killing
+  the helper, a changed file, closing mid-sentence): a person has to speak into the
+  microphone and watch the window. The system audio's transcript is checked by
+  `hardware_tests.exe --only T15`, which makes the PC speak a sentence (CI has no audio
+  devices, and the speech tests are skipped there for want of a model).
 - The step to a smaller model on a PC that is really too slow (the logic is tested
   with fake helpers; `core/lag_governor.h` has the thresholds: 3 s / 1.5 s behind to
   say *Catching up*, 6 s for 10 s to change model).
