@@ -7,6 +7,10 @@
  *     -> peak bins for the waveform           mix if merging, write to the
  *     -> ring buffer (8 s)                    sinks
  *
+ * Every stream starts from the same moment: no capture thread polls until all
+ * the devices are running (a Bluetooth microphone takes over half a second
+ * to start), and each source then drops what it captured in the meantime.
+ *
  * The rings are the only place audio waits, so memory stays bounded however
  * long the recording runs.  Anything that goes wrong (a device that vanishes,
  * a disk that fills, a writer that cannot keep up) ends the recording at once;
@@ -115,9 +119,10 @@ private:
     bool                    sinkFailed_ = false;        /* writer thread only */
     std::vector<std::int16_t> scratchA_, scratchB_;     /* writer thread only */
 
-    std::mutex              readyMutex_;                /* the devices-are-open handshake */
+    std::mutex              readyMutex_;                /* the devices-are-running handshake */
     std::condition_variable readyCv_;
-    int                     ready_ = 0;
+    int                     expected_ = 0;              /* devices that report in ... */
+    int                     ready_ = 0;                 /* ... and how many have */
 
     mutable std::mutex      failureMutex_;
     std::wstring            failure_;

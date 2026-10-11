@@ -4,7 +4,8 @@
  *
  * The device is opened in shared mode in its own mix format and converted to
  * the canonical format (see pcm.h) with the stream's gain applied.  A loopback
- * stream is padded with silence while the device is idle (see silence_filler.h).
+ * stream delivers nothing while the device is idle; wrap it in a PaddedSource
+ * (padded_source.h) to keep it as long as the recording.
  *
  * All calls must come from one thread that has joined COM.
  */
@@ -23,7 +24,6 @@
 
 #include "capture_source.h"
 #include "pcm.h"
-#include "silence_filler.h"
 
 namespace audiorgui {
 
@@ -36,12 +36,11 @@ public:
 
     HRESULT Open() override;
     HRESULT Start() override;
+    void    Begin() override;
     HRESULT Poll(std::vector<std::int16_t> *frames) override;
     void    Stop() override;
 
 private:
-    double SecondsRunning() const;
-
     std::wstring  deviceId_;
     bool          loopback_;
     float         gain_;
@@ -49,10 +48,7 @@ private:
     Microsoft::WRL::ComPtr<IAudioClient>        client_;
     Microsoft::WRL::ComPtr<IAudioCaptureClient> capture_;
     PcmConverter  converter_;
-    SilenceFiller filler_;
     bool          started_ = false;
-    long long     startTicks_ = 0;              /* performance counter at Start() */
-    long long     ticksPerSecond_ = 1;
 };
 
 /* Stops Windows from lowering other programs' volume while the microphone is

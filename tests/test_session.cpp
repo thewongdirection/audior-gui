@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include "../src/engine/padded_source.h"
 #include "../src/engine/pcm.h"
 #include "../src/engine/recording_session.h"
 #include "test_support.h"
@@ -19,14 +20,19 @@ struct Counters {
     std::atomic<std::uint64_t> frames{0};       /* frames handed to the session */
     std::atomic<int>           polls{0};
     std::atomic<bool>          stopped{false};
+    std::atomic<int>           runningAtBegin{-1};      /* devices running when the session said "begin" */
+    std::atomic<int>           pollsAtBegin{-1};
+    std::atomic<int>           runningAtFirstPoll{-1};
 };
 
 struct SourceSpec {
-    std::int16_t level          = 1000;         /* every sample                              */
-    HRESULT      openHr         = S_OK;
-    int          failAfterPolls = -1;           /* Poll() fails after this many; -1 = never  */
-    HRESULT      failHr         = S_OK;
-    std::size_t  framesPerPoll  = 480;          /* 10 ms of audio: real time at a 10 ms poll */
+    std::int16_t      level          = 1000;    /* every sample                              */
+    HRESULT           openHr         = S_OK;
+    int               failAfterPolls = -1;      /* Poll() fails after this many; -1 = never  */
+    HRESULT           failHr         = S_OK;
+    std::size_t       framesPerPoll  = 480;     /* 10 ms of audio: real time at a 10 ms poll */
+    DWORD             startMs        = 0;       /* Start() takes this long                   */
+    std::atomic<int> *running        = nullptr; /* counts the devices whose Start() has returned */
 };
 
 class FakeSource final : public ICaptureSource {
@@ -35,10 +41,22 @@ public:
         : spec_(spec), counters_(std::move(counters)) {}
 
     HRESULT Open() override { return spec_.openHr; }
-    HRESULT Start() override { return S_OK; }
+    HRESULT Start() override
+    {
+        Sleep(spec_.startMs);
+        ++*spec_.running;
+        return S_OK;
+    }
+    void Begin() override
+    {
+        counters_->runningAtBegin = spec_.running->load();
+        counters_->pollsAtBegin = counters_->polls.load();
+    }
     HRESULT Poll(std::vector<std::int16_t> *frames) override
     {
         const int n = ++counters_->polls;
+        if (n == 1)
+            counters_->runningAtFirstPoll = spec_.running->load();
         if (spec_.failAfterPolls >= 0 && n > spec_.failAfterPolls)
             return spec_.failHr;
         frames->insert(frames->end(), spec_.framesPerPoll * kPcmChannels, spec_.level);
@@ -50,6 +68,39 @@ public:
 private:
     SourceSpec                spec_;
     std::shared_ptr<Counters> counters_;
+};
+
+/* A device that records in real time from the moment its Start() returns, and hands over what it has
+ * captured when polled.  An idle one is a playback device with nothing playing: it delivers nothing. */
+class ClockedSource final : public ICaptureSource {
+public:
+    ClockedSource(DWORD startMs, bool idle) : startMs_(startMs), idle_(idle) {}
+
+    HRESULT Open() override { return S_OK; }
+    HRESULT Start() override
+    {
+        Sleep(startMs_);
+        startedAt_ = MonotonicSeconds();
+        return S_OK;
+    }
+    void Begin() override { delivered_ = Captured(); }
+    HRESULT Poll(std::vector<std::int16_t> *frames) override
+    {
+        const std::size_t captured = Captured();
+        if (!idle_)
+            frames->insert(frames->end(), (captured - delivered_) * kPcmChannels, 1000);
+        delivered_ = captured;
+        return S_OK;
+    }
+    void Stop() override {}
+
+private:
+    std::size_t Captured() const { return static_cast<std::size_t>((MonotonicSeconds() - startedAt_) * kPcmRate); }
+
+    DWORD       startMs_;
+    bool        idle_;
+    double      startedAt_ = 0.0;
+    std::size_t delivered_ = 0;
 };
 
 /* ---- a sink that keeps what it is given in memory ---- */
@@ -109,10 +160,14 @@ struct Rig {
     HRESULT                   sinkOpenHr    = HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
     std::vector<std::shared_ptr<SinkState>> sinks;      /* one per file created */
 
+    std::atomic<int>          running{0};               /* devices started so far */
+
     Rig()
     {
         for (auto &c : counters)
             c = std::make_shared<Counters>();
+        for (SourceSpec &s : sources)
+            s.running = &running;
         sources[StreamIndex(StreamId::System)].level = 3000;
     }
 
@@ -338,6 +393,53 @@ TEST(Session_FilesListsWhatItWrites)
     CHECK(session.Start(Plan(true, true, false), &error));
     CHECK_EQ(session.Files().size(), std::size_t(2));
     session.Stop();
+}
+
+/* ---- the streams start together ---- */
+
+/* A Bluetooth headset's microphone takes over half a second to start; the other device was
+ * already running, and its track came out that much longer. */
+TEST(Session_NoStreamRecordsBeforeEveryDeviceIsRunning)
+{
+    Rig rig;
+    rig.sources[StreamIndex(StreamId::Microphone)].startMs = 150;
+    RecordingSession session(rig.Sources(), rig.Sinks());
+    std::wstring error;
+    CHECK(session.Start(Plan(true, true, false), &error));
+    RecordBriefly(session, rig, true, true);
+
+    for (StreamId id : {StreamId::Microphone, StreamId::System}) {
+        const Counters &c = *rig.counters[StreamIndex(id)];
+        CHECK_EQ(c.runningAtBegin.load(), 2);               /* told to begin once both were running */
+        CHECK_EQ(c.pollsAtBegin.load(), 0);                 /* before any audio was taken */
+        CHECK_EQ(c.runningAtFirstPoll.load(), 2);
+    }
+}
+
+TEST(Session_BothTracksMatchTheClockWhenOneDeviceStartsSlowly)
+{
+    Rig rig;                                                /* only for its sinks */
+    auto sources = [](StreamId id) -> std::unique_ptr<ICaptureSource> {
+        if (id == StreamId::Microphone)
+            return std::make_unique<ClockedSource>(600, false);
+        return std::make_unique<PaddedSource>(std::make_unique<ClockedSource>(0, true), MonotonicSeconds);
+    };
+    RecordingSession session(sources, rig.Sinks());
+    std::wstring error;
+    CHECK(session.Start(Plan(true, true, false), &error));
+
+    const double began = MonotonicSeconds();
+    Sleep(1000);
+    const double clock = MonotonicSeconds() - began;
+    session.Stop();
+
+    CHECK(session.Failure().empty());
+    CHECK_EQ(rig.sinks.size(), std::size_t(2));
+    const double mic = static_cast<double>(rig.sinks[0]->samples.size()) / (kPcmChannels * kPcmRate);
+    const double sys = static_cast<double>(rig.sinks[1]->samples.size()) / (kPcmChannels * kPcmRate);
+    CHECK_NEAR(mic, clock, 0.2);
+    CHECK_NEAR(sys, clock, 0.2);                            /* it used to be 0.6 s longer */
+    CHECK_NEAR(sys, mic, 0.2);
 }
 
 /* ---- starting goes wrong ---- */

@@ -107,6 +107,7 @@ bool RecordingSession::Start(const SessionPlan &plan, std::wstring *error)
             ++count;
         }
         liveCaptures_ = count;
+        expected_ = count;
         for (int i = 0; i < kStreamCount; ++i) {
             if (streams_[i])
                 streams_[i]->thread = std::thread(&RecordingSession::CaptureLoop, this, i);
@@ -115,7 +116,7 @@ bool RecordingSession::Start(const SessionPlan &plan, std::wstring *error)
         /* Wait for every device to open (or fail to). */
         {
             std::unique_lock<std::mutex> lock(readyMutex_);
-            readyCv_.wait(lock, [&] { return ready_ == count; });
+            readyCv_.wait(lock, [&] { return ready_ == expected_; });
         }
         for (int i = 0; i < kStreamCount; ++i) {
             if (streams_[i] && FAILED(streams_[i]->startHr)) {
@@ -172,6 +173,10 @@ void RecordingSession::RequestStop()
 {
     stopping_ = true;
     SetEvent(stop_);
+    {
+        std::lock_guard<std::mutex> lock(readyMutex_);  /* so no capture thread is left waiting for a device */
+    }
+    readyCv_.notify_all();
 }
 
 void RecordingSession::Join()
@@ -275,14 +280,17 @@ void RecordingSession::CaptureLoop(int index)
 
         const HRESULT hr = OpenSource(stream);
         {
-            std::lock_guard<std::mutex> lock(readyMutex_);
+            std::unique_lock<std::mutex> lock(readyMutex_);
             stream.startHr = hr;
             ++ready_;
             readyCv_.notify_all();
+            /* A device that starts slowly must not leave the others recording ahead of it. */
+            readyCv_.wait(lock, [&] { return ready_ == expected_ || stopping_; });
         }
 
         if (SUCCEEDED(hr)) {
             try {
+                stream.source->Begin();                 /* all running: the recording starts here */
                 PollLoop(stream);
             } catch (const std::exception &) {          /* a buffer could not grow: end the recording, keep the file */
                 Fail(L"Recording ran out of memory", E_OUTOFMEMORY);

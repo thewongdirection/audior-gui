@@ -24,8 +24,14 @@ public:
     /* Opens the device.  A failure here ends the Start() that asked for it. */
     virtual HRESULT Open() = 0;
 
-    /* Starts delivering audio. */
+    /* Starts capturing.  May take a while (a Bluetooth microphone needs half a
+     * second or more to switch profile), during which the other streams'
+     * devices are already running. */
     virtual HRESULT Start() = 0;
+
+    /* The recording starts now, every device being up: forget the audio
+     * captured so far, so that all the streams begin at the same moment. */
+    virtual void Begin() {}
 
     /* Appends the audio captured since the last call as canonical frames
      * (48 kHz, 16-bit, stereo, after any gain).  Must not block for long.  A

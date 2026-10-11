@@ -4,9 +4,9 @@
  * A playback device delivers no audio at all while nothing is playing, unlike
  * a microphone, which always delivers (silent) packets.  Left alone, the
  * loopback track would come out shorter than the microphone's, drifting out of
- * step in a merged file and ending up empty in a separate one.  So the capture
- * keeps count of the audio it has delivered and, whenever it is behind the
- * clock, adds the missing time as silence.
+ * step in a merged file and ending up empty in a separate one.  So a
+ * PaddedSource keeps count of the audio delivered and, whenever it is behind
+ * the clock, adds the missing time as silence.
  */
 #pragma once
 

@@ -84,27 +84,19 @@ HRESULT WasapiCapture::Open()
 
 HRESULT WasapiCapture::Start()
 {
-    LARGE_INTEGER ticks, frequency;
-    QueryPerformanceFrequency(&frequency);
-    QueryPerformanceCounter(&ticks);
-    startTicks_ = ticks.QuadPart;
-    ticksPerSecond_ = frequency.QuadPart > 0 ? frequency.QuadPart : 1;
-
     const HRESULT hr = client_->Start();
     started_ = SUCCEEDED(hr);
     return hr;
 }
 
-double WasapiCapture::SecondsRunning() const
+void WasapiCapture::Begin()
 {
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    return static_cast<double>(now.QuadPart - startTicks_) / static_cast<double>(ticksPerSecond_);
+    std::vector<std::int16_t> unwanted;                 /* what the device took while the others were starting */
+    Poll(&unwanted);                                    /* a failure shows again at the next poll */
 }
 
 HRESULT WasapiCapture::Poll(std::vector<std::int16_t> *frames)
 {
-    const std::size_t before = frames->size();
     for (;;) {
         UINT32 packetFrames = 0;
         HRESULT hr = capture_->GetNextPacketSize(&packetFrames);
@@ -125,12 +117,6 @@ HRESULT WasapiCapture::Poll(std::vector<std::int16_t> *frames)
         hr = capture_->ReleaseBuffer(count);
         if (FAILED(hr))
             return hr;
-    }
-
-    if (loopback_) {
-        const std::size_t delivered = (frames->size() - before) / kPcmChannels;
-        const std::size_t owed = filler_.Owed(SecondsRunning(), delivered);
-        frames->insert(frames->end(), owed * kPcmChannels, 0);
     }
     return S_OK;
 }

@@ -2,6 +2,7 @@
 
 #include "devices.h"
 #include "mp3_sink.h"
+#include "padded_source.h"
 #include "wasapi_capture.h"
 #include "wav_sink.h"
 
@@ -38,9 +39,12 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
     const RecordingSettings s = settings;               /* the factories outlive this call */
     auto sources = [s](StreamId stream) -> std::unique_ptr<ICaptureSource> {
         const bool microphone = stream == StreamId::Microphone;
-        return std::make_unique<WasapiCapture>(microphone ? s.microphoneId : s.systemDeviceId, !microphone,
-                                               GainForPercent(microphone ? s.micAmplifyPercent
-                                                                         : s.systemAmplifyPercent));
+        auto capture = std::make_unique<WasapiCapture>(microphone ? s.microphoneId : s.systemDeviceId, !microphone,
+                                                       GainForPercent(microphone ? s.micAmplifyPercent
+                                                                                 : s.systemAmplifyPercent));
+        if (microphone)
+            return capture;
+        return std::make_unique<PaddedSource>(std::move(capture), MonotonicSeconds);   /* idle playback: silence */
     };
     auto sinks = [s](const std::wstring &path, HRESULT *hr) {
         CreateOutputFolder(path);                       /* only now that the devices opened */
