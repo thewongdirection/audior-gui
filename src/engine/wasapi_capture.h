@@ -3,8 +3,9 @@
  * loopback of a playback device ("what you hear").
  *
  * The device is opened in shared mode in its own mix format and converted to
- * the canonical format (see pcm.h) with the stream's gain applied.  A loopback
- * stream is padded with silence while the device is idle (see silence_filler.h).
+ * the canonical format (see pcm.h) with the stream's gain applied.  The stream is
+ * kept in step with the recording's clock, padded with silence while the device is
+ * idle or still starting (see silence_filler.h and session_clock.h).
  *
  * All calls must come from one thread that has joined COM.
  */
@@ -19,10 +20,12 @@
 #include <audioclient.h>
 #include <wrl/client.h>
 
+#include <memory>
 #include <string>
 
 #include "capture_source.h"
 #include "pcm.h"
+#include "session_clock.h"
 #include "silence_filler.h"
 
 namespace audiorgui {
@@ -30,8 +33,9 @@ namespace audiorgui {
 class WasapiCapture final : public ICaptureSource {
 public:
     /* `deviceId` is an endpoint ID, or empty for the system default.  `gain`
-     * is linear (1 = unchanged). */
-    WasapiCapture(std::wstring deviceId, bool loopback, float gain);
+     * is linear (1 = unchanged).  The streams of one recording pass the same
+     * `clock`; a stream on its own can leave it out. */
+    WasapiCapture(std::wstring deviceId, bool loopback, float gain, std::shared_ptr<SessionClock> clock = nullptr);
     ~WasapiCapture() override { Stop(); }
 
     HRESULT Open() override;
@@ -50,8 +54,9 @@ private:
     Microsoft::WRL::ComPtr<IAudioCaptureClient> capture_;
     PcmConverter  converter_;
     SilenceFiller filler_;
+    std::shared_ptr<SessionClock> clock_;
     bool          started_ = false;
-    long long     startTicks_ = 0;              /* performance counter at Start() */
+    long long     originTicks_ = 0;             /* performance counter at the recording's start */
     long long     ticksPerSecond_ = 1;
 };
 

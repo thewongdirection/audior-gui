@@ -45,8 +45,11 @@ bool DescribeFormat(const WAVEFORMATEX &wf, SourceFormat *out)
 
 }  // namespace
 
-WasapiCapture::WasapiCapture(std::wstring deviceId, bool loopback, float gain)
-    : deviceId_(std::move(deviceId)), loopback_(loopback), gain_(gain)
+WasapiCapture::WasapiCapture(std::wstring deviceId, bool loopback, float gain, std::shared_ptr<SessionClock> clock)
+    : deviceId_(std::move(deviceId)),
+      loopback_(loopback),
+      gain_(gain),
+      clock_(clock ? std::move(clock) : std::make_shared<SessionClock>())
 {
 }
 
@@ -86,12 +89,14 @@ HRESULT WasapiCapture::Start()
 {
     LARGE_INTEGER ticks, frequency;
     QueryPerformanceFrequency(&frequency);
-    QueryPerformanceCounter(&ticks);
-    startTicks_ = ticks.QuadPart;
     ticksPerSecond_ = frequency.QuadPart > 0 ? frequency.QuadPart : 1;
 
-    const HRESULT hr = client_->Start();
+    const HRESULT hr = client_->Start();                /* a Bluetooth microphone takes most of a second */
     started_ = SUCCEEDED(hr);
+    if (started_) {
+        QueryPerformanceCounter(&ticks);                /* running now: the first stream to get here sets the origin */
+        originTicks_ = clock_->Claim(ticks.QuadPart);
+    }
     return hr;
 }
 
@@ -99,7 +104,7 @@ double WasapiCapture::SecondsRunning() const
 {
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    return static_cast<double>(now.QuadPart - startTicks_) / static_cast<double>(ticksPerSecond_);
+    return static_cast<double>(now.QuadPart - originTicks_) / static_cast<double>(ticksPerSecond_);
 }
 
 HRESULT WasapiCapture::Poll(std::vector<std::int16_t> *frames)
@@ -127,11 +132,7 @@ HRESULT WasapiCapture::Poll(std::vector<std::int16_t> *frames)
             return hr;
     }
 
-    if (loopback_) {
-        const std::size_t delivered = (frames->size() - before) / kPcmChannels;
-        const std::size_t owed = filler_.Owed(SecondsRunning(), delivered);
-        frames->insert(frames->end(), owed * kPcmChannels, 0);
-    }
+    filler_.Pad(SecondsRunning(), frames, before);
     return S_OK;
 }
 
