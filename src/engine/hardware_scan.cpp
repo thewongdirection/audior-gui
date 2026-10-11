@@ -39,7 +39,7 @@ HardwareProfile ScanHardware()
     if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
         return hw;
     ComPtr<IDXGIAdapter1> adapter;
-    for (UINT i = 0; factory->EnumAdapters1(i, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++i) {
+    for (UINT i = 0; SUCCEEDED(factory->EnumAdapters1(i, adapter.ReleaseAndGetAddressOf())); ++i) {      /* ends at NOT_FOUND, or at an error */
         DXGI_ADAPTER_DESC1 desc;
         if (FAILED(adapter->GetDesc1(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ||
             desc.VendorId == kMicrosoftVendor)

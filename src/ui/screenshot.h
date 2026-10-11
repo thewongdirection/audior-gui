@@ -12,7 +12,8 @@
  * saved, error, transcript (both live transcripts mid-sentence), catching-up (the same, but the transcription
  * has fallen behind), model (the multilingual model chosen, idle), named (settings changed), typing (a long
  * file name being edited), hotkeys (a shortcut box waiting for keys), hotkey-taken (a hotkey another program
- * already owns).
+ * already owns), and the start-up set-up's setup-scan, setup-ask, setup-download, setup-done, setup-failed and
+ * setup-declined.
  */
 #pragma once
 

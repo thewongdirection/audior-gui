@@ -2,6 +2,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -117,6 +118,19 @@ bool Asking(const SetupStatus &s) { return s.phase == SetupPhase::Asking; }
 bool Downloading(const SetupStatus &s) { return s.phase == SetupPhase::Downloading; }
 
 }  // namespace
+
+TEST(Setup_AnExceptionEndsTheSetUpWithAMessageNotTheProgram)
+{
+    World world;
+    TranscriptionSetup::Environment env = world.Env();
+    env.scan = []() -> HardwareProfile { throw std::runtime_error("a driver's exception"); };
+    TranscriptionSetup setup(std::move(env));
+    setup.Start();
+    SetupStatus s;
+    CHECK(WaitFor(setup, &s, Finished));
+    CHECK(s.phase == SetupPhase::Finished && s.result == SetupResult::Failed);
+    CHECK(world.downloads.empty());
+}
 
 TEST(Setup_AModelThatIsThereMeansNothingToAskAndTheCardIsNamed)
 {

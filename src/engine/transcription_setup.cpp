@@ -33,7 +33,16 @@ void TranscriptionSetup::Launch(bool forced)
         ++version_;
     }
     cancel_ = false;
-    thread_ = std::thread([this, forced] { Run(forced); });
+    thread_ = std::thread([this, forced] {
+        try {
+            Run(forced);
+        } catch (...) {                                 /* an out-of-memory, a driver's exception: the recording is not to end for it */
+            try {
+                Publish(FailedStatus(L"The set-up stopped", L"Something went wrong while looking at this PC. Recording is not affected."));
+            } catch (...) {
+            }
+        }
+    });
 }
 
 /* Only a run that has said its last word can be repeated. */
