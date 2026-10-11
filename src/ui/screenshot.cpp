@@ -20,7 +20,7 @@ struct Scene {
         : engine([this] { return now; }),
           ctl(engine, [] { return LocalTime{2026, 10, 10, 15, 30, 45}; })
     {
-        ctl.Settings().outputDirectory = L"C:\\Users\\you\\Documents\\audior";
+        ctl.Settings().outputDirectory = L"C:\\Users\\you\\Documents\\Audior-GUI";
     }
 
     void Run(double seconds)
@@ -37,7 +37,7 @@ struct Scene {
 bool Build(Scene &scene, const std::wstring &name)
 {
     RecorderController &ctl = scene.ctl;
-    if (name == L"idle")
+    if (name == L"idle" || name == L"hotkeys" || name == L"hotkey-taken")      /* the view does the rest */
         return true;
     if (name == L"named" || name == L"typing") {         /* idle, with every setting changed from its default */
         RecordingSettings &s = ctl.Settings();
@@ -136,6 +136,10 @@ int RunScreenshot(const Gfx &gfx, const ScreenshotOptions &options)
     MainView view(scene.ctl, nullptr);
     if (options.scenario == L"typing")
         view.FocusFileName();
+    else if (options.scenario == L"hotkeys")
+        view.ListenForHotkey(HotkeyAction::Start);
+    else if (options.scenario == L"hotkey-taken")
+        view.SetHotkey(HotkeyAction::Stop, kDefaultStopHotkey, false);
     view.Layout(static_cast<float>(options.width), static_cast<float>(options.height));
     target->BeginDraw();
     view.Paint(painter);

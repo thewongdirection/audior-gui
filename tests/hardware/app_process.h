@@ -1,11 +1,11 @@
 /*
- * app_process.h - Starts and watches the real audior_gui.exe for the hardware tests.
+ * app_process.h - Starts and watches the real Audior-GUI.exe for the hardware tests.
  *
  * A window can be started "in the background": visible, fully usable, but at the bottom of the
  * window stack and never activated, so it neither covers what the person at the PC is doing
  * nor takes the keyboard focus.  (The program passes its launch show-command straight to
- * ShowWindow, so it comes up minimized and not activated; it is then restored without
- * activation and sent to the bottom.)
+ * ShowWindow, so it comes up minimized and not activated, which puts it in the tray, hidden;
+ * it is then restored without activation and sent to the bottom.)
  */
 #pragma once
 

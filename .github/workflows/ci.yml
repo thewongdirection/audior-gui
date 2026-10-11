@@ -20,6 +20,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                # the next step compares this branch with main
+
+      - name: Warn if the UI changed but the documentation screenshots did not
+        shell: cmd
+        run: |
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD > "%RUNNER_TEMP%\changed.txt"
+          findstr /b /c:"src/ui/" "%RUNNER_TEMP%\changed.txt" >nul && (findstr /b /c:"docs/screenshots/" "%RUNNER_TEMP%\changed.txt" >nul || echo ::warning title=Documentation screenshots::src/ui changed but docs/screenshots did not. If the window looks different, run build.bat x64 screenshots and commit the pictures.)
+          exit /b 0
 
       - name: Build, check imports and test (x64 and x86)
         shell: cmd
@@ -31,8 +41,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path shots | Out-Null
-          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'error', 'named', 'typing') {
-            $run = Start-Process -FilePath bin\x64\audior_gui.exe -Wait -PassThru `
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken') {
+            $run = Start-Process -FilePath bin\x64\Audior-GUI.exe -Wait -PassThru `
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }
           }
@@ -40,7 +50,7 @@ jobs:
       - name: Drive the real application (command line, simulated and real engine)
         shell: powershell
         timeout-minutes: 5
-        run: tests\ui_smoke.ps1 -Exe bin\x64\audior_gui.exe -Out shots
+        run: tests\ui_smoke.ps1 -Exe bin\x64\Audior-GUI.exe -Out shots
 
       - uses: actions/upload-artifact@v4
         if: always()                    # the pictures matter most when a step failed
@@ -53,6 +63,6 @@ jobs:
         with:
           name: audior-gui-windows
           path: |
-            bin/x64/audior_gui.exe
-            bin/x86/audior_gui.exe
+            bin/x64/Audior-GUI.exe
+            bin/x86/Audior-GUI.exe
           retention-days: 14

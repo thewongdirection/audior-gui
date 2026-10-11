@@ -85,7 +85,7 @@ std::wstring EnforceExtension(const std::wstring &name, Format format)
 std::wstring DefaultBaseName(const LocalTime &t)
 {
     wchar_t buf[40];
-    std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"audior-%04d%02d%02d-%02d%02d%02d",
+    std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"Audior-GUI-%04d%02d%02d-%02d%02d%02d",
                   t.year, t.month, t.day, t.hour, t.minute, t.second);
     return buf;
 }

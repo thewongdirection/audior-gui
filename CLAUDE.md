@@ -39,20 +39,33 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 
 | Path | What |
 |------|------|
-| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
+| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the hotkey rules (`hotkey`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
 | `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks) and `SimulatedEngine` (`--demo`, tests). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
-| `src/ui` | Win32 + Direct2D window and widgets. |
+| `src/ui` | Win32 + Direct2D window and widgets, the tray icon, the system-wide hotkeys. |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
+| `src/preferences.*` | What is remembered between runs (only the two hotkeys, in the registry). Built into the unit tests with `src/core` and `src/engine`. |
+| `docs/screenshots` | The pictures the README and the docs show (see "Documentation screenshots" below). |
 | `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. `tests/hardware` holds `hardware_tests.exe` (native C++, built by `build.bat hardware`): it records with the real exe on real devices and checks the files; see `docs/HARDWARE-TESTS.md`. |
 
 `build.bat` builds x86 + x64 and runs the tests. Use `build.bat x64 tests` for
 the quick edit-test loop.
 
+**Documentation screenshots.** The README and `docs/` show the real window, in
+`docs/screenshots/<scenario>.png`, drawn by the program itself (`--screenshot`,
+simulated audio, fixed sample paths: nothing from a real PC). They are generated,
+never edited by hand or captured from a desktop: `build.bat x64 screenshots`
+redraws them all. Use a picture wherever it explains more than the text; a new
+screen or feature gets a scenario (`src/ui/screenshot.cpp`), an entry in the
+`:shots` list of `build.bat`, and a picture in the docs.
+
 **Parity with audior.** Every audior option has a control in the window and the
 same flag on the command line (see the table in `README.md`); the GUI adds a
 system-audio gain and per-stream on/off. A new audior option needs all three:
 a setting + validation (`src/core/settings`), a flag (`src/core/cli`) and a
-control (`src/ui/main_view`), with tests.
+control (`src/ui/main_view`), with tests. The one deliberate difference in
+naming: what the user sees by default carries this program's name, not audior's
+(the default folder `Documents\Audior-GUI` and the default file name
+`Audior-GUI-<date>-<time>`).
 
 **What CI cannot do.** The runners have no audio devices, so the WASAPI capture
 code itself (`wasapi_capture.cpp`, `devices.cpp`) is only exercised for its
@@ -67,4 +80,10 @@ failure handling) is tested with fakes. Real-hardware checks are listed in
    (`build.bat`) and fix every failure first.
 3. Scan the tree for secrets (keys, tokens, credentials, personal paths) and
    for security problems before anything goes to GitHub.
-4. Open pull requests as drafts.
+4. **Redraw the documentation screenshots when the UI changed.** If the change
+   alters how the window looks or what a screen shows (anything in `src/ui`, a
+   changed default text, a new or changed scenario), run `build.bat x64 screenshots`,
+   look at the pictures, and commit them with the change; fix the docs that describe
+   them. Old pictures must never outlive the UI they show. (CI warns when `src/ui`
+   changes without `docs/screenshots`.)
+5. Open pull requests as drafts.

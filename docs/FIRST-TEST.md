@@ -36,19 +36,25 @@ The rest of this page is the manual version of everything.
 
 Either build it (`build.bat x64`), or download **audior-gui-windows** from the
 *Artifacts* of the latest green run of the CI workflow and unzip it. Run
-`audior_gui.exe`; there is nothing to install.
+`Audior-GUI.exe`; there is nothing to install.
 
 If Windows SmartScreen warns about an unknown publisher (the file is not code
 signed), choose *More info*, then *Run anyway*.
 
 ## 1. The window
 
-1. Start `audior_gui.exe`. Both drop-downs should list your devices, each marked
+1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
    *Default · name* at the top.
 2. While idle the waveforms rest; they move only while recording.
+
+   ![The idle window: green Ready status, both device drop-downs, resting waveforms, and the Start recording button](screenshots/idle.png)
+
+   (The pictures here show simulated devices; yours lists your own.)
 3. Press **Start recording**, speak, play some music, press **Stop**.
    The waveforms move, the time runs, the status says *Saved*, **Show in folder**
-   opens `Documents\audior`.
+   opens `Documents\Audior-GUI`.
+
+   ![After a recording: the bottom bar says Saved with the file name, and offers Show in folder](screenshots/saved.png)
 4. Play the file. For MP3, check the length matches the clock.
 
 ## 2. The cases worth trying
@@ -66,15 +72,37 @@ signed), choose *More info*, then *Run anyway*.
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
 | Close the window while recording | The file is complete and plays. |
 
-## 3. From a command prompt
+## 3. The tray and the hotkeys
+
+These are done by hand: the build machines have no desktop shell to check them on.
+
+| Try | Expect |
+|---|---|
+| Minimize the window | It leaves the taskbar and an Audior-GUI icon (a ring) appears in the notification area, possibly under the `^` overflow arrow. |
+| Click the icon | The window comes back and the icon goes. |
+| Press **Ctrl+Alt+R** with the window in the tray, then look at the icon | A red dot, and the tooltip shows `Audior-GUI · recording 00:00:05` counting up. |
+| Press **Ctrl+Alt+S** | The icon returns to a ring. Restore the window: *Saved*, and the file is complete. |
+| Right-click the icon | *Show Audior-GUI*, *Start recording*, *Stop*, *Exit*, with the hotkeys shown. Only the one that applies is enabled. *Exit* while recording leaves a complete file. |
+| Press **Ctrl+Alt+R** in another program (Notepad, a browser) | It starts a recording there too, and Ctrl+S and Ctrl+R still work in that program. |
+| Unplug the microphone while recording with the window in the tray | A balloon names the problem. |
+| In *Hotkeys*, click **Start**, press **Ctrl+Alt+M** | The box shows `Ctrl+Alt+M`; Ctrl+Alt+R no longer starts a recording and Ctrl+Alt+M does. Close and reopen the program: it is still `Ctrl+Alt+M`. |
+| Click **Start**, press **R** alone | Refused: *Add Ctrl or Alt*. The box keeps listening; **Esc** gives up. |
+| Choose the other box's shortcut | Refused: *... is already the Stop shortcut*. |
+| Run a second copy | Its hotkey boxes are outlined in red: the first copy owns the shortcuts. |
+| Start with a shortcut set to *Run: Minimized* | The window never shows; the icon is in the tray. |
+
+The saved shortcuts are two text values in `HKEY_CURRENT_USER\Software\Audior-GUI`
+(`StartHotkey`, `StopHotkey`); delete the key to go back to Ctrl+Alt+R and Ctrl+Alt+S.
+
+## 4. From a command prompt
 
 ```bat
-audior_gui --list-devices
-audior_gui -o "%TEMP%\cli-test" -f wav -i --separate     :: the window opens already recording
-audior_gui --stop                                         :: from another prompt: ends it
+Audior-GUI --list-devices
+Audior-GUI -o "%TEMP%\cli-test" -f wav -i --separate     :: the window opens already recording
+Audior-GUI --stop                                         :: from another prompt: ends it
 ```
 
-`audior_gui --stop` prints `Stop signal sent.`; with nothing recording it prints
+`Audior-GUI --stop` prints `Stop signal sent.`; with nothing recording it prints
 `No active recording to stop.` and exits with code 1. While other programs play
 audio, their volume should not drop when you start recording (the communications
 ducking opt-out).
@@ -82,4 +110,4 @@ ducking opt-out).
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of
-`audior_gui --list-devices`.
+`Audior-GUI --list-devices`.
