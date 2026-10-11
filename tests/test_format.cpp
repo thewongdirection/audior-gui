@@ -114,3 +114,17 @@ TEST(FormatTranscriptLine_IsOneLineAndNeverEmpty)
     CHECK(FormatTranscriptLine(1.0, L"").empty());                                          /* a phrase taken back */
     CHECK(FormatTranscriptLine(1.0, L"  \t\r\n ").empty());
 }
+
+TEST(ParseWholeNumber_TakesAsciiDigitsOnly)
+{
+    int v = -1;
+    CHECK(ParseWholeNumber(L"0", &v) && v == 0);
+    CHECK(ParseWholeNumber(L"300", &v) && v == 300);
+    CHECK(ParseWholeNumber(L"007", &v) && v == 7);
+    CHECK(ParseWholeNumber(L"999999999", &v) && v == 999999999);        /* nine digits always fit */
+
+    v = 42;
+    for (const wchar_t *text : {L"", L"-1", L"+1", L"1 ", L" 1", L"1.5", L"12x", L"1000000000", L"１２"})
+        CHECK(!ParseWholeNumber(text, &v));
+    CHECK_EQ(v, 42);                                                    /* untouched when it fails */
+}

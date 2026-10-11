@@ -17,6 +17,9 @@ build/
 !docs/*.png
 !docs/screenshots/*.png
 
+# The settings a built exe remembers, if it is run from a folder inside the repository
+Audior-GUI.ini*
+
 # Editor / OS
 .vs/
 *.user

@@ -41,6 +41,11 @@ Either build it (`build.bat x64`), or download **audior-gui-windows** from the
 If Windows SmartScreen warns about an unknown publisher (the file is not code
 signed), choose *More info*, then *Run anyway*.
 
+Each run leaves its settings in `Audior-GUI.ini` for the next (section 5), so a row that
+says "type a file name" or "switch the format" is still in force in the rows after it.
+Start a section from the defaults when it matters: delete the file, or start the program
+with `--defaults` (which neither reads nor writes it).
+
 ## 1. The window
 
 1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
@@ -93,8 +98,8 @@ These are done by hand: the build machines have no desktop shell to check them o
 | Run a second copy | Its hotkey boxes are outlined in red: the first copy owns the shortcuts. |
 | Start with a shortcut set to *Run: Minimized* | The window never shows; the icon is in the tray. |
 
-The saved shortcuts are two text values in `HKEY_CURRENT_USER\Software\Audior-GUI`
-(`StartHotkey`, `StopHotkey`); delete the key to go back to Ctrl+Alt+R and Ctrl+Alt+S.
+The saved shortcuts are the `startHotkey` and `stopHotkey` lines of `Audior-GUI.ini`
+beside the exe (section 5); delete the file to go back to Ctrl+Alt+R and Ctrl+Alt+S.
 
 ## 4. From a command prompt
 
@@ -134,6 +139,27 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | With the turbo model chosen and *English* as the language, start a heavy job on all cores (a video encode, say) and talk for a minute | The pane turns amber, *Catching up · N s behind*, and text arrives after each pause rather than while you speak. If it stays six seconds behind for ten, it says *smaller model* and the small English model takes over; when the load ends the pane says *Live* again. With *Auto* it never switches (the small model is English only). The recording is unaffected throughout. |
 | Start with `--transcribe-model ggml-large-v3-turbo-q5_0.bin` while that file is not in the models folder | Recording does not start and the message names the missing model. |
 | Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--english] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
+
+## 5. Remembered settings
+
+The settings of the last run live in `Audior-GUI.ini`, in the folder of `Audior-GUI.exe`.
+The unit tests cover reading and writing it; these are the parts that need the real window
+and Windows itself.
+
+| Try | Expect |
+|---|---|
+| Change the folder, the file name, the format and bitrate, both gains, tick **System audio**, pick other devices, switch on a transcript; close the window; start the program again | Every setting is as you left it. `Audior-GUI.ini` is next to the exe and reads as plain text. |
+| Change the bitrate, press **Start** and **Stop**, then change the file name; end `Audior-GUI.exe` in Task Manager (not the X) and start it again | The bitrate you recorded with is back, the file name you typed after pressing Stop is not: the file is written when a recording starts and when the program closes. |
+| Start the program, change a setting, sign out of Windows (or restart) with the window open or in the tray | After signing in the setting is kept. |
+| `Audior-GUI -b 192` | The window shows 192 kbps and everything else as remembered. Close it and start without options: 192 is now what is remembered. |
+| `Audior-GUI --defaults`, change things, close; then start without options | The first window shows audior's defaults (MP3 128 kbps, microphone only, `Documents\Audior-GUI`); the second shows what was remembered before, unchanged. |
+| `Audior-GUI --demo`, change things, close; start normally | Unchanged: a demo does not write the file. |
+| Choose a USB microphone, close, unplug it, start the program | The microphone box says *Default* and the system default microphone; Start works. Plug the USB one back in and choose it again from the drop-down. |
+| Copy `Audior-GUI.exe` and `Audior-GUI.ini` to a PC (or user account) that has no such folder as the saved one | The folder shows `Documents\Audior-GUI` of that user and a recording goes there; the rest of the settings came along. |
+| Keep a transcript model chosen in the *Transcript* section, close, move the model file out of the models folder, start and press Start | The message names the missing model; choosing another one in the *Transcript* section lets the recording start. |
+| Copy `Audior-GUI.exe` to a folder you cannot write to (a locked drive, or a folder you have set to read-only for yourself), change settings, close, start again | No error anywhere and recording works; the settings are the defaults again. |
+| Open the file in Notepad, set `format=wav`, `bitrate=100`, `folder=Recordings` and add a line `colour=blue`; save; start the program | WAV is selected, the bitrate is still 128 and the folder is still the one before: the lines that are not valid are skipped, the rest is used. |
+| Delete the file | The next start shows the defaults and the file is back after the next recording. |
 
 ## If something is wrong
 

@@ -282,14 +282,16 @@ void NoteStrangers(DWORD own)
 }
 
 /* Starts the program, plays the tones, stops it with --stop after the minimum recording time (or
- * `seconds`, if longer) or, with `closeInstead`, by closing its window, and closes the window. */
+ * `seconds`, if longer) or, with `closeInstead`, by closing its window, and closes the window.  It runs
+ * with --defaults: audior's defaults are what a take starts from, whatever the last real run saved, and
+ * the settings of whoever runs the tests are left as they were. */
 Take Record(const std::wstring &exe, const std::wstring &args, const std::vector<Tone> &tones = {}, bool closeInstead = false,
             bool sampleUsage = false, double seconds = 0.0)
 {
     const double length = seconds > g_options.minSeconds ? seconds : g_options.minSeconds;
     Take take;
     AppProcess app;
-    if (!app.Start(exe, args, !g_options.foreground) || !app.HasWindow())
+    if (!app.Start(exe, L"--defaults " + args, !g_options.foreground) || !app.HasWindow())
         return take;
     take.started = true;
 
@@ -520,10 +522,10 @@ void T10()
 {
     Section("T10 bad devices and a stray --stop");
     const std::wstring base = Path(L"t10");
-    CliResult r = RunCli(g_exe, L"-o " + Quote(base) + L" -f wav -m 99");
+    CliResult r = RunCli(g_exe, L"--defaults -o " + Quote(base) + L" -f wav -m 99");
     Check("an unknown microphone is rejected with a message", r.exitCode == 1 && r.output.find("no microphone matches") != std::string::npos,
           Fmt("code %d: %s", r.exitCode, r.output.c_str()));
-    r = RunCli(g_exe, L"-o " + Quote(base) + L" -f wav -i -d 99");
+    r = RunCli(g_exe, L"--defaults -o " + Quote(base) + L" -f wav -i -d 99");
     Check("an unknown playback device is rejected with a message", r.exitCode == 1 && r.output.find("99") != std::string::npos,
           Fmt("code %d: %s", r.exitCode, r.output.c_str()));
     r = RunCli(g_exe, L"--stop");

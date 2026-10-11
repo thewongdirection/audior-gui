@@ -116,7 +116,7 @@ echo Building audior-gui (%ARCH%)...
 set "CFLAGS=/nologo /W4 /O1 /Gy /MT /std:c++17 /Zc:__cplusplus /permissive- /utf-8 /EHsc /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX"
 set "LFLAGS=/OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib ucrt.lib"
 set "GUILIBS=user32.lib gdi32.lib shell32.lib dwmapi.lib d2d1.lib dwrite.lib windowscodecs.lib"
-REM The recording engine: COM, the registry (saved hotkeys), WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
+REM The recording engine: COM, WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
 REM delay-loaded so the program also starts on Windows N editions that lack it.
 set "ENGLIBS=ole32.lib uuid.lib advapi32.lib avrt.lib mfplat.lib mfreadwrite.lib mfuuid.lib delayimp.lib /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll"
 

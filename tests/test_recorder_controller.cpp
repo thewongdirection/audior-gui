@@ -67,6 +67,26 @@ public:
 
 }  // namespace
 
+TEST(Controller_ADeviceThatIsGoneFallsBackToTheSystemDefault)
+{
+    Rig rig;
+    const std::wstring mic = rig.ctl.Devices(DeviceKind::Microphone).back().id;
+    const std::wstring speakers = rig.ctl.Devices(DeviceKind::Playback).back().id;
+
+    rig.ctl.Settings().microphoneId = mic;                                      /* both are plugged in: kept */
+    rig.ctl.Settings().systemDeviceId = speakers;
+    rig.ctl.DropUnavailableDevices();
+    CHECK_EQ(rig.ctl.Settings().microphoneId, mic);
+    CHECK_EQ(rig.ctl.Settings().systemDeviceId, speakers);
+
+    rig.ctl.Settings().microphoneId = L"{0.0.1.00000000}.{unplugged}";
+    rig.ctl.Settings().systemDeviceId = L"{0.0.0.00000000}.{unplugged}";
+    rig.ctl.DropUnavailableDevices();
+    CHECK(rig.ctl.Settings().microphoneId.empty());
+    CHECK(rig.ctl.Settings().systemDeviceId.empty());
+    CHECK(rig.ctl.Start());                                                     /* and recording works */
+}
+
 TEST(Controller_StartsIdleWithDevicesListed)
 {
     Rig rig;

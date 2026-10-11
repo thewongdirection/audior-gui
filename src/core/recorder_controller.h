@@ -62,6 +62,10 @@ public:
     const std::vector<DeviceInfo> &Devices(DeviceKind kind) const;
     void RefreshDevices();
 
+    /* Chooses the system default for a microphone or playback device the settings name that is not there
+     * now (unplugged since the settings were saved).  Left alone, it would stop the recording from starting. */
+    void DropUnavailableDevices();
+
     /* ---- recording ---- */
     Phase GetPhase() const { return phase_; }
     bool  CanStart() const { return phase_ == Phase::Idle; }
