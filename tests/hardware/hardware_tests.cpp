@@ -619,6 +619,7 @@ struct Heard {
     double       voiceSeconds = 0.0;                    /* how long the voice spoke */
     float        maxLag = 0.0f;
     bool         failed = false;
+    bool         cutShort = false;                      /* the recording ended before the test stopped it */
     std::wstring finals, problem, failure;
 };
 
@@ -702,6 +703,7 @@ bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
     if (voice)
         voice->Release();
 
+    heard->cutShort = !engine.IsRecording();                      /* e.g. another program's --stop: they share one signal */
     engine.Stop();                                                /* the helper says its last words */
     drain(heard->voiceSeconds);
     heard->failure = engine.Failure();
@@ -732,6 +734,8 @@ void T15()
               heard.live ? Fmt("ready after %.1f s", heard.readySeconds) : Narrow(heard.problem));
         if (!heard.live)
             continue;
+        Check(Fmt("%s: the recording is not cut short by anything else", label), !heard.cutShort,
+              heard.cutShort ? "another program sent the stop signal, which every copy of the program shares: run the test again" : "");
         Check(Fmt("%s: the transcript does not fail", label), !heard.failed && heard.failure.empty(),
               Narrow(heard.problem + heard.failure));
         Check(Fmt("%s: text appears while the voice is still speaking", label),

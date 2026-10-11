@@ -143,10 +143,12 @@ the Vulkan backend). Seven of the eight passed every check: all five key words i
 first text 0.9 to 2.1 s after the voice began, at most 0.4 s behind (0.2 s on the card), no helper
 left behind. The text of the card was often word for word the sentence. The one that failed was
 the first run's card: it heard only "Plenty of rest." (and the processor's text of that run had
-two extra phrases after the sentence). Both showed text 0.1 s after the voice began, before the
-voice had said anything, so other sound on the PC (another session's, or a notification) was most
-likely mixed into the system audio at that moment; it did not come back in three more runs.
-If T15 fails, read the "heard" text in its detail and run it again.
+two extra phrases after the sentence). Another session ran the unit tests at that moment, and
+their stop-signal tests signal the one machine-wide stop event that every recording shares, so
+the recording was very probably ended early (T15 now checks for that: "the recording is not cut
+short by anything else"); other sound mixed into the system audio would give the same picture. It
+did not come back in three more runs. If T15 fails, read the "heard" text in its detail and run
+it again, with nothing else recording or running tests.
 
 ## Findings
 
