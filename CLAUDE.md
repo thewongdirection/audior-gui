@@ -48,8 +48,8 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 
 | Path | What |
 |------|------|
-| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform and transcript models, controller, the `IRecordingEngine` seam (audio as peak bins, live transcripts as `TranscriptEvent`s). |
-| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks; it cannot transcribe yet) and `SimulatedEngine` (`--demo`, tests; it plays a scripted transcript). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
+| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform and transcript models, controller, the `IRecordingEngine` seam (audio as peak bins, live transcripts as `TranscriptEvent`s), and `asr_protocol` (the byte stream between the recorder and its transcription helper, with a bounds-checked parser). |
+| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks; it cannot transcribe yet) and `SimulatedEngine` (`--demo`, tests; it plays a scripted transcript). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. Transcription: `SpeechDecimator` (48 kHz stereo to 16 kHz mono) feeds `TranscriptionHost`, which talks to the helper through an `IAsrTransport`, restarts it when it dies and never blocks or fails a capture thread; tested against a fake helper on in-memory pipes. |
 | `src/ui` | Win32 + Direct2D window and widgets. |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
 | `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |

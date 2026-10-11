@@ -35,12 +35,15 @@ void ReadFrames(RingBuffer &ring, std::vector<std::int16_t> &buffer, std::size_t
 }  // namespace
 
 struct RecordingSession::Stream {
-    explicit Stream(std::unique_ptr<ICaptureSource> s) : source(std::move(s)), ring(kRingBytes) {}
+    Stream(StreamId stream, std::unique_ptr<ICaptureSource> s) : id(stream), source(std::move(s)), ring(kRingBytes) {}
 
+    StreamId                        id;
     std::unique_ptr<ICaptureSource> source;
     RingBuffer                      ring;
     PeakAccumulator                 accumulator;
     PeakQueue                       peaks;
+    SpeechDecimator                 decimator;          /* capture thread only */
+    std::vector<std::int16_t>       speech;             /* ... and its scratch, reused */
     std::thread                     thread;
     HRESULT                         startHr = S_OK;     /* what opening the device gave */
 };
@@ -60,11 +63,16 @@ SessionPlan MakePlan(const RecordingSettings &s, const std::wstring &outputPath)
     plan.merge      = RecordsBoth(s) && s.mixMode == MixMode::Merge;
     plan.micWeight  = static_cast<float>(s.mergeMicPercent) / 100.0f;
     plan.files      = PlannedOutputFiles(s, outputPath);
+    for (int i = 0; i < kStreamCount; ++i) {
+        if (Transcribes(s, static_cast<StreamId>(i)))
+            plan.speech = static_cast<std::uint8_t>(plan.speech | (1u << i));
+    }
     return plan;
 }
 
-RecordingSession::RecordingSession(SourceFactory sources, SinkFactory sinks, HANDLE externalStop)
-    : makeSource_(std::move(sources)), makeSink_(std::move(sinks)), externalStop_(externalStop)
+RecordingSession::RecordingSession(SourceFactory sources, SinkFactory sinks, HANDLE externalStop,
+                                   ISpeechSink *speech)
+    : makeSource_(std::move(sources)), makeSink_(std::move(sinks)), externalStop_(externalStop), speech_(speech)
 {
 }
 
@@ -103,7 +111,7 @@ bool RecordingSession::Start(const SessionPlan &plan, std::wstring *error)
             std::unique_ptr<ICaptureSource> source = makeSource_(static_cast<StreamId>(i));
             if (!source)
                 throw std::runtime_error("no capture source");
-            streams_[i] = std::make_unique<Stream>(std::move(source));
+            streams_[i] = std::make_unique<Stream>(static_cast<StreamId>(i), std::move(source));
             ++count;
         }
         liveCaptures_ = count;
@@ -300,6 +308,12 @@ void RecordingSession::Deliver(Stream &stream, const std::vector<std::int16_t> &
     bins->clear();
     stream.accumulator.Add(frames.data(), frames.size() / kPcmChannels, bins);
     stream.peaks.Push(bins->data(), bins->size());
+
+    if (speech_ && (plan_.speech & (1u << StreamIndex(stream.id)))) {      /* the transcriber, before the writer's ring */
+        stream.speech.clear();
+        stream.decimator.Add(frames.data(), frames.size() / kPcmChannels, &stream.speech);
+        speech_->Push(stream.id, stream.speech.data(), stream.speech.size());
+    }
 
     const std::size_t bytes = frames.size() * sizeof(std::int16_t);
     if (kRingBytes - stream.ring.Used() < bytes) {      /* the writer is not keeping up */

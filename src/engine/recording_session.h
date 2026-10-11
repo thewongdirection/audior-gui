@@ -33,6 +33,7 @@
 #include "../core/types.h"
 #include "audio_sink.h"
 #include "capture_source.h"
+#include "speech_tap.h"
 
 namespace audiorgui {
 
@@ -42,6 +43,10 @@ struct SessionPlan {
     bool  system     = false;
     bool  merge      = false;               /* both streams mixed into files[0]    */
     float micWeight  = 0.65f;               /* the microphone's share when merging */
+
+    /* The streams (a bit per StreamId) whose audio also goes to the speech
+     * sink, if the session has one. */
+    std::uint8_t speech = 0;
 
     /* One file; or, for two streams kept apart, the microphone's then the
      * system audio's. */
@@ -56,8 +61,11 @@ public:
     using SinkFactory   = std::function<std::unique_ptr<IAudioSink>(const std::wstring &path, HRESULT *hr)>;
 
     /* `externalStop`, if given, is an event that another process may set to end
-     * the recording; it must outlive the session. */
-    RecordingSession(SourceFactory sources, SinkFactory sinks, HANDLE externalStop = nullptr);
+     * the recording; it must outlive the session.  `speech`, if given, gets the
+     * audio of the streams in SessionPlan::speech (16 kHz mono, from the capture
+     * threads); it must outlive the session too. */
+    RecordingSession(SourceFactory sources, SinkFactory sinks, HANDLE externalStop = nullptr,
+                     ISpeechSink *speech = nullptr);
     ~RecordingSession();
 
     RecordingSession(const RecordingSession &) = delete;
@@ -101,6 +109,7 @@ private:
     SourceFactory makeSource_;
     SinkFactory   makeSink_;
     HANDLE        externalStop_;
+    ISpeechSink  *speech_;
 
     SessionPlan   plan_;
     HANDLE        stop_ = nullptr;                      /* set to end the recording */
