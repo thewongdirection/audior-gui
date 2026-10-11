@@ -21,6 +21,19 @@ D2D1_COLOR_F Dim(const D2D1_COLOR_F &c, bool enabled)
 
 void Button::Paint(Painter &p, const WidgetState &st) const
 {
+    if (style == Style::Link) {
+        const D2D1_COLOR_F ink = Dim(st.pressed ? Rgb(0x8B6CF0) : st.hot ? Rgb(0xC4B5FD) : theme::kSystem, enabled);
+        p.Text(text, rect, Font::Small, ink, Align::Right);
+        if (st.hot || st.focused) {                             /* underlined under the pointer or the focus */
+            DWRITE_TEXT_METRICS metrics = {};
+            if (SUCCEEDED(p.Layout(Font::Small, text)->GetMetrics(&metrics))) {
+                const float y = (rect.top + rect.bottom) * 0.5f + 7.5f;
+                p.Line(rect.right - metrics.width, y, rect.right, y, ink, 1.0f);
+            }
+        }
+        return;
+    }
+
     D2D1_COLOR_F fill, ink = theme::kText;
     bool outlined = true;
     switch (style) {
@@ -379,6 +392,63 @@ bool TextBox::Char(wchar_t c)
     if (c < 32 || c == 0x7F)                    /* Enter, Tab, Backspace and the Ctrl+letters are keys, not text */
         return false;
     Edited(editor.Insert(std::wstring(1, c)));
+    return true;
+}
+
+/* ---- KeyBox ---------------------------------------------------------- */
+
+void KeyBox::Paint(Painter &p, const WidgetState &st) const
+{
+    const D2D1_COLOR_F border = invalid ? theme::kError : capturing_ ? theme::kFocusRing : theme::kBorder;
+    p.FillRound(rect, theme::kControlRadius, Dim(st.hot && !capturing_ ? theme::kHover : theme::kRaised, enabled));
+    p.StrokeRound(rect, theme::kControlRadius, Dim(border, enabled), capturing_ ? 1.5f : 1.0f);
+
+    const D2D1_RECT_F inner = RectF(rect.left + kTextPad, rect.top, rect.right - kTextPad, rect.bottom);
+    p.Text(label, inner, Font::Body, Dim(theme::kTextMuted, enabled));
+    if (capturing_)
+        p.Text(L"Press keys…", inner, Font::BodyStrong, Dim(theme::kFocusRing, enabled), Align::Right);
+    else
+        p.Text(text, inner, Font::BodyStrong, Dim(theme::kText, enabled), Align::Right);
+}
+
+void KeyBox::Begin()
+{
+    capturing_ = true;
+    if (onBegin)
+        onBegin();
+}
+
+void KeyBox::Release(float, float, bool inside)
+{
+    if (inside && !capturing_)
+        Begin();
+}
+
+void KeyBox::Capture(const Hotkey &hotkey)
+{
+    if (capturing_ && onCapture && onCapture(hotkey))
+        capturing_ = false;
+}
+
+bool KeyBox::Key(UINT vk)
+{
+    if (!capturing_) {
+        if (vk != VK_RETURN && vk != VK_SPACE)
+            return false;
+        Begin();
+        return true;
+    }
+    switch (vk) {
+    case VK_ESCAPE:
+        capturing_ = false;
+        break;
+    case VK_CONTROL: case VK_SHIFT: case VK_MENU: case VK_LWIN: case VK_RWIN:      /* wait for the key itself */
+        break;
+    default:
+        Capture({(Down(VK_CONTROL) ? kModCtrl : 0u) | (Down(VK_MENU) ? kModAlt : 0u) | (Down(VK_SHIFT) ? kModShift : 0u),
+                 static_cast<unsigned>(vk)});
+        break;
+    }
     return true;
 }
 

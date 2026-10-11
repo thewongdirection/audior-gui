@@ -1,8 +1,10 @@
-# audior-gui
+# Audior-GUI
 
 A native Windows 10 / 11 recorder with a clean, modern UI: **one live waveform
 for every audio stream being recorded**, big **Start** and **Stop** buttons, and
-**every option of the `audior` command-line recorder** in a side panel.
+**every option of the `audior` command-line recorder** in a side panel. It lives
+in the tray while minimized and records from **system-wide hotkeys** (Ctrl+Alt+R and
+Ctrl+Alt+S, yours to change).
 
 > **Status: verified on real hardware.** The WASAPI recording engine is covered by
 > tests that run on generated audio, and `hardware_tests.exe` has recorded with the
@@ -14,23 +16,11 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 > [docs/FIRST-TEST.md](docs/FIRST-TEST.md). `--demo` runs the window with simulated
 > audio and needs no devices.
 
-```
-+----------------------------------------------------------------+
-|  audior                                                * Ready  |
-+------------------------------------------+---------------------+
-|  [x] Microphone                  -12 dB  |  SAVE TO            |
-|  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\audior      v]|
-|  |||  ||||||  ||| ||||||||| |||||| |||   |  FILE NAME          |
-+------------------------------------------+  [team-call       ] |
-|  [x] System audio                -20 dB  |  Saved as team-call.mp3
-|  [Speakers (Realtek) v]  Gain --o-- +0%  |  FORMAT             |
-|  ||| |||||  |||||| ||||  |||||| ||| ||   |  [MP3|WAV] [128 kbps]|
-|                                          |  OUTPUT             |
-|                                          |  [merged|2 tracks]  |
-+------------------------------------------+---------------------+
-|  00:00:12   Recording              [ Stop ] [ * Start recording ]|
-+----------------------------------------------------------------+
-```
+![Audior-GUI while recording: a live waveform for the microphone and for system audio on the left, the settings panel with the save folder, file name, format, output mode and hotkeys on the right, the Stop and Start buttons below](docs/screenshots/recording.png)
+
+*The window while recording. Every picture in these docs is drawn by the program
+itself from simulated audio (hence the DEMO badge, and the sample folder), so none
+shows a real PC; `build.bat x64 screenshots` redraws them (see [Design](#design)).*
 
 ## Requirements
 
@@ -43,7 +33,7 @@ for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 | Windows privacy | Settings → Privacy & security → Microphone must let desktop apps use the microphone. If Windows blocks it, the recorder reports `access was denied (check Windows privacy settings)` or gets no microphone audio |
 | Rights | An ordinary user account: no administrator rights, installer, driver or service |
 | Display | Direct2D and DirectWrite, which are part of Windows. No GPU is required (Direct2D falls back to software). Segoe UI Variable on Windows 11, Segoe UI on Windows 10 |
-| Disk | A writable folder (default `Documents\audior`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
+| Disk | A writable folder (default `Documents\Audior-GUI`). At 48 kHz, 16-bit, stereo, WAV takes about 660 MiB per hour per file and MP3 about 55 MiB per hour at 128 kbps (137 MiB at 320 kbps); two separate tracks are two files. A full disk ends the recording and keeps what was captured |
 | Memory | Fixed: each stream buffers at most 8 seconds, whatever the length of the recording |
 | Network | **None.** No connection, account or API key. See [below](#what-works-offline-and-what-needs-the-internet) |
 | Not needed | .NET, the Visual C++ redistributable, WebView2, any third-party library |
@@ -89,7 +79,7 @@ build.bat x64          :: one architecture
 build.bat x64 tests    :: just the unit tests (the quick edit-test loop)
 build.bat hardware     :: also builds bin\<arch>\hardware_tests.exe (not run: it records)
 
-bin\x64\audior_gui.exe
+bin\x64\Audior-GUI.exe
 ```
 
 `build.bat` finds Visual Studio itself (via `vswhere`), so any command prompt
@@ -113,7 +103,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "-
 
 | audior option | In the window | Command line |
 |---|---|---|
-| `-o, --output <file>` | **Save to** folder + **File name** box. Empty: `audior-<date>-<time>`. The extension follows the format (`meeting` becomes `meeting.mp3`, `clip.wav` with MP3 becomes `clip.mp3`). A file is never overwritten: a taken name becomes `meeting (2).mp3`. | `-o, --output <file>`, also starts recording |
+| `-o, --output <file>` | **Save to** folder + **File name** box. Empty: `Audior-GUI-<date>-<time>`. The extension follows the format (`meeting` becomes `meeting.mp3`, `clip.wav` with MP3 becomes `clip.mp3`). A file is never overwritten: a taken name becomes `meeting (2).mp3`. | `-o, --output <file>`, also starts recording |
 | `-f, --format` | **Format** MP3 / WAV | `-f wav\|mp3` |
 | `-b, --bitrate` | **Format** bitrate list (96 to 320 kbps) | `-b <kbps>` |
 | `-m, --mic` | Microphone pane drop-down: every detected input device | `-m <id\|index\|name>` |
@@ -189,14 +179,14 @@ stopped* and why) and killed with the recorder. Its licences are in
 The command-line options only preset the window, so a shortcut such as
 
 ```bat
-audior_gui.exe -o "%USERPROFILE%\Music\standup" -f wav -i --separate -a 50
+Audior-GUI.exe -o "%USERPROFILE%\Music\standup" -f wav -i --separate -a 50
 ```
 
 opens the window already recording, with everything still adjustable.
-`audior_gui --help` lists the options; `audior_gui --list-devices` prints the
+`Audior-GUI --help` lists the options; `Audior-GUI --list-devices` prints the
 devices as `audior --list-devices` does. Output goes to the console that started
 the program, or to the file or pipe it was redirected to
-(`audior_gui --list-devices | more`).
+(`Audior-GUI --list-devices | more`).
 
 ## How a recording behaves
 
@@ -221,13 +211,58 @@ the program, or to the file or pipe it was redirected to
   finalised into a valid file, and the window says what happened (for example
   `Audio capture failed: the device was unplugged or switched off (hr=0x88890004)`).
   WAV is limited to 4 GiB, about 6 h 12 min.
+
+  ![A recording that ended with a problem: the status pill says Problem, the bottom bar says Audio capture failed and that the audio captured before the problem was kept, and a Show in folder button is offered](docs/screenshots/error.png)
+
 - **Other programs keep their volume.** The recorder opts out of Windows'
   "communications activity" ducking.
+- **Bluetooth headsets switch to call mode.** Opening a headset's microphone makes
+  Windows switch it from stereo music mode to its hands-free (phone call) mode, and
+  back when the recording ends: while recording, the headset's output drops out for
+  about half a second, its volume steps (40 to 45 on the one tested) and the sound is
+  thinner. That is the headset and Windows, not this program, and it cannot be avoided
+  while the microphone is open, so the microphone pane says so when the chosen
+  microphone is Bluetooth, with a **Record system audio only** link that unticks the
+  microphone and ticks system audio in one click. System audio only does not trigger
+  the switch, nor does a microphone that is not Bluetooth. Measurements in
+  [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
+
+  ![The microphone pane with a Bluetooth headset chosen: an amber note says the headset switches to call mode while recording, and a Record system audio only link sits on the right](docs/screenshots/bluetooth-mic.png)
 - **Closing the window, `--stop`, or Stop** all finalise the files and release
   the devices (a Bluetooth headset returns to normal playback).
 - **Stopping from outside.** While recording, the program holds the named event
-  `Local\AudiorStopEvent`, the same one audior uses, so `audior_gui --stop` and
+  `Local\AudiorStopEvent`, the same one audior uses, so `Audior-GUI --stop` and
   `audior --stop` each end a recording started by either.
+
+## Tray and hotkeys
+
+- **Minimizing goes to the tray.** The window leaves the taskbar and the Audior-GUI
+  icon appears in the notification area: a ring while idle, a red dot while
+  recording, with the elapsed time in its tooltip. Click the icon to bring the
+  window back; right-click it for *Show*, *Start recording*, *Stop* and *Exit*. A
+  recording carries on while the window is in the tray, and a balloon says so if
+  one ends with a problem there. A program started minimized (a shortcut set to
+  *Run: Minimized*) goes straight to the tray. Closing the window with the X still
+  stops the recording and exits.
+- **System-wide hotkeys.** **Ctrl+Alt+R** starts a recording and **Ctrl+Alt+S** stops it,
+  in whatever program has the focus, with the window open or in the tray. They do
+  what the buttons do, so Start is ignored while recording and Stop while idle.
+- **Yours to change.** In the *Hotkeys* section of the settings panel click a box
+  and press the new shortcut (Esc cancels, and a shortcut that cannot be used says
+  why and keeps listening). A shortcut is a letter, digit, function key (F1 to
+  F24), Space or a navigation key, with Ctrl and/or Alt (and Shift if you like);
+  a function key may stand alone. Start and Stop must differ, and a shortcut that
+  another program already owns is refused. The pair is remembered for the next run
+  (`HKEY_CURRENT_USER\Software\Audior-GUI`); if a remembered shortcut cannot be
+  taken at start-up, for instance because a second copy of the program is running,
+  its box is outlined in red and it stays off.
+- **A global shortcut is taken from every other program** while Audior-GUI runs.
+  The defaults avoid Ctrl+R and Ctrl+S, which other programs use for *reload* and
+  *save*. On a keyboard layout where AltGr (which Windows treats as Ctrl+Alt) types
+  letters, though, Ctrl+Alt+S or Ctrl+Alt+R may be a character you need (the Polish
+  layout types ś with AltGr+S); choose another pair, such as two function keys.
+
+![The Hotkeys section of the settings panel with the Start box listening: it shows Press keys, and the hint under the boxes says to press the new shortcut or Esc to cancel](docs/screenshots/hotkeys.png)
 
 ## Design
 
@@ -236,6 +271,8 @@ the program, or to the file or pipe it was redirected to
   opens, so a newly plugged-in microphone appears), a **gain** slider, a peak
   level in dB, a **CLIP** flag and its waveform. At least one stream must stay
   ticked.
+
+  ![The microphone at 300% gain clipping: a red CLIP flag and 0 dB above its waveform, while the system audio stream stays below full scale](docs/screenshots/clipping.png)
 - **Scrolling bars.** Bar heights follow a dB scale (about 54 dB of range),
   newest on the right. The playhead glides at the real-time rate even though audio
   arrives in bursts.
@@ -250,17 +287,33 @@ the program, or to the file or pipe it was redirected to
 - **Sharp everywhere.** Everything is laid out in DIPs; the window is
   per-monitor DPI aware.
 - **Idle means idle.** The frame timer runs only while a recording or a waveform
-  is moving.
+  is moving, and a window hidden in the tray draws nothing and ticks only five
+  times a second.
 
 Colours, sizes and the type scale live in `src/ui/theme.h` and `src/ui/gfx.cpp`.
 To see the UI without opening it, render a scenario to a PNG:
 
 ```bat
-bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
+bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
-Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `transcript`, `catching-up`, `model`, `named`, `typing`.
+Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `catching-up` (the transcription has fallen behind), `model` (the
+multilingual model chosen), `named`, `typing`,
+`hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
+program owns).
+
+The pictures in this README and in `docs/` are such scenarios, kept in
+`docs/screenshots/` (named after their scenario, drawn at 1120x720 from simulated
+audio, so they hold nothing from a real PC). **When the window changes, redraw
+them and commit the new pictures with the change:**
+
+```bat
+build.bat x64 screenshots      :: builds, then renders every picture the docs use
+```
+
+If a change adds a picture to the docs, add its scenario to the `:shots` list in
+`build.bat` as well.
 
 ## Architecture
 
@@ -271,11 +324,11 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`. |
 | `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
-| `src/ui` | `AppWindow` (Win32, DPI, frame timer, dialogs, clipboard), `MainView`, `LaneView`, widgets, `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
-| `src/main.cpp`, `src/console.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`. |
+| `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
+| `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the saved hotkeys (registry). |
 | `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. `tests/hardware`: the native hardware tests (`hardware_tests.exe`), which record on real devices. |
 
 ### The recording engine
@@ -298,7 +351,8 @@ in-memory files. The GUI sees audio only as peak bins through
 ## Testing
 
 - **Unit tests** (`run_tests.exe`, run by `build.bat`): settings and file-name
-  rules, the command line, the text-box model, formatting, peak history and
+  rules, the command line, the hotkey rules (which combinations are allowed, their
+  text form) and their saving, the text-box model, formatting, peak history and
   meter, waveform alignment, the controller state machine, the simulated engine,
   sample-format conversion and resampling, ring buffers, the mixer, the WAV and
   MP3 sinks, the recording session (merge, separate, device and disk failures,
@@ -317,13 +371,17 @@ in-memory files. The GUI sees audio only as peak bins through
 
 ## Known limitations
 
+- Recording from a Bluetooth headset's microphone switches the headset to call mode for
+  the duration (see *How a recording behaves*).
 - A microphone whose clock runs faster than the PC's is not trimmed, so a very long
   recording could show a small difference between separate tracks.
-- Every `audior_gui.exe` ends on one machine-wide stop event, so a second recording
+- Every `Audior-GUI.exe` ends on one machine-wide stop event, so a second recording
   program instance, or `--stop` from another one, stops them all.
 - The hardware tests have run on one PC (a Bluetooth headset and two digital outputs);
   other devices, sample rates and wired microphones are untested.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
-- Settings are not remembered between runs.
+- The recording settings are not remembered between runs (only the two hotkeys are).
+- The tray and the hotkeys are exercised by hand (see
+  [docs/FIRST-TEST.md](docs/FIRST-TEST.md)); `ui_smoke.ps1` does not cover them.
 - Shared mode only: a device another program holds exclusively cannot be recorded.

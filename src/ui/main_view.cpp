@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/bluetooth.h"
 #include "../core/format.h"
 
 namespace audiorgui::ui {
@@ -10,6 +11,7 @@ namespace audiorgui::ui {
 namespace {
 
 constexpr float kPi = 3.14159265358979f;
+constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio only" at the small size */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
 const LaneStyle kSystemStyle = {L"System audio", theme::kSystem};
@@ -20,6 +22,9 @@ std::wstring ShareText(int micPercent)
 {
     return L"Mic " + std::to_wstring(micPercent) + L"%  ·  System " + std::to_wstring(100 - micPercent) + L"%";
 }
+
+const wchar_t kHotkeyIdleHint[]   = L"Work in any program. Click one to change it.";
+const wchar_t kHotkeyListenHint[] = L"Press the new shortcut. Esc cancels.";
 
 std::wstring FileName(const std::wstring &path)
 {
@@ -140,17 +145,16 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     startButton_.text = L"Start recording";
     startButton_.style = Button::Style::Primary;
     startButton_.glyph = Button::Glyph::Record;
-    startButton_.onClick = [this] {
-        ctl_.Start();
-        if (host_)
-            host_->Wake();
-        Refresh();
-    };
+    startButton_.onClick = [this] { StartRecording(); };
 
     stopButton_.text = L"Stop";
     stopButton_.glyph = Button::Glyph::Stop;
-    stopButton_.onClick = [this] {
-        ctl_.Stop();
+    stopButton_.onClick = [this] { StopRecording(); };
+
+    bluetoothLink_.style = Button::Style::Link;
+    bluetoothLink_.text = L"Record system audio only";
+    bluetoothLink_.onClick = [this] {                   /* the way round the headset's call mode */
+        UseSystemAudioOnly(&ctl_.Settings());
         Refresh();
     };
 
@@ -161,13 +165,30 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
             host_->ShowInFolder(o.files[0]);
     };
 
+    ConfigureHotkey(HotkeyAction::Start, L"Start");
+    ConfigureHotkey(HotkeyAction::Stop, L"Stop");
+
     Widget *const order[kWidgetCount] = {
-        &micCheck_, &micTranscript_, &micField_, &gain_[0].slider, &systemCheck_, &systemTranscript_,
-        &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_,
-        &shareSlider_, &gpuSwitch_, &languageSeg_, &modelField_, &startButton_, &stopButton_, &showButton_};
+        &micCheck_, &micTranscript_, &micField_, &bluetoothLink_, &gain_[0].slider, &systemCheck_,
+        &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_,
+        &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1], &gpuSwitch_, &languageSeg_,
+        &modelField_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
+    RefreshHotkeys();
     Refresh();
+}
+
+/* The shortcut box of one action, wired to the rules that decide what it may become. */
+void MainView::ConfigureHotkey(HotkeyAction action, const wchar_t *label)
+{
+    KeyBox &box = keyBox_[HotkeyIndex(action)];
+    box.label = label;
+    box.onBegin = [this] {                              /* a fresh try: forget the last complaint */
+        hotkeyProblem_.clear();
+        RefreshHotkeys();
+    };
+    box.onCapture = [this, action](const Hotkey &hotkey) { return ChangeHotkey(action, hotkey); };
 }
 
 /* The gain slider of one stream, wired to the setting it edits. */
@@ -239,6 +260,8 @@ void MainView::Refresh()
     micTranscript_.visible = canTranscribe && s.includeMicrophone;
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
+    micBluetooth_ = s.includeMicrophone && MicrophoneIsBluetooth(ctl_.Devices(DeviceKind::Microphone), s.microphoneId);
+    bluetoothLink_.visible = micBluetooth_ && unlocked;     /* not while recording: the settings are locked */
     gain_[0].slider.value = s.micAmplifyPercent;
     gain_[0].slider.enabled = micField_.enabled;
     gain_[0].text = GainText(s.micAmplifyPercent);
@@ -395,6 +418,94 @@ void MainView::ChooseModel()
     Refresh();
 }
 
+void MainView::StartRecording()
+{
+    if (!CanStart())
+        return;
+    ctl_.Start();
+    if (host_)
+        host_->Wake();
+    Refresh();
+}
+
+void MainView::StopRecording()
+{
+    ctl_.Stop();
+    Refresh();
+}
+
+/* ====================================================================== */
+/* Hotkeys                                                                 */
+/* ====================================================================== */
+
+/* The boxes' text, their outline and the line of advice under them. */
+void MainView::RefreshHotkeys()
+{
+    hotkeyHint_ = hotkeyProblem_;
+    for (int i = 0; i < kHotkeyActionCount; ++i) {
+        keyBox_[i].text = FormatHotkey(hotkeys_[i]);
+        keyBox_[i].invalid = !hotkeyActive_[i];
+        if (hotkeyHint_.empty() && !hotkeyActive_[i])
+            hotkeyHint_ = keyBox_[i].text + L" is in use by another program: it is off.";
+    }
+    hotkeyHintIsError_ = !hotkeyHint_.empty();
+    if (!hotkeyHintIsError_)
+        hotkeyHint_ = kHotkeyIdleHint;
+}
+
+/* A shortcut was typed for `action`.  True if the box is done with it (taken, or
+ * refused for a reason that typing again will not fix); false to keep listening. */
+bool MainView::ChangeHotkey(HotkeyAction action, const Hotkey &candidate)
+{
+    const int i = HotkeyIndex(action), other = kHotkeyActionCount - 1 - i;
+    hotkeyProblem_ = HotkeyProblem(action, candidate, hotkeys_[other]);
+    if (!hotkeyProblem_.empty()) {
+        RefreshHotkeys();
+        return false;
+    }
+
+    if (candidate != hotkeys_[i] || !hotkeyActive_[i]) {        /* an unchanged one that works needs no new registration */
+        if (host_ && !host_->SetHotkey(action, candidate)) {
+            hotkeyProblem_ = FormatHotkey(candidate) + L" is in use by another program.";
+            RefreshHotkeys();
+            return true;
+        }
+        hotkeys_[i] = candidate;
+        hotkeyActive_[i] = true;
+    }
+    RefreshHotkeys();
+    return true;
+}
+
+void MainView::SetHotkey(HotkeyAction action, const Hotkey &hotkey, bool registered)
+{
+    hotkeys_[HotkeyIndex(action)] = hotkey;
+    hotkeyActive_[HotkeyIndex(action)] = registered;
+    RefreshHotkeys();
+}
+
+bool MainView::ListeningForHotkey() const
+{
+    for (const KeyBox &box : keyBox_) {
+        if (box.Capturing())
+            return true;
+    }
+    return false;
+}
+
+void MainView::OfferHotkey(const Hotkey &hotkey)
+{
+    for (KeyBox &box : keyBox_)
+        box.Capture(hotkey);
+}
+
+void MainView::ListenForHotkey(HotkeyAction action)
+{
+    KeyBox &box = keyBox_[HotkeyIndex(action)];
+    FocusOn(&box);
+    box.Key(VK_RETURN);
+}
+
 /* ====================================================================== */
 /* Layout                                                                  */
 /* ====================================================================== */
@@ -405,7 +516,7 @@ void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &tr
     include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
     transcript.rect = RectXYWH(card.left + LaneView::kSwitchLeft, card.top + 11, LaneView::kSwitchWidth,
                                LaneView::kSwitchHeight);
-    device.rect = RectXYWH(card.left + 20, card.top + 48, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
+    device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
 void MainView::Layout(float w, float h)
@@ -424,11 +535,13 @@ void MainView::Layout(float w, float h)
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
     LayoutPane(micCard_, micCheck_, micTranscript_, micField_);
     LayoutPane(systemCard_, systemCheck_, systemTranscript_, systemField_);
+    micNoteRect_ = RectF(micField_.rect.left, micField_.rect.bottom + 2, micCard_.right - 20, micField_.rect.bottom + 20);
+    bluetoothLink_.rect = RectF(micNoteRect_.right - kLinkWidth, micNoteRect_.top, micNoteRect_.right, micNoteRect_.bottom);
     const Button *const fields[kStreamCount] = {&micField_, &systemField_};
     const D2D1_RECT_F *const cards[kStreamCount] = {&micCard_, &systemCard_};
     for (int i = 0; i < kStreamCount; ++i) {            /* the gain sits right of the device drop-down */
         GainControl &gain = gain_[i];
-        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 48, cards[i]->right - 20, cards[i]->top + 84);
+        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 44, cards[i]->right - 20, cards[i]->top + 80);
         gain.slider.rect = RectF(gain.row.left + 40, gain.row.top + 6, gain.row.right - 52, gain.row.bottom - 6);
     }
 
@@ -447,8 +560,13 @@ void MainView::Layout(float w, float h)
     mixSeg_.rect = RectXYWH(x, y, iw, 36);                          y += 36 + 6;
     mixHintRect_ = RectXYWH(x, y, iw, 18);                          y += 18 + 14;
     shareRow_ = RectXYWH(x, y, iw, 18);                             y += 18;
-    shareSlider_.rect = RectXYWH(x, y, iw, 24);                     y += 24 + 16;
-    captions_[4] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
+    shareSlider_.rect = RectXYWH(x, y, iw, 24);                     y += 24 + 14;
+    captions_[4] = {L"HOTKEYS", RectXYWH(x, y, iw, 14)};            y += 18;
+    const float half = (iw - 12.0f) * 0.5f;
+    keyBox_[0].rect = RectXYWH(x, y, half, 36);
+    keyBox_[1].rect = RectXYWH(x + half + 12.0f, y, half, 36);      y += 36 + 4;
+    hotkeyHintRect_ = RectXYWH(x, y, iw, 18);                       y += 18 + 14;
+    captions_[5] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
     gpuSwitch_.rect = RectXYWH(x + iw - 84, y - 4, 84, 22);                                  y += 18;
     languageSeg_.rect = RectXYWH(x, y, 140, 36);
     modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
@@ -508,10 +626,10 @@ TranscriptPane MainView::PaneOf(StreamId stream) const
 void MainView::PaintHeader(Painter &p)
 {
     using namespace theme;
-    p.Text(L"audior", RectF(kMargin, 0, kMargin + 110, kHeaderH), Font::Title, kText);
+    p.Text(L"Audior-GUI", RectF(kMargin, 0, kMargin + 140, kHeaderH), Font::Title, kText);
 
     if (ctl_.IsSimulated()) {
-        const D2D1_RECT_F badge = RectXYWH(kMargin + 92, (kHeaderH - 24) * 0.5f, 188, 24);
+        const D2D1_RECT_F badge = RectXYWH(kMargin + 150, (kHeaderH - 24) * 0.5f, 188, 24);
         p.StrokeRound(badge, 12.0f, WithAlpha(kWarn, 0.55f));
         p.Text(L"DEMO  ·  simulated audio", badge, Font::Label, kWarn, Align::Center);
     }
@@ -534,9 +652,15 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
-/* Each stream's gain label and value (the slider is a widget). */
+/* Each stream's gain label and value (the slider is a widget), and the microphone's Bluetooth note. */
 void MainView::PaintPaneControls(Painter &p)
 {
+    if (micBluetooth_) {
+        D2D1_RECT_F note = micNoteRect_;
+        if (bluetoothLink_.visible)
+            note.right = bluetoothLink_.rect.left - 12.0f;   /* the note gives way to the link */
+        p.Text(BluetoothMicrophoneNote(), note, Font::Small, theme::kWarn);
+    }
     for (const GainControl &gain : gain_) {
         const bool on = gain.slider.enabled;
         const D2D1_RECT_F &row = gain.row;
@@ -562,6 +686,11 @@ void MainView::PaintPanel(Painter &p)
         p.Text(L"Share of the mix", shareRow_, Font::Body, kTextMuted);
         p.Text(shareText_, shareRow_, Font::BodyStrong, kText, Align::Right);
     }
+
+    if (ListeningForHotkey() && hotkeyProblem_.empty())
+        p.Text(kHotkeyListenHint, hotkeyHintRect_, Font::Small, kTextMuted);
+    else
+        p.Text(hotkeyHint_, hotkeyHintRect_, Font::Small, hotkeyHintIsError_ ? kError : kTextFaint);
 }
 
 void MainView::PaintTransport(Painter &p)
@@ -646,7 +775,7 @@ bool MainView::MouseDown(float x, float y)
 {
     focusVisible_ = false;
     pressed_ = HitTest(x, y);
-    focus_ = pressed_;
+    FocusOn(pressed_);
     if (pressed_)
         pressed_->Press(x, y);
     return true;
@@ -667,6 +796,13 @@ void MainView::MouseLeave()
     hot_ = nullptr;
 }
 
+void MainView::FocusOn(Widget *widget)
+{
+    if (focus_ && focus_ != widget)
+        focus_->FocusLost();
+    focus_ = widget;
+}
+
 void MainView::MoveFocus(int direction)
 {
     int i = -1;
@@ -679,7 +815,7 @@ void MainView::MoveFocus(int direction)
     for (int step = 0; step < kWidgetCount; ++step) {
         i = (i + direction + kWidgetCount) % kWidgetCount;
         if (all_[i]->Interactive()) {
-            focus_ = all_[i];
+            FocusOn(all_[i]);
             return;
         }
     }
@@ -692,6 +828,10 @@ bool MainView::Char(wchar_t c)
 
 bool MainView::KeyDown(UINT vk, bool shift)
 {
+    if (focus_ && focus_->Interactive() && focus_->CapturesKeys()) {       /* every key, Tab and Space too */
+        focusVisible_ = true;
+        return focus_->Key(vk);
+    }
     if (vk == VK_TAB) {
         focusVisible_ = true;
         MoveFocus(shift ? -1 : 1);

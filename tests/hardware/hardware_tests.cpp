@@ -1,5 +1,5 @@
 /*
- * hardware_tests.cpp - Records with the real audior_gui.exe on this PC's real audio hardware
+ * hardware_tests.cpp - Records with the real Audior-GUI.exe on this PC's real audio hardware
  * and checks the files it writes.
  *
  *     hardware_tests.exe [--only T1,T6] [--min-seconds 32] [--foreground] [--no-sound] [--keep]
@@ -15,9 +15,11 @@
  *   * The application windows open visibly but behind every other window, without taking the
  *     keyboard focus (see app_process.h), so the PC stays usable and a window can be brought up
  *     from the taskbar to watch.  --foreground opens them normally.  T14 counts how often the
- *     foreground window belonged to the application: clicking one yourself shows up there.
+ *     foreground window belonged to the application: clicking one yourself shows up there.  When it
+ *     fails it says when, for how long, and how long after the last keyboard or mouse input
+ *     (focus_log.h), which tells a click from a window that came forward by itself.
  *   * Nothing else may use the program, the microphone or the stop signal meanwhile: every
- *     instance of audior_gui.exe ends on the same machine-wide stop event, so a second one (or a
+ *     instance of Audior-GUI.exe ends on the same machine-wide stop event, so a second one (or a
  *     second run of these tests) cuts the recordings short.  The tests refuse to start while
  *     another instance runs, and T14 notes any that appears during the run (a short --demo or
  *     screenshot run is harmless; a recording or a --stop is not, and shows in the checks).
@@ -50,6 +52,7 @@
 #include "../temp_dir.h"
 #include "app_process.h"
 #include "audio_probe.h"
+#include "focus_log.h"
 
 namespace {
 
@@ -72,9 +75,8 @@ struct Outcome {
 
 std::vector<Outcome> g_outcomes;
 std::string          g_section;
-int                  g_focusSamples = 0;
-int                  g_focusStolen = 0;
-std::vector<DWORD>   g_strangers;                       /* other audior_gui.exe processes seen while recording */
+FocusLog             g_focus;                           /* when the application's window held the foreground (T14) */
+std::vector<DWORD>   g_strangers;                       /* other copies of the program seen while recording */
 
 std::string Fmt(const char *format, ...)
 {
@@ -253,15 +255,20 @@ struct Take {
     std::vector<double>          usageAt;               /* seconds into the recording of each sample */
 };
 
-/* Remembers any audior_gui.exe other than `own` that is running: it would share the stop signal. */
+/* The program's file name, and the one it had before the rename: a copy built earlier shares its stop signal too. */
+const wchar_t *const kExeNames[] = {L"Audior-GUI.exe", L"audior_gui.exe"};
+
+/* Remembers any copy of the program other than `own` that is running: it would share the stop signal. */
 void NoteStrangers(DWORD own)
 {
-    for (const DWORD id : FindProcesses(L"audior_gui.exe")) {
-        bool known = id == own;
-        for (const DWORD seen : g_strangers)
-            known = known || seen == id;
-        if (!known)
-            g_strangers.push_back(id);
+    for (const wchar_t *name : kExeNames) {
+        for (const DWORD id : FindProcesses(name)) {
+            bool known = id == own;
+            for (const DWORD seen : g_strangers)
+                known = known || seen == id;
+            if (!known)
+                g_strangers.push_back(id);
+        }
     }
 }
 
@@ -293,13 +300,13 @@ Take Record(const std::wstring &exe, const std::wstring &args, const std::vector
             take.usageAt.push_back(now);
             nextSample += 5.0;
         }
-        ++g_focusSamples;
-        if (ForegroundProcessId() == app.Id())
-            ++g_focusStolen;
-        if (g_focusSamples % 10 == 0)
+        g_focus.Sample(g_section.substr(0, g_section.find(' ')), now, ForegroundProcessId() == app.Id(), MillisecondsSinceInput(),
+                       MouseButtonDown());
+        if (g_focus.Samples() % 10 == 0)
             NoteStrangers(app.Id());
         Sleep(100);
     }
+    g_focus.EndRecording();
     take.elapsed = static_cast<double>(GetTickCount64() - begin) / 1000.0;
     if (sampleUsage) {
         take.usage.push_back(app.Sample());
@@ -581,17 +588,17 @@ void T13()
 void T14()
 {
     Section("T14 background windows kept the focus");
-    if (g_focusSamples == 0) {
+    if (g_focus.Samples() == 0) {
         Info("no recording ran, so nothing was observed");
         return;
     }
     if (g_options.foreground)
         Info("--foreground: the windows open normally, so the focus is not checked");
     else
-        Check("the foreground window never belonged to the application during the run", g_focusStolen == 0,
-              Fmt("%d of %d samples; clicking a window yourself counts", g_focusStolen, g_focusSamples));
+        Check("the foreground window never belonged to the application during the run", g_focus.Held() == 0,
+              g_focus.Summary() + (g_focus.Held() ? "; clicking a window yourself counts" : ""));
     if (!g_strangers.empty())
-        Info(Fmt("%d other audior_gui.exe process(es) ran during the run; they share the stop signal, so if a check above failed "
+        Info(Fmt("%d other copy(ies) of the program ran during the run; they share the stop signal, so if a check above failed "
                  "unexpectedly (a recording that ended early), run the tests again",
                  static_cast<int>(g_strangers.size())));
 }
@@ -663,15 +670,15 @@ int wmain(int argc, wchar_t **argv)
         return kSetupError;
 
     const std::wstring dir = DirectoryOfThisProgram();
-    g_exe = dir + L"\\audior_gui.exe";
+    g_exe = dir + L"\\Audior-GUI.exe";
     const bool x64 = sizeof(void *) == 8;
-    g_otherExe = dir + (x64 ? L"\\..\\x86\\audior_gui.exe" : L"\\..\\x64\\audior_gui.exe");
+    g_otherExe = dir + (x64 ? L"\\..\\x86\\Audior-GUI.exe" : L"\\..\\x64\\Audior-GUI.exe");
     if (GetFileAttributesW(g_exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
         std::printf("%s was not found: build the application first.\n", Narrow(g_exe).c_str());
         return kSetupError;
     }
 
-    for (const wchar_t *program : {L"audior_gui.exe", L"hardware_tests.exe"}) {
+    for (const wchar_t *program : {kExeNames[0], kExeNames[1], L"hardware_tests.exe"}) {
         for (const DWORD id : FindProcesses(program)) {
             if (id != GetCurrentProcessId()) {
                 std::printf("%s is already running (process %lu). All instances share one stop signal and the microphone, "

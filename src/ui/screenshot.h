@@ -1,18 +1,18 @@
 /*
  * screenshot.h - Renders the window's content to a PNG without showing a window.
  *
- *     audior_gui.exe --screenshot out.png [--scenario recording] [--size 1120x720]
+ *     Audior-GUI.exe --screenshot out.png [--scenario recording] [--size 1120x720]
  *
  * Uses the same MainView and painter as the real window, over a WIC bitmap
  * with Direct2D's software renderer, driven by a simulated engine on a manual
  * clock, so the picture is identical on every machine.  CI uses it to publish
  * a picture of the UI, and it is a quick way to look at a design change.
  *
- * Scenarios: idle, recording, mic-only, system-only, clipping, saved, error,
- * transcript (both live transcripts mid-sentence), catching-up (the same, but
- * the transcription has fallen behind), model (the multilingual
- * model chosen, idle), named (settings changed),
- * typing (a long file name being edited).
+ * Scenarios: idle, recording, mic-only, system-only, bluetooth-mic (a headset microphone chosen), clipping,
+ * saved, error, transcript (both live transcripts mid-sentence), catching-up (the same, but the transcription
+ * has fallen behind), model (the multilingual model chosen, idle), named (settings changed), typing (a long
+ * file name being edited), hotkeys (a shortcut box waiting for keys), hotkey-taken (a hotkey another program
+ * already owns).
  */
 #pragma once
 

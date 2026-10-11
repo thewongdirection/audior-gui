@@ -1,7 +1,7 @@
 /*
  * cli.h - The command line.
  *
- * audior_gui accepts audior's options, so a script or shortcut written for
+ * Audior-GUI accepts audior's options, so a script or shortcut written for
  * audior works here too:
  *
  *   -o, --output <file>        where to record; giving it starts recording at once

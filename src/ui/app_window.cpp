@@ -9,18 +9,34 @@
 #include <cstring>
 #include <cwchar>
 
+#include "../core/format.h"
+
 namespace audiorgui::ui {
 
 namespace {
 
 const wchar_t kClassName[] = L"AudiorGuiWindow";
+const wchar_t kTitle[] = L"Audior-GUI";
 constexpr UINT_PTR kFrameTimer = 1;
 constexpr UINT kFrameMs = 16;                       /* about 60 frames a second */
+constexpr UINT kHiddenMs = 200;                     /* in the tray: nothing is drawn, so just keep up with the recording */
 constexpr double kMaxFrameSeconds = 0.25;           /* after a stall, do not jump */
 constexpr DWORD kStyle = WS_OVERLAPPEDWINDOW;
 
 constexpr float kStartWidth = 1120.0f, kStartHeight = 720.0f;       /* client size, DIPs */
-constexpr float kMinWidth = 900.0f, kMinHeight = 660.0f;
+constexpr float kMinWidth = 900.0f, kMinHeight = 680.0f;
+
+constexpr UINT kTrayMessage = WM_APP + 1;           /* what the shell sends for the tray icon */
+enum TrayCommand : int { kShowCommand = 1, kStartCommand, kStopCommand, kExitCommand };
+
+/* The modifier bits of core/hotkey.h are Win32's, so they go to RegisterHotKey as they are. */
+static_assert(kModAlt == MOD_ALT && kModCtrl == MOD_CONTROL && kModShift == MOD_SHIFT, "hotkey modifier bits");
+
+UINT TaskbarCreatedMessage()
+{
+    static const UINT message = RegisterWindowMessageW(L"TaskbarCreated");      /* Explorer restarted */
+    return message;
+}
 
 }  // namespace
 
@@ -28,6 +44,14 @@ AppWindow::AppWindow(Gfx &gfx, RecorderController &controller)
     : gfx_(gfx), ctl_(controller), painter_(gfx), view_(controller, this)
 {
     QueryPerformanceFrequency(&frequency_);
+}
+
+AppWindow::~AppWindow()
+{
+    for (HICON icon : windowIcons_) {
+        if (icon)
+            DestroyIcon(icon);
+    }
 }
 
 int AppWindow::ToPixels(float dips) const
@@ -57,21 +81,26 @@ bool AppWindow::Create(HINSTANCE instance, int showCommand)
                   MulDiv(static_cast<int>(kStartHeight), static_cast<int>(systemDpi), 96)};
     AdjustWindowRectExForDpi(&frame, kStyle, FALSE, 0, systemDpi);
 
-    hwnd_ = CreateWindowExW(0, kClassName, L"audior", kStyle, CW_USEDEFAULT, CW_USEDEFAULT,
+    hwnd_ = CreateWindowExW(0, kClassName, kTitle, kStyle, CW_USEDEFAULT, CW_USEDEFAULT,
                             frame.right - frame.left, frame.bottom - frame.top,
                             nullptr, nullptr, instance, this);
     if (!hwnd_)
         return false;
-    ShowWindow(hwnd_, showCommand);
+
+    windowIcons_[0] = MakeAppIcon(GetSystemMetrics(SM_CXSMICON), false);
+    windowIcons_[1] = MakeAppIcon(GetSystemMetrics(SM_CXICON), false);
+    SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(windowIcons_[0]));
+    SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(windowIcons_[1]));
+
+    RegisterSavedHotkeys();
+    ShowWindow(hwnd_, showCommand);                 /* a minimized start goes straight to the tray */
     UpdateWindow(hwnd_);
     return true;
 }
 
 void AppWindow::StartRecording()
 {
-    ctl_.Start();
-    view_.Update();
-    Wake();
+    view_.StartRecording();
     Invalidate();
 }
 
@@ -144,12 +173,24 @@ void AppWindow::Render()
 /* Frame timer                                                             */
 /* ====================================================================== */
 
+UINT AppWindow::FrameMs() const
+{
+    return hidden_ ? kHiddenMs : kFrameMs;
+}
+
 void AppWindow::Wake()
 {
     if (timerOn_)
         return;
     QueryPerformanceCounter(&lastTick_);
-    timerOn_ = SetTimer(hwnd_, kFrameTimer, kFrameMs, nullptr) != 0;
+    timerOn_ = SetTimer(hwnd_, kFrameTimer, FrameMs(), nullptr) != 0;
+}
+
+/* The same timer at the rate that suits the window now (shown or hidden). */
+void AppWindow::RearmTimer()
+{
+    if (timerOn_)
+        SetTimer(hwnd_, kFrameTimer, FrameMs(), nullptr);
 }
 
 void AppWindow::StopTimer()
@@ -169,9 +210,167 @@ void AppWindow::OnTimer()
 
     ctl_.Tick(std::min(elapsed, kMaxFrameSeconds));
     view_.Update();
-    Invalidate();
+    SyncTray();
+    if (!hidden_)
+        Invalidate();
     if (!ctl_.Animating())
         StopTimer();
+}
+
+/* ====================================================================== */
+/* The tray                                                                */
+/* ====================================================================== */
+
+std::wstring AppWindow::TrayTip() const
+{
+    if (ctl_.GetPhase() != Phase::Recording)
+        return kTitle;
+    return std::wstring(kTitle) + L" · recording " + FormatDuration(ctl_.Stats().seconds);
+}
+
+/* Minimizing puts the window in the notification area instead of the taskbar.
+ * If the shell has no notification area, the window just stays minimized. */
+void AppWindow::HideToTray()
+{
+    if (hidden_ || !tray_.Add(hwnd_, kTrayMessage, ctl_.GetPhase() == Phase::Recording, TrayTip()))
+        return;
+    hidden_ = true;
+    traySeconds_ = -2;                              /* so that SyncTray() brings the tip up to date */
+    lastPhase_ = ctl_.GetPhase();
+    ShowWindow(hwnd_, SW_HIDE);
+    RearmTimer();
+}
+
+/* The window is on screen again: the icon goes, and the frame timer speeds up. */
+void AppWindow::LeaveTray()
+{
+    hidden_ = false;
+    tray_.Remove();
+    RearmTimer();
+}
+
+void AppWindow::RestoreFromTray()
+{
+    if (!hidden_)
+        return;
+    LeaveTray();
+    ShowWindow(hwnd_, SW_RESTORE);
+    SetForegroundWindow(hwnd_);
+    Invalidate();
+}
+
+/* Keeps the tray icon true to the recording: its look, and the time in its tip
+ * (changed once a second); and, while hidden, says if a recording that was
+ * running ended with a problem, which no one would otherwise see. */
+void AppWindow::SyncTray()
+{
+    const Phase phase = ctl_.GetPhase();
+    const bool changed = phase != lastPhase_;
+    if (hidden_ && changed && phase == Phase::Idle)
+        ReportProblem();
+    lastPhase_ = phase;
+    if (!hidden_)
+        return;
+
+    const long long seconds = phase == Phase::Recording ? static_cast<long long>(ctl_.Stats().seconds) : -1;
+    if (!changed && seconds == traySeconds_)
+        return;
+    traySeconds_ = seconds;
+    tray_.Update(phase == Phase::Recording, TrayTip());
+}
+
+void AppWindow::ReportProblem()
+{
+    const Outcome &outcome = ctl_.LastOutcome();
+    if (hidden_ && outcome.kind == Outcome::Kind::Failed)
+        tray_.Balloon(L"Audior-GUI: recording problem", outcome.message);
+}
+
+void AppWindow::ShowTrayMenu(int x, int y)
+{
+    HMENU menu = CreatePopupMenu();
+    if (!menu)
+        return;
+    const std::wstring start = L"Start recording\t" + FormatHotkey(keys_[HotkeyIndex(HotkeyAction::Start)]);
+    const std::wstring stop = L"Stop\t" + FormatHotkey(keys_[HotkeyIndex(HotkeyAction::Stop)]);
+    AppendMenuW(menu, MF_STRING, kShowCommand, L"Show Audior-GUI");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | (view_.CanStart() ? 0 : MF_GRAYED), kStartCommand, start.c_str());
+    AppendMenuW(menu, MF_STRING | (ctl_.CanStop() ? 0 : MF_GRAYED), kStopCommand, stop.c_str());
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, kExitCommand, L"Exit");
+    SetMenuDefaultItem(menu, kShowCommand, FALSE);
+
+    SetForegroundWindow(hwnd_);                     /* or the menu would stay open when the user clicks elsewhere */
+    const int command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, x, y, hwnd_, nullptr);
+    PostMessageW(hwnd_, WM_NULL, 0, 0);
+    DestroyMenu(menu);
+
+    switch (command) {
+    case kShowCommand:  RestoreFromTray();                 break;
+    case kStartCommand: OnHotkey(HotkeyAction::Start);     break;
+    case kStopCommand:  OnHotkey(HotkeyAction::Stop);      break;
+    case kExitCommand:  PostMessageW(hwnd_, WM_CLOSE, 0, 0); break;
+    }
+}
+
+/* ====================================================================== */
+/* Hotkeys                                                                 */
+/* ====================================================================== */
+
+/* Makes `hotkey` the system-wide shortcut with slot `index`, giving up the one
+ * it had.  If the system refuses (another program has it), the old one is
+ * put back. */
+bool AppWindow::RegisterHotkey(int index, const Hotkey &hotkey)
+{
+    const int id = index + 1;
+    const auto attempt = [&](const Hotkey &k) { return RegisterHotKey(hwnd_, id, k.modifiers | MOD_NOREPEAT, k.key) != FALSE; };
+    if (registered_[index])
+        UnregisterHotKey(hwnd_, id);
+    if (attempt(hotkey)) {
+        keys_[index] = hotkey;
+        registered_[index] = true;
+        return true;
+    }
+    registered_[index] = registered_[index] && attempt(keys_[index]);
+    return false;
+}
+
+/* Registers what was saved last time (Ctrl+Alt+R and Ctrl+Alt+S the first time) and tells the view. */
+void AppWindow::RegisterSavedHotkeys()
+{
+    for (int i = 0; i < kHotkeyActionCount; ++i) {
+        const HotkeyAction action = static_cast<HotkeyAction>(i);
+        keys_[i] = prefs_.LoadHotkey(action);
+        RegisterHotkey(i, keys_[i]);
+        view_.SetHotkey(action, keys_[i], registered_[i]);
+    }
+}
+
+bool AppWindow::SetHotkey(HotkeyAction action, const Hotkey &hotkey)
+{
+    if (!RegisterHotkey(HotkeyIndex(action), hotkey))
+        return false;
+    prefs_.SaveHotkey(action, hotkey);
+    return true;
+}
+
+/* A hotkey (or its tray menu item) was used: do what the Start or Stop button does. */
+void AppWindow::OnHotkey(HotkeyAction action)
+{
+    if (action == HotkeyAction::Start) {
+        const bool couldStart = view_.CanStart();
+        view_.StartRecording();
+        if (couldStart && ctl_.GetPhase() == Phase::Idle)       /* it did not start: the reason is the outcome */
+            ReportProblem();
+    } else {
+        view_.StopRecording();
+    }
+    if (ctl_.Animating())
+        Wake();
+    SyncTray();
+    if (!hidden_)
+        Invalidate();
 }
 
 /* ====================================================================== */
@@ -194,18 +393,49 @@ LRESULT CALLBACK AppWindow::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
 LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
+    if (message == TaskbarCreatedMessage()) {
+        tray_.Restore();
+        return 0;
+    }
+
     switch (message) {
     case WM_CREATE:
         ApplyTitleBarTheme();
         return 0;
 
     case WM_SIZE:
-        if (wParam != SIZE_MINIMIZED) {
+        if (wParam == SIZE_MINIMIZED) {
+            HideToTray();
+        } else {
+            if (hidden_)                    /* another program restored the window we had put in the tray */
+                LeaveTray();
             const int w = LOWORD(lParam), h = HIWORD(lParam);
             if (target_)
                 target_->Resize(D2D1::SizeU(static_cast<UINT32>(w), static_cast<UINT32>(h)));
             view_.Layout(ToDip(w), ToDip(h));
             Invalidate();
+        }
+        return 0;
+
+    case kTrayMessage:
+        switch (LOWORD(lParam)) {                   /* NOTIFYICON_VERSION_4: the event, and where on the screen in wParam */
+        case NIN_SELECT:
+        case NIN_KEYSELECT:
+            RestoreFromTray();
+            break;
+        case WM_CONTEXTMENU:
+            ShowTrayMenu(GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam));
+            break;
+        }
+        return 0;
+
+    case WM_HOTKEY:
+        if (view_.ListeningForHotkey()) {           /* the user is typing a shortcut that is already ours */
+            view_.OfferHotkey({static_cast<unsigned>(LOWORD(lParam)) & (kModAlt | kModCtrl | kModShift),
+                               static_cast<unsigned>(HIWORD(lParam))});
+            Invalidate();
+        } else if (wParam >= 1 && wParam <= kHotkeyActionCount) {
+            OnHotkey(static_cast<HotkeyAction>(wParam - 1));
         }
         return 0;
 
@@ -301,6 +531,21 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
 
+    case WM_SYSKEYDOWN:                     /* Alt held: only a shortcut being typed wants these */
+        if (view_.ListeningForHotkey()) {
+            view_.KeyDown(static_cast<UINT>(wParam), GetKeyState(VK_SHIFT) < 0);
+            MSG character;                  /* the character this press produced must not open a menu or beep */
+            PeekMessageW(&character, hwnd_, WM_SYSCHAR, WM_SYSCHAR, PM_REMOVE);
+            Invalidate();
+            return 0;
+        }
+        break;
+
+    case WM_KILLFOCUS:                      /* typing elsewhere is not for a shortcut box */
+        view_.WindowDeactivated();
+        Invalidate();
+        return 0;
+
     case WM_CHAR:
         if (view_.Char(static_cast<wchar_t>(wParam))) {
             Invalidate();
@@ -324,6 +569,7 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_DESTROY:
         StopTimer();
+        tray_.Remove();                     /* or the icon would linger until the mouse passes over it */
         PostQuitMessage(0);
         return 0;
     }

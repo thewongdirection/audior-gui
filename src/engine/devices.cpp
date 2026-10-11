@@ -11,6 +11,8 @@
 #include <string>
 #include <utility>
 
+#include "../core/bluetooth.h"
+
 namespace audiorgui {
 
 namespace {
@@ -27,18 +29,25 @@ std::wstring IdOf(IMMDevice *device)
     return id;
 }
 
-std::wstring NameOf(IMMDevice *device)
+/* A text property of the endpoint; empty if it has none. */
+std::wstring TextOf(IMMDevice *device, const PROPERTYKEY &key)
 {
-    std::wstring name = L"Unnamed device";
+    std::wstring text;
     ComPtr<IPropertyStore> store;
     if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, store.GetAddressOf()))) {
         PROPVARIANT value;
         PropVariantInit(&value);
-        if (SUCCEEDED(store->GetValue(PKEY_Device_FriendlyName, &value)) && value.vt == VT_LPWSTR && value.pwszVal)
-            name = value.pwszVal;
+        if (SUCCEEDED(store->GetValue(key, &value)) && value.vt == VT_LPWSTR && value.pwszVal)
+            text = value.pwszVal;
         PropVariantClear(&value);
     }
-    return name;
+    return text;
+}
+
+std::wstring NameOf(IMMDevice *device)
+{
+    std::wstring name = TextOf(device, PKEY_Device_FriendlyName);
+    return name.empty() ? L"Unnamed device" : name;
 }
 
 }  // namespace
@@ -70,6 +79,7 @@ std::vector<DeviceInfo> EnumerateDevices(DeviceKind kind)
         DeviceInfo info;
         info.id = IdOf(device.Get());
         info.name = NameOf(device.Get());
+        info.bluetooth = IsBluetoothEnumerator(TextOf(device.Get(), PKEY_Device_EnumeratorName));
         info.isDefault = !defaultId.empty() && info.id == defaultId;
         devices.push_back(std::move(info));
     }

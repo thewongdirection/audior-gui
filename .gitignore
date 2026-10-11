@@ -15,6 +15,7 @@ build/
 *.mp3
 *.png
 !docs/*.png
+!docs/screenshots/*.png
 
 # Editor / OS
 .vs/
