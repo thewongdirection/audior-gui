@@ -333,10 +333,17 @@ TEST(SessionClock_ConcurrentClaimsSettleOnTheEarliest)
 
 /* ---- stop signal ---- */
 
+TEST(StopSignal_TheTestsNeverTouchTheRealStopEvent)
+{
+    /* The real name is the one audior shares; run_tests.exe uses a name of its own (test_main.cpp), because a
+     * test that signals the real one stops whatever is truly recording, as a hardware test once found out. */
+    CHECK_EQ(std::wstring(kStopEventName), std::wstring(L"Local\\AudiorStopEvent"));
+    CHECK(std::wstring(StopEventName()) != kStopEventName);
+}
+
 TEST(StopSignal_ReachesTheRecordingFromAnotherPlace)
 {
-    /* No other recording (of this program or audior) may be running. */
-    CHECK(!RequestStop());                                              /* nothing to stop */
+    CHECK(!RequestStop());                                              /* nothing to stop: the name is the tests' own */
 
     StopSignal signal;
     CHECK(signal.Create());
