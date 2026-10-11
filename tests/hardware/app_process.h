@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <string>
+#include <vector>
 
 class AppProcess {
 public:
@@ -58,3 +59,6 @@ CliResult RunCli(const std::wstring &exe, const std::wstring &args, DWORD timeou
 
 /* The process that owns the window the keyboard is going to (0 if none). */
 DWORD ForegroundProcessId();
+
+/* The ids of the running processes whose program file is called `exeName` (any folder). */
+std::vector<DWORD> FindProcesses(const wchar_t *exeName);

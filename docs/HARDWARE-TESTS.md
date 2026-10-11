@@ -42,6 +42,11 @@ puts them there). T12 also uses the other architecture's build if it is built.
   restores it with `SW_SHOWNOACTIVATE` and sends it to the bottom of the window stack
   (`tests/hardware/app_process.cpp`). T14 samples the foreground window every 100 ms and fails
   if it ever belongs to the application; clicking a window yourself counts as stolen focus.
+- **Nothing else may record meanwhile.** Every `audior_gui.exe` ends on the same machine-wide stop
+  event (`Local\AudiorStopEvent`) and the microphone is shared, so a second instance recording or
+  sending `--stop` cuts these recordings short. The tests refuse to start while another
+  `audior_gui.exe` or `hardware_tests.exe` is running and T14 notes any that appears during the
+  run (short `--demo` or screenshot runs are harmless).
 - **Bluetooth headsets:** opening the microphone switches the headset to its hands-free
   profile, so its audio quality drops for the duration and music may stutter. That is the
   headset, not the program.
@@ -68,7 +73,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T11 | Closing the window while recording | the window closes with exit 0 and both MP3 files are complete and 30 s+ |
 | T12 | The other architecture's build | mic + system, 30 s+, clock, tone captured, tracks the same length |
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
-| T14 | Focus | the foreground window never belonged to the application during the run |
+| T14 | Focus | the foreground window never belonged to the application during the run; any other `audior_gui.exe` seen during the run is noted (they share the stop signal) |
 
 ### How the files are measured
 
@@ -93,19 +98,22 @@ ducking opt-out).
 
 ## Results on the reference PC
 
-First complete run, 2026-10-11, x64 build, every recording 32 s (T13: 60 s).
+Two complete runs on 2026-10-11, x64 build, every recording 32 s (T13: 60 s), before and after
+the fix described in finding 1.
 
 | | |
 |---|---|
 | PC | Windows 11 Home 10.0.26300, one Bluetooth headset that is both the default microphone and the default playback device, plus two digital playback outputs (on-board S/PDIF, monitor audio) |
 | Toolchain | Visual Studio 2022 Build Tools 17.14, MSVC 14.44, Windows SDK 10.0.26100 (see the README for the one-line install) |
-| Unit tests | 215 of 215 pass, x64 and x86; the import check passes (only in-box DLLs) |
-| Hardware tests | **100 checks: 95 pass, 5 fail** (see below); T14: the foreground window never belonged to the application in 5,732 samples |
+| Unit tests | before the fix 215 of 215, after it 221 of 221 (six new); x64 and x86; the import check passes (only in-box DLLs) |
+| Hardware tests, before the fix | 100 checks: 95 pass, 5 fail (the five "same length" checks) |
+| Hardware tests, after the fix | **100 checks: all pass**; the foreground window never belonged to the application in 5,951 samples |
 
-The 100 checks are those of the first full run (94 passed, 6 failed). Its sixth failure was T13's
-handle check, whose rule was then changed (see finding 2); T13 was re-run on its own with the final
-rule and passes except for the length check, which is the same open finding. The T7, T8 and T10
-tests, refactored after the full run, were re-run and pass.
+The "before" run's T13 handle check had been changed after the first attempt (finding 2) and
+its figures count T13 under the final rule. The "after" run also noted 13 other `audior_gui.exe`
+processes during its 14 minutes, short runs by other sessions on the same PC; it then counted
+that as a failed check (101 checks, 100 passed), which was changed to a note because none of
+them touched a recording (every other check passed).
 
 What passed, on real hardware: MP3 and WAV from the microphone (48 kHz stereo, 128 kbit/s MP3,
 96 and 320 kbit/s within 0.4%, WAV header consistent); every mic-only file within 0.3 s of the
@@ -118,38 +126,55 @@ identically; over a minute the program uses 84 MB private memory (flat), about 1
 
 ## Findings
 
-### 1. OPEN: the system track runs longer than the clock and the microphone track
+### 1. FIXED: the streams started out of step (system track longer than the mic track)
 
-Five checks fail for the same reason. With `--separate` (or `--merge`, where the merged file
-takes the longer length) the system track is longer than the microphone track and than the
-time that actually passed, and the gap **grows with the recording**:
+**Symptom.** With `--separate` the system track was 0.56 to 0.58 s longer than the microphone
+track in every 32 s run, and 1.0 to 1.13 s longer in the 60 s runs; with `--merge` the
+microphone ended up that much early against the system audio.
 
-| Run | Clock | Mic file | System file | System minus mic |
-|---|---|---|---|---|
-| T6, x64 WAV | 32.09 s | 32.230 s | 32.802 s | +0.572 s |
-| T9 device [1] (nothing plays on it) | 32.09 s | 32.230 s | 32.791 s | +0.561 s |
-| T9 device [2] (nothing plays on it) | 32.09 s | 32.250 s | 32.815 s | +0.565 s |
-| T12, x86 WAV | 32.09 s | 32.660 s | 33.227 s | +0.567 s |
-| T13, MP3 | 32.02 s | 32.293 s | 32.869 s | +0.576 s |
-| T13, MP3, 62 s | 62.00 s | 62.245 s | 63.253 s | +1.008 s |
-| T13, MP3, 60 s | 60.03 s | 60.253 s | 61.333 s | +1.080 s |
+| Run | System minus mic, before | after |
+|---|---|---|
+| T6, x64 WAV | +0.572 s | -0.010 s |
+| T9 device [1] (nothing plays on it) | +0.561 s | +0.006 s |
+| T9 device [2] (nothing plays on it) | +0.565 s | -0.017 s |
+| T12, x86 WAV | +0.567 s | +0.006 s |
+| T13, MP3, 32 s / 60 s | +0.576 s / +1.008 to +1.128 s | -0.024 s (60 s) |
 
-- The microphone is fine: it is 0.1 to 0.3 s over the clock (the recording starts just before the
-  window is seen), exactly as in the mic-only runs (T1, T2), and does not drift.
-- The system track is 0.7 s over the clock at 32 s and 1.25 to 1.3 s over at 60 s.
-- It does not depend on what is played (devices that carry no audio show it), on the format (WAV
-  and MP3) or on the architecture (x64 and x86).
-- `SilenceFiller` itself is not the cause: driven alone with a simulated clock and a device that
-  delivers nothing, it writes 31.960 s for 32 s and 61.970 s for 62 s.
+Mic-only recordings are unchanged: 32.27 s of file for a 32.06 s clock (T1).
 
-Effect: in a merged file the microphone ends up early against the system audio by an amount that
-grows with the recording (about 0.6 s after half a minute, about 1 s after a minute); separate
-tracks differ in length and cannot be laid side by side without drift. Where to look next:
-how the loopback stream's frames and padding are counted from `WasapiCapture::Poll`
-(`wasapi_capture.cpp`) through `RecordingSession::Deliver` and `Drain` (`recording_session.cpp`),
-and whether the two streams start from a common origin. A fix needs a regression test with a
-fake clock and a source that delivers nothing, which must produce the clock's length within 50 ms.
-Not fixed in this change; `hardware_tests.exe` keeps reporting it (the "same length" checks).
+**A wrong turn, corrected.** The first reading was that the gap grows with the recording. It
+does not: the two 60 s runs simply met a slower start (see below). What decided it: `WasapiCapture`
+on its own, polled like the session does, is within 0.05 s of the clock for both the microphone
+and the loopback; a kept 60 s recording showed the 12 s test tone exactly 12.000 s long (no
+stretching) starting 2.333 s into the system file although it was played 1 s after the test's
+clock began, and the stretch from the tone's end to the end of the file matched real time
+(47.08 s). So the system file starts earlier than the microphone file.
+
+**Cause.** `RecordingSession` starts every stream on its own thread, and each `WasapiCapture`
+measured time from its own `Start()`. On this headset the microphone's `Start()` blocks 610 to
+720 ms (the headset switches to its hands-free profile) while the loopback's takes 0 ms, so the
+loopback ran about 0.6 s, sometimes over a second, before the microphone delivered anything.
+Only the loopback was ever padded to the clock, so nothing made the microphone catch up.
+`SilenceFiller` itself was correct (31.960 s for 32 s with a simulated clock).
+
+**Fix** (`src/engine/session_clock.h`, `silence_filler.h`, `wasapi_capture.*`,
+`wasapi_engine.cpp`):
+
+- The streams of a recording share one `SessionClock`. Its origin is the moment the first stream's
+  device is *running* (each stream claims it as `client_->Start()` returns). Claiming before
+  `Start()` was tried first and gave a mic-only recording the microphone's whole start-up time as
+  leading silence (T1: 33.8 s for a 32 s clock); a lone stream is now first, so it gets no gap.
+- Every stream, microphone included, pads itself to that clock. The silence goes in *front of* the
+  audio of the poll that found the gap, since the missing time came first.
+- The first gap may be up to 30 s (it is the time the device took to start); later gaps keep the 2 s
+  clock-jump limit.
+- Six regression tests in `tests/test_sinks.cpp`, among them the scenario above (a loopback that
+  starts at once and a microphone that takes 650 ms, polled for 5 s: both tracks end within 50 ms of
+  each other and the microphone starts with 0.64 s of silence).
+
+**Known limits.** A microphone whose clock runs faster than the PC's is not trimmed, so very long
+recordings could still show a small difference; a microphone more than 50 ms behind the clock is
+padded in steps (a guard that was never needed in these runs).
 
 ### 2. The handle count rises during warm-up, then holds (test design, fixed)
 

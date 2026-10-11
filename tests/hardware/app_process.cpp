@@ -162,6 +162,22 @@ CliResult RunCli(const std::wstring &exe, const std::wstring &args, DWORD timeou
     return result;
 }
 
+std::vector<DWORD> FindProcesses(const wchar_t *exeName)
+{
+    std::vector<DWORD> ids;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return ids;
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof entry;
+    for (BOOL more = Process32FirstW(snapshot, &entry); more; more = Process32NextW(snapshot, &entry)) {
+        if (_wcsicmp(entry.szExeFile, exeName) == 0)
+            ids.push_back(entry.th32ProcessID);
+    }
+    CloseHandle(snapshot);
+    return ids;
+}
+
 DWORD ForegroundProcessId()
 {
     DWORD pid = 0;

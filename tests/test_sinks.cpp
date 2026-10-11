@@ -1,11 +1,13 @@
-/* Tests of the file sinks, the stop signal and the silence filler. */
+/* Tests of the file sinks, the stop signal, the silence filler and the session clock. */
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include "../src/engine/hresult.h"
 #include "../src/engine/mp3_sink.h"
+#include "../src/engine/session_clock.h"
 #include "../src/engine/silence_filler.h"
 #include "../src/engine/stop_signal.h"
 #include "../src/engine/wav_sink.h"
@@ -236,6 +238,97 @@ TEST(SilenceFiller_TreatsAHugeGapAsAClockJump)
     CHECK_EQ(filler.Owed(1.9, 0), std::size_t(91200));                  /* a long stall is still padded */
     CHECK_EQ(filler.Owed(1000.0, 0), std::size_t(0));                   /* the PC slept: no 16 minutes of zeros */
     CHECK_EQ(filler.Owed(1000.5, 0), std::size_t(24000));               /* and it counts from there */
+}
+
+TEST(SilenceFiller_PadsALateStartInFrontOfTheFirstAudio)
+{
+    SilenceFiller filler;
+    std::vector<std::int16_t> poll(480 * 2, 7);                         /* 10 ms of audio, just arrived */
+    filler.Pad(0.65, &poll, 0);                                         /* the device took 0.64 s to start */
+    const std::size_t silent = 30720;                                   /* 0.64 s */
+    CHECK_EQ(poll.size(), (silent + 480) * 2);
+    CHECK_EQ(poll.front(), std::int16_t(0));
+    CHECK_EQ(poll[silent * 2 - 1], std::int16_t(0));
+    CHECK_EQ(poll[silent * 2], std::int16_t(7));                        /* the audio follows the silence */
+    CHECK_EQ(poll.back(), std::int16_t(7));
+}
+
+TEST(SilenceFiller_PadLeavesWhatIsBeforeThePollAlone)
+{
+    SilenceFiller filler;
+    std::vector<std::int16_t> out = {1, 2, 3, 4};                       /* an earlier poll's audio */
+    out.insert(out.end(), 960 * 2, 9);                                  /* this poll: 20 ms */
+    filler.Pad(1.0, &out, 4);                                           /* a second has passed in all */
+    CHECK_EQ(out.size(), std::size_t(4 + 48000 * 2));
+    CHECK_EQ(out[3], std::int16_t(4));
+    CHECK_EQ(out[4], std::int16_t(0));                                  /* silence goes between them */
+    CHECK_EQ(out.back(), std::int16_t(9));
+}
+
+TEST(SilenceFiller_TheFirstGapMayBeLongerThanALaterOne)
+{
+    SilenceFiller slowStart;
+    CHECK_EQ(slowStart.Owed(20.0, 0), std::size_t(960000));             /* a device that took 20 s to start */
+
+    SilenceFiller stall;
+    CHECK_EQ(stall.Owed(0.5, 24000), std::size_t(0));
+    CHECK_EQ(stall.Owed(20.5, 0), std::size_t(0));                      /* a later stall that long is a clock jump */
+
+    SilenceFiller hopeless;
+    CHECK_EQ(hopeless.Owed(40.0, 0), std::size_t(0));                   /* past 30 s even a start gap is a jump */
+}
+
+/* The bug the hardware tests found: a loopback starts at once, a Bluetooth microphone takes most of a
+ * second, and each measured time from its own start, so the loopback track came out about 0.6 s longer.
+ * With the clock shared, the microphone begins with the silence it missed and the tracks match. */
+TEST(Streams_ASlowStartingMicrophoneStaysInStepWithTheLoopback)
+{
+    SilenceFiller loopbackFiller, micFiller;
+    std::size_t loopbackFrames = 0;
+    std::vector<std::int16_t> mic;
+    const double micStartsAt = 0.65;
+    for (int step = 1; step <= 500; ++step) {                           /* 5 s of 10 ms polls */
+        const double now = step * 0.010;
+        std::vector<std::int16_t> idle;                                 /* the loopback: nothing playing */
+        loopbackFiller.Pad(now, &idle, 0);
+        loopbackFrames += idle.size() / 2;
+        if (now >= micStartsAt) {                                       /* the microphone: audio from 0.65 s */
+            std::vector<std::int16_t> poll(480 * 2, 5);
+            micFiller.Pad(now, &poll, 0);
+            mic.insert(mic.end(), poll.begin(), poll.end());
+        }
+    }
+    const double micFrames = static_cast<double>(mic.size() / 2);
+    CHECK_NEAR(micFrames / 48000.0, 5.0, 0.05);                         /* both the length of the recording */
+    CHECK_NEAR(loopbackFrames / 48000.0, 5.0, 0.05);
+    CHECK_NEAR(micFrames, static_cast<double>(loopbackFrames), 0.05 * 48000);
+
+    std::size_t leading = 0;                                            /* and the microphone starts silent */
+    while (leading < mic.size() && mic[leading] == 0)
+        ++leading;
+    CHECK_NEAR(static_cast<double>(leading / 2) / 48000.0, 0.64, 0.02);
+}
+
+/* ---- session clock ---- */
+
+TEST(SessionClock_TheEarliestClaimWins)
+{
+    SessionClock clock;
+    CHECK_EQ(clock.Claim(500), 500LL);
+    CHECK_EQ(clock.Claim(900), 500LL);                                  /* a later stream joins the same origin */
+    CHECK_EQ(clock.Claim(300), 300LL);                                  /* one that began earlier moves it back */
+    CHECK_EQ(clock.Claim(400), 300LL);
+}
+
+TEST(SessionClock_ConcurrentClaimsSettleOnTheEarliest)
+{
+    SessionClock clock;
+    std::vector<std::thread> threads;
+    for (long long ticks = 1000; ticks >= 100; ticks -= 100)
+        threads.emplace_back([&clock, ticks] { clock.Claim(ticks); });
+    for (std::thread &t : threads)
+        t.join();
+    CHECK_EQ(clock.Claim(5000), 100LL);
 }
 
 /* ---- stop signal ---- */

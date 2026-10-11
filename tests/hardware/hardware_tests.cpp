@@ -16,6 +16,11 @@
  *     keyboard focus (see app_process.h), so the PC stays usable and a window can be brought up
  *     from the taskbar to watch.  --foreground opens them normally.  T14 counts how often the
  *     foreground window belonged to the application: clicking one yourself shows up there.
+ *   * Nothing else may use the program, the microphone or the stop signal meanwhile: every
+ *     instance of audior_gui.exe ends on the same machine-wide stop event, so a second one (or a
+ *     second run of these tests) cuts the recordings short.  The tests refuse to start while
+ *     another instance runs, and T14 notes any that appears during the run (a short --demo or
+ *     screenshot run is harmless; a recording or a --stop is not, and shows in the checks).
  *   * The recordings go to a scratch folder under %TEMP% that is removed at the end (--keep
  *     leaves it).
  *
@@ -69,6 +74,7 @@ std::vector<Outcome> g_outcomes;
 std::string          g_section;
 int                  g_focusSamples = 0;
 int                  g_focusStolen = 0;
+std::vector<DWORD>   g_strangers;                       /* other audior_gui.exe processes seen while recording */
 
 std::string Fmt(const char *format, ...)
 {
@@ -247,6 +253,18 @@ struct Take {
     std::vector<double>          usageAt;               /* seconds into the recording of each sample */
 };
 
+/* Remembers any audior_gui.exe other than `own` that is running: it would share the stop signal. */
+void NoteStrangers(DWORD own)
+{
+    for (const DWORD id : FindProcesses(L"audior_gui.exe")) {
+        bool known = id == own;
+        for (const DWORD seen : g_strangers)
+            known = known || seen == id;
+        if (!known)
+            g_strangers.push_back(id);
+    }
+}
+
 /* Starts the program, plays the tones, stops it with --stop after the minimum recording time (or
  * `seconds`, if longer) or, with `closeInstead`, by closing its window, and closes the window. */
 Take Record(const std::wstring &exe, const std::wstring &args, const std::vector<Tone> &tones = {}, bool closeInstead = false,
@@ -278,6 +296,8 @@ Take Record(const std::wstring &exe, const std::wstring &args, const std::vector
         ++g_focusSamples;
         if (ForegroundProcessId() == app.Id())
             ++g_focusStolen;
+        if (g_focusSamples % 10 == 0)
+            NoteStrangers(app.Id());
         Sleep(100);
     }
     take.elapsed = static_cast<double>(GetTickCount64() - begin) / 1000.0;
@@ -561,16 +581,19 @@ void T13()
 void T14()
 {
     Section("T14 background windows kept the focus");
-    if (g_options.foreground) {
-        Info("--foreground: the windows open normally, so there is nothing to check");
-        return;
-    }
     if (g_focusSamples == 0) {
-        Info("no recording ran, so the focus was not observed");
+        Info("no recording ran, so nothing was observed");
         return;
     }
-    Check("the foreground window never belonged to the application during the run", g_focusStolen == 0,
-          Fmt("%d of %d samples; clicking a window yourself counts", g_focusStolen, g_focusSamples));
+    if (g_options.foreground)
+        Info("--foreground: the windows open normally, so the focus is not checked");
+    else
+        Check("the foreground window never belonged to the application during the run", g_focusStolen == 0,
+              Fmt("%d of %d samples; clicking a window yourself counts", g_focusStolen, g_focusSamples));
+    if (!g_strangers.empty())
+        Info(Fmt("%d other audior_gui.exe process(es) ran during the run; they share the stop signal, so if a check above failed "
+                 "unexpectedly (a recording that ended early), run the tests again",
+                 static_cast<int>(g_strangers.size())));
 }
 
 struct TestEntry {
@@ -646,6 +669,16 @@ int wmain(int argc, wchar_t **argv)
     if (GetFileAttributesW(g_exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
         std::printf("%s was not found: build the application first.\n", Narrow(g_exe).c_str());
         return kSetupError;
+    }
+
+    for (const wchar_t *program : {L"audior_gui.exe", L"hardware_tests.exe"}) {
+        for (const DWORD id : FindProcesses(program)) {
+            if (id != GetCurrentProcessId()) {
+                std::printf("%s is already running (process %lu). All instances share one stop signal and the microphone, "
+                            "so it would cut these recordings short: close it first.\n", Narrow(program).c_str(), id);
+                return kSetupError;
+            }
+        }
     }
 
     const CliResult devices = RunCli(g_exe, L"--list-devices");

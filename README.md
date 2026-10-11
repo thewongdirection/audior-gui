@@ -4,12 +4,12 @@ A native Windows 10 / 11 recorder with a clean, modern UI: **one live waveform
 for every audio stream being recorded**, big **Start** and **Stop** buttons, and
 **every option of the `audior` command-line recorder** in a side panel.
 
-> **Status: first hardware results are in.** The WASAPI recording engine is covered by
-> tests that run on generated audio, and `hardware_tests.exe` has now recorded with the
-> real application on a real PC (100 checks, 95 pass): microphone and system audio, MP3
-> and WAV, gains, device selection, long-recording stability. One engine problem is
-> open: the system-audio track comes out longer than the microphone track and the
-> clock, by about 0.6 s after half a minute and 1 s after a minute (see
+> **Status: verified on real hardware.** The WASAPI recording engine is covered by
+> tests that run on generated audio, and `hardware_tests.exe` has recorded with the
+> real application on a real PC (100 checks, all pass): microphone and system audio,
+> MP3 and WAV, gains, device selection, long-recording stability. The first run found
+> that a Bluetooth microphone, which takes most of a second to start, left the system
+> track about 0.6 s ahead of the microphone track; that is fixed (see
 > [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md)). To try it yourself follow
 > [docs/FIRST-TEST.md](docs/FIRST-TEST.md). `--demo` runs the window with simulated
 > audio and needs no devices.
@@ -116,8 +116,11 @@ the program, or to the file or pipe it was redirected to
   Foundation encoder.
 - **Merge.** Both streams are mixed with weights that add up to 1, so a merged
   file cannot clip at any split. **Separate** writes two files that span the
-  whole recording and stay aligned: while nothing is playing, the system track is
-  filled with silence instead of ending short.
+  whole recording and stay aligned. All streams share one clock, which starts when
+  the first device is running; a stream that is not delivering is filled with
+  silence up to it, both while nothing is playing (a playback device sends nothing
+  when idle) and while a device is still starting (a Bluetooth microphone needs most
+  of a second), so the tracks begin together and end together.
 - **Gain** is applied before the 16-bit clamp, and the waveform shows the stream
   after its gain, so clipping is visible. Merging weights come afterwards.
 - **Memory stays bounded.** Audio is written to disk as it is recorded; each
@@ -219,11 +222,10 @@ in-memory files. The GUI sees audio only as peak bins through
 
 ## Known limitations
 
-- The system-audio track is longer than the microphone track, and the difference grows
-  with the recording (about 0.6 s after 30 s, 1 s after a minute): separate tracks
-  differ in length, and a merged file has the microphone early against the system audio.
-  Found by the hardware tests, not fixed yet; details in
-  [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md).
+- A microphone whose clock runs faster than the PC's is not trimmed, so a very long
+  recording could show a small difference between separate tracks.
+- Every `audior_gui.exe` ends on one machine-wide stop event, so a second recording
+  program instance, or `--stop` from another one, stops them all.
 - The hardware tests have run on one PC (a Bluetooth headset and two digital outputs);
   other devices, sample rates and wired microphones are untested.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
