@@ -37,7 +37,8 @@ std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrMode
                                             const std::vector<const AsrModel *> &installed, bool keepLanguages)
 {
     std::vector<const AsrModel *> smaller;
-    for (const AsrModel *m = chosen; m-- > table;) {
+    for (std::ptrdiff_t i = chosen - table - 1; i >= 0; --i) {
+        const AsrModel *m = table + i;
         const bool present = std::find(installed.begin(), installed.end(), m) != installed.end();
         if (present && (m->multilingual || !keepLanguages || !chosen->multilingual))
             smaller.push_back(m);
