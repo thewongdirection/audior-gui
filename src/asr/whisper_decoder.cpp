@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <thread>
 
+#include "ggml-backend.h"
 #include "whisper.h"
 
 namespace audiorasr {
@@ -49,11 +50,29 @@ WhisperDecoder::~WhisperDecoder()
         whisper_free(context_);
 }
 
-bool WhisperDecoder::Load(const std::string &path, bool english, std::string *error)
+bool WhisperDecoder::Load(const std::string &path, bool english, bool gpu, const std::string &backendDir,
+                          std::string *error)
 {
     whisper_log_set(Silent, nullptr);                   /* the helper's error output goes nowhere anyway */
+    ggml_log_set(Silent, nullptr);
+
+    /* The backends are DLLs, and only these two, by name, are ever loaded.  A missing or unusable Vulkan one
+     * (no driver, no graphics card) is no problem: the processor does the work. */
+    ggml_backend_load((backendDir + "\\ggml-cpu.dll").c_str());
+    if (gpu)
+        ggml_backend_load((backendDir + "\\ggml-vulkan.dll").c_str());
+
+    device_ = "CPU";
+    for (std::size_t i = 0; gpu && i < ggml_backend_dev_count(); ++i) {     /* the card whisper.cpp will pick: the first */
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        if (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_IGPU) {
+            device_ = ggml_backend_dev_description(dev);
+            break;
+        }
+    }
+
     whisper_context_params params = whisper_context_default_params();
-    params.use_gpu = false;
+    params.use_gpu = gpu;
     context_ = whisper_init_from_file_with_params_no_state(path.c_str(), params);
     if (!context_) {
         *error = "The model could not be loaded.";

@@ -185,6 +185,22 @@ TEST(Asr_TheModelAskedForIsTheOneFound)
     CHECK(FindAsr(programs.Dir(), models.Dir(), &setup, table, 2));                 /* the first is still fine  */
 }
 
+TEST(Asr_TheGraphicsCardBackendIsNotedWhenItIsThere)
+{
+    Pack pack;
+    AsrSetup setup;
+    CHECK(pack.Find(&setup));
+    CHECK(!setup.gpu);                                  /* a helper without the Vulkan backend: the processor only */
+
+    Write(pack.programDir.Path(kGpuBackendFile), "MZ pretend backend");
+    CHECK(pack.Find(&setup));
+    CHECK(setup.gpu);
+
+    DeleteFileW(pack.programDir.Path(kGpuBackendFile).c_str());
+    CHECK(pack.Find(&setup));
+    CHECK(!setup.gpu);                                  /* and it is looked for again each time */
+}
+
 TEST(Asr_TheVoiceActivityModelIsNotedOnlyWhenItIsWhole)
 {
     Pack pack;

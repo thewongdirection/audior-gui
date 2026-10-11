@@ -25,6 +25,7 @@ namespace audiorgui {
 
 inline constexpr wchar_t kHelperFile[]   = L"audior_asr.exe";
 inline constexpr wchar_t kManifestFile[] = L"audior_asr.sha256";
+inline constexpr wchar_t kGpuBackendFile[] = L"ggml-vulkan.dll";    /* optional: the backend for the graphics card */
 
 /* What was found: the helper and the model it will be given. */
 struct AsrSetup {
@@ -34,6 +35,7 @@ struct AsrSetup {
     std::wstring    modelPath;
     const AsrModel *vad = nullptr;      /* the voice-activity model, if it is there too (it is optional) */
     std::wstring    vadPath;
+    bool            gpu = false;        /* the helper has the Vulkan backend next to it (kGpuBackendFile) */
 };
 
 /* The folder the program runs from, and the folder models are looked for in:

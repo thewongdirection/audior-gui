@@ -85,6 +85,9 @@ public:
      * stands for first; empty when it cannot transcribe. */
     virtual std::vector<TranscriptModel> TranscriptModels() const { return {}; }
 
+    /* True if it can also transcribe on the graphics card (RecordingSettings::transcribeGpu). */
+    virtual bool CanTranscribeOnGpu() const { return false; }
+
     /* Where the stream's transcription stands.  Off for a stream that is not
      * being transcribed, and for every stream once the recording has stopped. */
     virtual TranscriptStatus Transcription(StreamId stream)

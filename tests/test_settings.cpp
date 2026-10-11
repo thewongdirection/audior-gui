@@ -198,6 +198,7 @@ TEST(Settings_OnlyAKnownTranscriptionModelIsValid)
     RecordingSettings s;
     s.outputDirectory = L"C:\\Rec";
     CHECK(s.transcribeModel.empty() && s.transcribeLanguage == SpeechLanguage::Auto);
+    CHECK(s.transcribeGpu);                             /* the card is used when there is a backend for it */
     CHECK(Validate(s).empty());                         /* the first model installed */
     s.transcribeModel = kAsrModels[0].file;
     CHECK(Validate(s).empty());

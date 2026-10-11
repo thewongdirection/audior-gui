@@ -80,6 +80,7 @@ public:
                                                        StepDownPolicy), the next of these takes over,
                                                        without using up a restart                  */
         SpeechLanguage language = SpeechLanguage::Auto;     /* and what to take the speech for (Hello) */
+        bool         gpu = true;                    /* and whether it may use the graphics card (Hello) */
         int          maxRestarts    = 3;            /* in a row; then the streams are Failed       */
         int          backoffMs      = 1000;         /* before the first restart; doubles after     */
         int          healthyMs      = 60000;        /* a helper that ran this long before dying

@@ -26,9 +26,13 @@ public:
     WhisperDecoder(const WhisperDecoder &) = delete;
     WhisperDecoder &operator=(const WhisperDecoder &) = delete;
 
-    /* Loads the model (a path in UTF-8).  `english`: take the speech to be English even if the model
-     * could find the language itself.  False, with a reason, if it cannot. */
-    bool Load(const std::string &path, bool english, std::string *error);
+    /* Loads the backends from `backendDir` and the model (a path in UTF-8).  `english`: take the speech to
+     * be English even if the model could find the language itself.  `gpu`: use the graphics card if there
+     * is a backend for it and a card it can use.  False, with a reason, if it cannot. */
+    bool Load(const std::string &path, bool english, bool gpu, const std::string &backendDir, std::string *error);
+
+    /* What it computes on: "CPU", or the graphics card's name. */
+    const std::string &Device() const { return device_; }
 
     /* The text (UTF-8, possibly empty) of `count` samples of 16 kHz mono audio,
      * at most 30 s of it.  False if the engine failed. */
@@ -40,6 +44,7 @@ private:
     whisper_context *context_ = nullptr;
     bool             english_ = true;           /* told so, or a model that knows nothing else */
     int              threads_ = 4;
+    std::string      device_;
     std::vector<float> pcm_;                    /* reused for every utterance */
 };
 

@@ -77,6 +77,7 @@ bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrS
             setup->helper = helper;
             setup->model = model;
             setup->modelPath = Join(modelsDir, model->file);
+            setup->gpu = FileSize(Join(programDir, kGpuBackendFile), &bytes);
             setup->vad = nullptr;
             setup->vadPath.clear();
             if (vad && FileSize(Join(modelsDir, vad->file), &bytes) && bytes == vad->bytes) {

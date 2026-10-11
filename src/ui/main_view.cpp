@@ -114,6 +114,12 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
+    gpuSwitch_.text = L"GPU";
+    gpuSwitch_.accent = theme::kSystem;
+    gpuSwitch_.onChange = [this](bool on) {
+        ctl_.Settings().transcribeGpu = on;
+        Refresh();
+    };
     languageSeg_.options = {L"Auto", L"English"};
     languageSeg_.onChange = [this](int i) {
         ctl_.Settings().transcribeLanguage = i == 0 ? SpeechLanguage::Auto : SpeechLanguage::English;
@@ -158,7 +164,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     Widget *const order[kWidgetCount] = {
         &micCheck_, &micTranscript_, &micField_, &gain_[0].slider, &systemCheck_, &systemTranscript_,
         &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_,
-        &shareSlider_, &languageSeg_, &modelField_, &startButton_, &stopButton_, &showButton_};
+        &shareSlider_, &gpuSwitch_, &languageSeg_, &modelField_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     Refresh();
@@ -285,6 +291,9 @@ void MainView::Refresh()
     const TranscriptModel *model = SelectedModel();
     const bool english = model && !model->multilingual;
     languageSeg_.visible = modelField_.visible = canTranscribe && model;
+    gpuSwitch_.visible = canTranscribe && ctl_.CanTranscribeOnGpu();
+    gpuSwitch_.checked = s.transcribeGpu;
+    gpuSwitch_.enabled = unlocked;
     languageSeg_.selected = english || s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
     languageSeg_.enabled = unlocked && !english;
     modelField_.text = model ? model->label : std::wstring();
@@ -439,7 +448,8 @@ void MainView::Layout(float w, float h)
     mixHintRect_ = RectXYWH(x, y, iw, 18);                          y += 18 + 14;
     shareRow_ = RectXYWH(x, y, iw, 18);                             y += 18;
     shareSlider_.rect = RectXYWH(x, y, iw, 24);                     y += 24 + 16;
-    captions_[4] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};    y += 18;
+    captions_[4] = {ctl_.CanTranscribe() ? L"TRANSCRIPT" : L"", RectXYWH(x, y, iw, 14)};
+    gpuSwitch_.rect = RectXYWH(x + iw - 84, y - 4, 84, 22);                                  y += 18;
     languageSeg_.rect = RectXYWH(x, y, 140, 36);
     modelField_.rect = RectXYWH(x + 152, y, iw - 152, 36);
 

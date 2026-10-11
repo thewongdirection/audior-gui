@@ -17,8 +17,11 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
     recorder (`audior_gui.exe`) stays in-box only. Transcription runs in a
     separate helper process (`audior_asr.exe`, built by `build.bat asr` from
     `src/asr`) that uses a third-party inference library (whisper.cpp, vendored
-    in `third_party`, CPU only so far); later it may use GPU backends, extra
-    DLLs. It does no networking, and neither does the recorder (cloud engines
+    in `third_party`) built as DLLs: ggml and whisper, a CPU backend and, if
+    built with `build.bat vulkan`, a Vulkan backend for the graphics card. Those
+    DLLs and the driver's `vulkan-1.dll` are the only non-Windows DLLs allowed,
+    and only for the helper's own files (`tests/check_imports.ps1 -Allow`; the
+    recorder is never checked with it). It does no networking, and neither does the recorder (cloud engines
     are only a placeholder for now). The helper and its DLLs sit next to the exe, are started by
     absolute path and checked against a hash list first; models are files the
     user downloads (never in the repo); a notices file lists every third-party

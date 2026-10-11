@@ -92,13 +92,29 @@ TEST(Asr_HelloRoundTrips)
     CHECK(r.language == SpeechLanguage::Auto);
     CHECK_EQ(r.text, m.text);
     CHECK(r.vadModel.empty());                          /* none unless one is given */
+    CHECK(r.gpu);                                       /* the card is used unless told not to */
 
+    m.gpu = false;
+    CHECK(!ReadOne(Frame(m)).gpu);
+    m.gpu = true;
     m.language = SpeechLanguage::English;
     m.vadModel = L"C:\\Models\\ggml-silero-v5.1.2.bin";
     const Message again = ReadOne(Frame(m));
     CHECK(again.language == SpeechLanguage::English);
     CHECK_EQ(again.text, m.text);
     CHECK_EQ(again.vadModel, m.vadModel);
+}
+
+TEST(Asr_ANonsensicalGpuFlagIsRefused)
+{
+    Message hello;
+    hello.type = Type::Hello;
+    hello.text = L"m";
+    const std::vector<std::uint8_t> bytes = Frame(hello);
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 4, 0)));                /* after the version, streams and language */
+    CHECK(!IsInvalid(With(bytes, kFrameHeader + 4, 1)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 4, 2)));
+    CHECK(IsInvalid(With(bytes, kFrameHeader + 4, 255)));
 }
 
 TEST(Asr_AHelloWithoutItsSecondPathIsRefused)

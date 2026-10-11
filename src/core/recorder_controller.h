@@ -92,6 +92,7 @@ public:
      * A transcript is kept per stream, like its waveform, and stays on show
      * after the recording until the next one starts. */
     bool CanTranscribe() const { return engine_.CanTranscribe(); }
+    bool CanTranscribeOnGpu() const { return engine_.CanTranscribeOnGpu(); }
 
     /* The models to choose from, as of the start of the program. */
     const std::vector<TranscriptModel> &TranscriptModels() const { return transcriptModels_; }

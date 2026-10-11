@@ -12,7 +12,7 @@
  *
  * and a few of its own:  --system-amplify <0-300>,  --transcribe-mic,
  * --transcribe-system (live transcripts, with --transcribe-model <file> and
- * --transcribe-language auto|en),  --demo (simulated audio).
+ * --transcribe-language auto|en, --transcribe-cpu),  --demo (simulated audio).
  * The options only preset the window; everything stays editable there.
  *
  * Parsing is plain C++ over a list of strings, so it is unit-tested.

@@ -7,11 +7,20 @@
   executable imports must be on the allowlist below, so adding a dependency is a
   deliberate edit to this file.
 
-      check_imports.ps1 <exe> [<exe> ...]
+      check_imports.ps1 [-Allow <dll>[,<dll>...]] <exe> [<exe> ...]
+
+  -Allow names DLLs (without ".dll") that the files given may import besides
+  Windows' own.  Only the optional transcription helper uses it (build.bat asr):
+  its own DLLs (whisper, ggml and the like, which sit next to it and are checked
+  against a hash list before it is started), and for ggml-vulkan.dll the graphics
+  driver's vulkan-1.  The recorder itself, audior_gui.exe, is never checked with
+  it.
 
   dumpbin.exe must be on PATH, as it is after vcvarsall.bat.
 #>
+[CmdletBinding(PositionalBinding = $false)]
 param(
+    [string[]]$Allow = @(),
     [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
     [string[]]$Executables
 )
@@ -25,6 +34,7 @@ $allowed = @(
     'mmdevapi', 'avrt', 'mf', 'mfplat', 'mfreadwrite'
 )
 $allowedPattern = '^api-ms-win-(crt|core)-'
+$allowed += @($Allow | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
 
 $bad = 0
 foreach ($exe in $Executables) {
@@ -42,7 +52,7 @@ foreach ($exe in $Executables) {
         $offenders | ForEach-Object { Write-Host "    $_.dll" }
         $bad++
     } else {
-        Write-Host "check_imports: $exe OK ($($dlls.Count) DLLs, all in-box)"
+        Write-Host "check_imports: $exe OK ($($dlls.Count) DLLs, all in-box$(if ($Allow.Count) { ' or allowed' }))"
     }
 }
 exit $bad

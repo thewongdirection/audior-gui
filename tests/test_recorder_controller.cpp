@@ -496,6 +496,7 @@ TEST(Controller_OffersTheModelsTheEngineHas)
     CHECK(rig.ctl.CanTranscribe());
     CHECK_EQ(models.size(), rig.engine.TranscriptModels().size());
     CHECK_EQ(models[0].file, rig.engine.TranscriptModels()[0].file);
+    CHECK(rig.ctl.CanTranscribeOnGpu());
 }
 
 TEST(Controller_AnEngineThatCannotTranscribeShowsNoTranscript)
@@ -505,6 +506,7 @@ TEST(Controller_AnEngineThatCannotTranscribeShowsNoTranscript)
     ctl.Settings().transcribeMicrophone = true;
     CHECK(!ctl.CanTranscribe());
     CHECK(ctl.TranscriptModels().empty());                          /* nothing to choose from */
+    CHECK(!ctl.CanTranscribeOnGpu());
     CHECK(!ctl.ShowsTranscript(StreamId::Microphone));
     CHECK(ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
     CHECK_EQ(ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));

@@ -57,6 +57,7 @@ public:
 
     bool CanTranscribe() const override { return true; }
     std::vector<TranscriptModel> TranscriptModels() const override;     /* the table's, as if all were installed */
+    bool CanTranscribeOnGpu() const override { return true; }
     TranscriptStatus Transcription(StreamId stream) override;
     std::wstring TranscriptionProblem(StreamId) override { return transcriptFailMessage_; }
     std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override;

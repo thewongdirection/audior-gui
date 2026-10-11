@@ -182,6 +182,8 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
             s.transcribeMicrophone = true;
         } else if (option == L"--transcribe-system") {
             s.transcribeSystem = true;
+        } else if (option == L"--transcribe-cpu") {
+            s.transcribeGpu = false;
         } else if (option == L"--transcribe-model") {
             if (!needValue())
                 continue;
@@ -284,7 +286,8 @@ std::wstring HelpText()
            L"\n"
            L"With no options the window opens. Options preset the window; giving --output starts\n"
            L"recording straight away. The options are audior's, plus --system-amplify,\n"
-           L"--transcribe-mic, --transcribe-system (with --transcribe-model and --transcribe-language)\n"
+           L"--transcribe-mic, --transcribe-system (with --transcribe-model, --transcribe-language\n"
+           L"and --transcribe-cpu)\n"
            L"and --demo.\n"
            L"\n"
            L"Recording:\n"
@@ -311,6 +314,8 @@ std::wstring HelpText()
            L"      --transcribe-language <auto|en>\n"
            L"                               Find the language by itself, or take it to be English\n"
            L"                               (default auto; a model that is English only always is).\n"
+           L"      --transcribe-cpu         Transcribe on the processor only, not on the graphics card\n"
+           L"                               (which is used by default if the engine has support for it).\n"
            L"\n"
            L"Other:\n"
            L"  -l, --list-devices           List the audio devices and exit.\n"

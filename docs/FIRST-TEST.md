@@ -80,8 +80,9 @@ ducking opt-out).
 
 ## 4. Live transcripts (only with the helper and a model)
 
-Skip this if you have not built the helper. Otherwise: `build.bat x64 asr`, keep
-`audior_asr.exe` and `audior_asr.sha256` next to `audior_gui.exe`, and put
+Skip this if you have not built the helper. Otherwise: `build.bat x64 asr` (or
+`vulkan`, for the graphics card too), keep `audior_asr.exe`, its DLLs and
+`audior_asr.sha256` next to `audior_gui.exe`, and put
 `ggml-small.en-q5_1.bin` (181 MiB, from the whisper.cpp page on Hugging Face, see
 the README) in `%LOCALAPPDATA%\audior-gui\models`. Start the program: each pane
 now has a **Transcript** switch. Without the helper or the model it is hidden.
@@ -95,6 +96,7 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | End `audior_asr.exe` in Task Manager while recording | The pane says *Starting…* and then *Live* again; the recording is not affected. Do it four times quickly (it is restarted after each of the first three): the pane says *Transcript stopped*, and the recording carries on and is saved. |
 | Change one byte of `audior_asr.exe` (or delete the model) and start a recording | The pane says the engine's file is not the one in its file list (or the switch disappears); the recording works as always. |
 | Close the window, or press Stop, while someone is mid-sentence | The last words still appear (up to three seconds' wait); afterwards no `audior_asr.exe` is left running. |
+| Built with `vulkan`: a **GPU** switch is in the Transcript section. Record with it on, then off | On: `audior_asr.exe` shows GPU use in Task Manager, text arrives as usual (the first recording on a PC takes several seconds to start). Off: no GPU use, the processor is busier. Move `ggml-vulkan.dll` away (and fix `audior_asr.sha256`): the switch disappears and the processor does the work. |
 | Put `ggml-silero-v5.1.2.bin` in the models folder, play music with no speech and a running fan near the microphone | No text appears for them (compare without the file: the loudness rule may start phrases for the music). Speech over quiet music is still recognised. Damage the file (change one byte): the pane says the model is damaged, and removing the file brings transcripts back. |
 | With `ggml-large-v3-turbo-q5_0.bin` in the models folder too, pick it in the **Transcript** section of the settings panel, leave the language on *Auto*, record someone speaking another language | The text comes out in that language. With *English* chosen it is forced into English words. With only the English-only model, the language buttons are greyed and show *English*. |
 | With the turbo model chosen and *English* as the language, start a heavy job on all cores (a video encode, say) and talk for a minute | The pane turns amber, *Catching up · N s behind*, and text arrives after each pause rather than while you speak. If it stays six seconds behind for ten, it says *smaller model* and the small English model takes over; when the load ends the pane says *Live* again. With *Auto* it never switches (the small model is English only). The recording is unaffected throughout. |

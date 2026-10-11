@@ -201,6 +201,16 @@ TEST(Cli_TheTranscriptionModelAndLanguageCanBeChosen)
     CHECK(Parse({L"--transcribe-language", L"AUTO"}).settings.transcribeLanguage == SpeechLanguage::Auto);
 }
 
+TEST(Cli_TheGraphicsCardIsUsedUnlessTheProcessorIsAskedFor)
+{
+    CHECK(Parse({}).settings.transcribeGpu);
+    CHECK(Parse({L"--transcribe-mic"}).settings.transcribeGpu);
+    const Parsed cpu = Parse({L"--transcribe-cpu", L"--transcribe-mic"});
+    CHECK(cpu.result.error.empty());
+    CHECK(!cpu.settings.transcribeGpu);
+    CHECK(HelpText().find(L"--transcribe-cpu") != std::wstring::npos);
+}
+
 TEST(Cli_AnUnknownTranscriptionModelOrLanguageIsRejected)
 {
     const Parsed model = Parse({L"--transcribe-model", L"mystery.bin"});

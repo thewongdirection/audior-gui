@@ -38,6 +38,7 @@ public:
 
     bool CanTranscribe() const override { return transcribes_; }
     std::vector<TranscriptModel> TranscriptModels() const override { return models_; }
+    bool CanTranscribeOnGpu() const override { return transcribes_ && asr_.gpu; }
     TranscriptStatus Transcription(StreamId stream) override
     {
         return host_ ? host_->Status(stream) : TranscriptStatus();

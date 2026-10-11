@@ -99,6 +99,7 @@ struct Seen {
     std::wstring  text;
     SpeechLanguage language;
     std::wstring  vadModel;
+    bool          gpu;
 };
 
 /* One run of the fake helper: its pipes, its thread and what it saw. */
@@ -113,7 +114,7 @@ struct Instance {
     void Record(const asr::Message &m)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text, m.language, m.vadModel});
+        seen.push_back({m.type, m.stream, m.firstSample, m.sampleCount, m.streams, m.text, m.language, m.vadModel, m.gpu});
     }
     std::vector<Seen> Seen_() const
     {
@@ -314,6 +315,7 @@ TEST(Host_TellsTheHelperTheLanguage)
         TranscriptionHost::Options options = Quick();
         options.language = language;
         options.vadModel = language == SpeechLanguage::English ? L"C:\\Models\\vad.bin" : L"";
+        options.gpu = language == SpeechLanguage::Auto;
         TranscriptionHost host(helpers.Factory(), options);
         host.Start(kMic);
         host.Stop();
@@ -321,6 +323,7 @@ TEST(Host_TellsTheHelperTheLanguage)
         CHECK(!seen.empty() && seen.front().type == asr::Type::Hello);
         CHECK(seen.front().language == language);
         CHECK_EQ(seen.front().vadModel, options.vadModel);      /* the voice-activity model too, or none */
+        CHECK_EQ(seen.front().gpu, options.gpu);                /* and whether the graphics card may be used */
     }
 }
 

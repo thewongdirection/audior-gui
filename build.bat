@@ -8,6 +8,8 @@ REM    build.bat tests           build only the unit tests (fast edit-test loop)
 REM    build.bat notest          build, but do not run the unit tests
 REM    build.bat asr             also build the transcription helper, audior_asr.exe (x64 only; it
 REM                              compiles whisper.cpp with CMake, so it takes a few minutes the first time)
+REM    build.bat vulkan          the same, and with the Vulkan backend for the graphics card (ggml-vulkan.dll;
+REM                              needs the Vulkan SDK from https://vulkan.lunarg.com/sdk/home)
 REM    build.bat hardware        also build the hardware tests (they record, so they are not run)
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
@@ -30,6 +32,7 @@ set "ARCHS="
 set "WANT_APP=1"
 set "RUN_TESTS=1"
 set "WANT_ASR=0"
+set "WANT_VK=0"
 set "WANT_HW=0"
 :parse
 if "%~1"=="" goto :parsed
@@ -38,9 +41,10 @@ if /i "%~1"=="x86"    ( set "ARCHS=!ARCHS! x86"    & shift & goto :parse )
 if /i "%~1"=="tests"  ( set "WANT_APP=0"           & shift & goto :parse )
 if /i "%~1"=="notest" ( set "RUN_TESTS=0"          & shift & goto :parse )
 if /i "%~1"=="asr"    ( set "WANT_ASR=1"           & shift & goto :parse )
+if /i "%~1"=="vulkan" ( set "WANT_ASR=1" & set "WANT_VK=1" & shift & goto :parse )
 if /i "%~1"=="hardware" ( set "WANT_HW=1"          & shift & goto :parse )
 echo Unknown option: %~1
-echo Usage: build.bat [x64] [x86] [tests] [notest] [asr] [hardware]
+echo Usage: build.bat [x64] [x86] [tests] [notest] [asr] [vulkan] [hardware]
 exit /b 2
 :parsed
 if not defined ARCHS set "ARCHS=x86 x64"
@@ -138,20 +142,64 @@ if not exist "%CMAKEDIR%\CMake\bin\cmake.exe" (
 )
 call "%VSDIR%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>nul
 set "PATH=%CMAKEDIR%\CMake\bin;%CMAKEDIR%\Ninja;%PATH%"
-echo Building audior_asr (x64)...
-cmake -S src\asr -B build\asr-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -Wno-dev || goto :asrfail
+set "VKFLAG=OFF"
+if "%WANT_VK%"=="1" (
+    set "VKFLAG=ON"
+    if not defined VULKAN_SDK for /d %%d in (C:\VulkanSDK\*) do set "VULKAN_SDK=%%d"
+    if not defined VULKAN_SDK (
+        echo The Vulkan SDK was not found: install it from https://vulkan.lunarg.com/sdk/home
+        goto :asrfail
+    )
+)
+echo Building audior_asr (x64, Vulkan !VKFLAG!)...
+REM The Vulkan shaders are built by a project inside the project, whose files sit so deep that a checkout in a
+REM folder of any length hits Windows' 260 characters: build from a short drive letter that stands for it.
+set "DRV="
+if "%WANT_VK%"=="1" (
+    for %%L in (Z Y X W V U T) do if not defined DRV if not exist %%L:\ set "DRV=%%L:"
+    if not defined DRV goto :asrfail
+    subst !DRV! "%CD%" || goto :asrfail
+    pushd !DRV!\
+)
+cmake -S src\asr -B build\asr-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DAUDIOR_ASR_VULKAN=!VKFLAG! -Wno-dev || goto :asrfail
 cmake --build build\asr-x64 || goto :asrfail
+if defined DRV (
+    popd
+    subst !DRV! /d
+    set "DRV="
+)
 if not exist "bin\x64" mkdir "bin\x64"
-copy /y "build\asr-x64\out\audior_asr.exe" "bin\x64\audior_asr.exe" >nul || goto :asrfail
+REM No backend may be left over from an earlier build.
+del /q "bin\x64\ggml*.dll" "bin\x64\whisper.dll" 2>nul
+copy /y "build\asr-x64\bin\audior_asr.exe" "bin\x64\audior_asr.exe" >nul || goto :asrfail
+copy /y "build\asr-x64\bin\whisper.dll" "bin\x64\" >nul || goto :asrfail
+copy /y "build\asr-x64\bin\ggml*.dll" "bin\x64\" >nul || goto :asrfail
 
 REM The list of the helper's files with their SHA-256, which the recorder checks before it starts the helper.
-set "ASRHASH="
-for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "bin\x64\audior_asr.exe" SHA256') do if not defined ASRHASH set "ASRHASH=%%h"
-if not defined ASRHASH goto :asrfail
-set "ASRHASH=!ASRHASH: =!"
-> "bin\x64\audior_asr.sha256" echo !ASRHASH!  audior_asr.exe
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 bin\x64\audior_asr.exe || goto :asrfail
+type nul > "bin\x64\audior_asr.sha256"
+for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll) do (
+    set "ASRHASH="
+    for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "%%f" SHA256') do if not defined ASRHASH set "ASRHASH=%%h"
+    if not defined ASRHASH goto :asrfail
+    set "ASRHASH=!ASRHASH: =!"
+    >> "bin\x64\audior_asr.sha256" echo !ASRHASH!  %%~nxf
+)
+
+REM Only Windows' own DLLs may be imported; the helper's own DLLs are allowed to each other, and the Vulkan backend
+REM to the graphics driver's vulkan-1.
+set "OWNDLLS="
+for %%f in (bin\x64\ggml*.dll bin\x64\whisper.dll) do set "OWNDLLS=!OWNDLLS!,%%~nf"
+set "OWNDLLS=!OWNDLLS:~1!"
+for %%f in (bin\x64\audior_asr.exe bin\x64\ggml*.dll bin\x64\whisper.dll) do (
+    set "ALLOWED=!OWNDLLS!"
+    if /i "%%~nxf"=="ggml-vulkan.dll" set "ALLOWED=!OWNDLLS!,vulkan-1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 -Allow "!ALLOWED!" "%%f" || goto :asrfail
+)
 endlocal & exit /b 0
 
 :asrfail
+if defined DRV (
+    popd
+    subst !DRV! /d
+)
 endlocal & exit /b 1

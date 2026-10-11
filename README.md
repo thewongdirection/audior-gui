@@ -139,10 +139,17 @@ speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
 It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
 
-1. **The helper**, `audior_asr.exe` with its `audior_asr.sha256`, next to
-   `audior_gui.exe`. `build.bat x64 asr` builds it (it compiles whisper.cpp, so it
-   needs the *C++ CMake tools for Windows* of Visual Studio, and takes a few
-   minutes the first time).
+1. **The helper**, `audior_asr.exe` with its DLLs and `audior_asr.sha256` (the
+   list of them with their SHA-256), next to `audior_gui.exe`. `build.bat x64 asr`
+   builds it (it compiles whisper.cpp, so it needs the *C++ CMake tools for
+   Windows* of Visual Studio, and takes a few minutes the first time).
+   `build.bat x64 vulkan` builds it with the Vulkan backend (`ggml-vulkan.dll`), so
+   that the graphics card can do the work; that needs the
+   [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) installed. With that DLL a
+   **GPU** switch appears in the Transcript section (`--transcribe-cpu` turns it
+   off from the command line). A PC without a usable Vulkan driver simply uses the
+   processor, and the first use of the card takes several seconds longer while the
+   driver prepares its code.
 2. **A speech model**, downloaded by you into `%LOCALAPPDATA%\audior-gui\models`
    (or the folder named by the `AUDIOR_MODELS` environment variable), from
    <https://huggingface.co/ggerganov/whisper.cpp>: `ggml-small.en-q5_1.bin`

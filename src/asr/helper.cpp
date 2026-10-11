@@ -4,9 +4,10 @@
  *     audior_asr.exe                          the recorder's helper: speaks the protocol of
  *                                             core/asr_protocol.h on standard input and output
  *     audior_asr.exe --file x.wav --model m   transcribes a 16 kHz mono 16-bit WAV through the same
- *       [--vad v] [--english] [--realtime]    pipeline and prints what the recorder would be told
- *                                             (--vad: the Silero model, to cut phrases with it;
+ *       [--vad v] [--english] [--cpu]         pipeline and prints what the recorder would be told
+ *       [--realtime]                          (--vad: the Silero model, to cut phrases with it;
  *                                             --english: take the speech for English;
+ *                                             --cpu: not on the graphics card;
  *                                             --realtime gives the audio at the pace of speech)
  *
  * The audio of each stream goes through an UtteranceTracker (where do phrases
@@ -297,7 +298,11 @@ private:
 bool Begin(const asr::Message &hello, IEvents &events, WhisperDecoder &decoder, std::unique_ptr<Transcriber> *work)
 {
     std::string error;
-    if (!decoder.Load(Utf8(hello.text), hello.language == SpeechLanguage::English, &error)) {
+    wchar_t exe[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring dir(exe, length < MAX_PATH ? length : 0);
+    dir.resize(dir.find_last_of(L'\\') == std::wstring::npos ? 0 : dir.find_last_of(L'\\'));
+    if (!decoder.Load(Utf8(hello.text), hello.language == SpeechLanguage::English, hello.gpu, Utf8(dir), &error)) {
         events.Problem(true, StreamId::Microphone, WideFromUtf8(error));
         return false;
     }
@@ -316,7 +321,9 @@ bool Begin(const asr::Message &hello, IEvents &events, WhisperDecoder &decoder, 
             classifier.reset();
     }
 
-    events.Ready(FileNameOf(hello.text) + L" · CPU, " + std::to_wstring(decoder.Threads()) + L" threads" +
+    events.Ready(FileNameOf(hello.text) + L" · " +
+                 (decoder.Device() == "CPU" ? L"CPU, " + std::to_wstring(decoder.Threads()) + L" threads"
+                                            : WideFromUtf8(decoder.Device()) + L" (GPU)") +
                  (silero ? L" · Silero" : L""));
     *work = std::make_unique<Transcriber>(events, decoder, hello.streams,
                                           silero ? audiorasr::SileroTrackerConfig() : TrackerConfig(), classifiers);
@@ -425,7 +432,8 @@ bool ReadWav(const std::wstring &path, std::vector<std::int16_t> *samples, std::
 }
 
 /* `realtime`: the audio is given at the pace of speech (100 ms every 100 ms), as the recorder does, instead of at once. */
-int RunFile(const std::wstring &wav, const std::wstring &model, const std::wstring &vad, SpeechLanguage language, bool realtime)
+int RunFile(const std::wstring &wav, const std::wstring &model, const std::wstring &vad, SpeechLanguage language, bool gpu,
+            bool realtime)
 {
     ConsoleEvents events(GetStdHandle(STD_OUTPUT_HANDLE));
     std::vector<std::int16_t> samples;
@@ -438,6 +446,7 @@ int RunFile(const std::wstring &wav, const std::wstring &model, const std::wstri
     hello.type = asr::Type::Hello;
     hello.streams = 1;
     hello.language = language;
+    hello.gpu = gpu;
     hello.vadModel = vad;
     hello.text = model;
     WhisperDecoder decoder;
@@ -468,10 +477,13 @@ int wmain(int argc, wchar_t **argv)
     std::wstring wav, model, vad;
     bool realtime = false, understood = true;
     SpeechLanguage language = SpeechLanguage::Auto;
+    bool gpu = true;
     for (int i = 1; i < argc && understood; ++i) {
         const std::wstring option = argv[i];
         if (option == L"--realtime")
             realtime = true;
+        else if (option == L"--cpu")
+            gpu = false;
         else if (option == L"--english")
             language = SpeechLanguage::English;
         else if (i + 1 < argc && option == L"--file")
@@ -484,11 +496,11 @@ int wmain(int argc, wchar_t **argv)
             understood = false;
     }
     if (!understood || wav.empty() || model.empty()) {
-        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--english] [--realtime]\r\n"
+        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--english] [--cpu] [--realtime]\r\n"
                              "(without arguments it is the recorder's helper and speaks on standard input and output)\r\n";
         DWORD written = 0;
         WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), usage, sizeof(usage) - 1, &written, nullptr);
         return 1;
     }
-    return RunFile(wav, model, vad, language, realtime);
+    return RunFile(wav, model, vad, language, gpu, realtime);
 }
