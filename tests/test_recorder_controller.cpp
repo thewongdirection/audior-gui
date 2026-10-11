@@ -612,6 +612,15 @@ TEST(Controller_AsksOnlyForTheTranscriptsSwitchedOn)
 
 namespace {
 
+SetupStatus Status(SetupPhase phase, SetupResult result = SetupResult::None)
+{
+    SetupStatus s;
+    s.phase = phase;
+    s.result = result;
+    s.title = L"title";
+    return s;
+}
+
 /* A set-up source the test speaks for. */
 class FakeSetup : public ISetupSource {
 public:
@@ -625,7 +634,12 @@ public:
     }
     void Answer(bool download) override { answers.push_back(download); }
     void Cancel() override { ++cancels; }
-    void Retry() override { ++retries; }
+    void Retry() override
+    {
+        ++retries;
+        if (scansAtOnce)
+            Say(Status(SetupPhase::Scanning));              /* as the real one does: it has something to say before Retry returns */
+    }
 
     void Say(const SetupStatus &status)
     {
@@ -635,6 +649,7 @@ public:
 
     SetupStatus       next;
     bool              pending = false;
+    bool              scansAtOnce = true;
     std::vector<bool> answers;
     int               cancels = 0, retries = 0;
 };
@@ -665,15 +680,6 @@ struct SetupRig {
             ctl.Tick(0.25);
     }
 };
-
-SetupStatus Status(SetupPhase phase, SetupResult result = SetupResult::None)
-{
-    SetupStatus s;
-    s.phase = phase;
-    s.result = result;
-    s.title = L"title";
-    return s;
-}
 
 }  // namespace
 
@@ -761,11 +767,31 @@ TEST(Setup_NoUsableCardTurnsTheGpuSettingOffOncePerRun)
     rig.ctl.Tick(0.016);
     CHECK(rig.ctl.Settings().transcribeGpu);                        /* and is not overruled by the next message of the same run */
 
-    rig.setup.Say(Status(SetupPhase::Scanning));                    /* a new run (Retry) scans afresh */
-    rig.ctl.Tick(0.016);
+    rig.ctl.RetrySetup();                                           /* a new run scans afresh */
     rig.setup.Say(asking);
     rig.ctl.Tick(0.016);
     CHECK(!rig.ctl.Settings().transcribeGpu);
+}
+
+TEST(Setup_ANewRunFindsOutAfreshEvenIfItsFirstWordIsNeverSeen)
+{
+    SetupRig rig;
+    rig.setup.scansAtOnce = false;                                  /* the controller never sees the new run say "Scanning" */
+    SetupStatus found = Status(SetupPhase::Finished, SetupResult::Ready);
+    found.scanned = true;
+    found.gpuUsable = false;
+    found.modelsChanged = true;
+    rig.setup.Say(found);
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.Settings().transcribeGpu);
+    CHECK_EQ(rig.engine.rescans, 1);
+
+    rig.ctl.Settings().transcribeGpu = true;
+    rig.ctl.RetrySetup();
+    rig.setup.Say(found);                                           /* the set-up has run twice between two looks */
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.Settings().transcribeGpu);                       /* the findings of the new run count */
+    CHECK_EQ(rig.engine.rescans, 2);
 }
 
 TEST(Setup_AUsableCardOrNoScanYetLeavesTheGpuSettingAlone)
@@ -842,11 +868,20 @@ TEST(Setup_RetryBringsTheNotificationBack)
     CHECK(!rig.ctl.SetupVisible());
 
     rig.ctl.RetrySetup();
-    CHECK(rig.ctl.SetupVisible());                                  /* until the set-up has its new say */
+    CHECK(rig.ctl.SetupVisible());
+    CHECK(rig.ctl.Setup().phase == SetupPhase::Scanning);           /* at once: not the old failure, with a live "Try again" */
     CHECK(rig.ctl.SetupBusy());
-    rig.setup.Say(Status(SetupPhase::Scanning));
+}
+
+TEST(Setup_ARetryThatIsRefusedLeavesTheNotificationAlone)
+{
+    SetupRig rig;
+    rig.setup.scansAtOnce = false;                                  /* (a run still in progress ignores Retry) */
+    rig.setup.Say(Status(SetupPhase::Finished, SetupResult::Failed));
     rig.ctl.Tick(0.016);
-    CHECK(rig.ctl.SetupVisible() && rig.ctl.Setup().phase == SetupPhase::Scanning);
+    rig.ctl.DismissSetup();
+    rig.ctl.RetrySetup();
+    CHECK(!rig.ctl.SetupVisible());                                 /* nothing new was said: the dismissal stands */
 }
 
 TEST(Setup_AQuietSetupShowsNothingButKeepsWhatItFoundOut)

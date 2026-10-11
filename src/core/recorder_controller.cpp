@@ -238,10 +238,10 @@ void RecorderController::RetrySetup()
 {
     if (!setupSource_)
         return;
+    gpuApplied_ = modelsApplied_ = false;               /* a new run finds out afresh */
     setupSource_->Retry();
-    setupDismissed_ = false;
     setupAwaitSeconds_ = kSetupAwaitSeconds;
-    ++setupVersion_;
+    TakeSetup();                                        /* it says Scanning at once: no look at the old notification */
 }
 
 void RecorderController::DismissSetup()
@@ -250,29 +250,31 @@ void RecorderController::DismissSetup()
     ++setupVersion_;
 }
 
-/* Takes what the set-up has to say, and applies what it found out. */
+/* Takes what the set-up has to say, if it is something new, and applies what it found out. */
+bool RecorderController::TakeSetup()
+{
+    if (!setupSource_->Poll(&setup_))
+        return false;
+    ++setupVersion_;
+    setupDismissed_ = false;
+    setupShownSeconds_ = 0.0;
+    setupAwaitSeconds_ = 0.0;
+    if (setup_.scanned && !gpuApplied_) {
+        gpuApplied_ = true;
+        if (!setup_.gpuUsable)                          /* only ever turned off: a user's --transcribe-cpu stays */
+            settings_.transcribeGpu = false;
+    }
+    if (setup_.modelsChanged && !modelsApplied_) {
+        modelsApplied_ = true;
+        RefreshTranscription();
+    }
+    return true;
+}
+
 void RecorderController::PollSetup(double dtSeconds)
 {
-    if (!setupSource_)
+    if (!setupSource_ || TakeSetup())
         return;
-    if (setupSource_->Poll(&setup_)) {
-        ++setupVersion_;
-        setupDismissed_ = false;
-        setupShownSeconds_ = 0.0;
-        setupAwaitSeconds_ = 0.0;
-        if (setup_.phase == SetupPhase::Scanning)           /* a new run */
-            gpuApplied_ = modelsApplied_ = false;
-        if (setup_.scanned && !gpuApplied_) {
-            gpuApplied_ = true;
-            if (!setup_.gpuUsable)                          /* only ever turned off: a user's --transcribe-cpu stays */
-                settings_.transcribeGpu = false;
-        }
-        if (setup_.modelsChanged && !modelsApplied_) {
-            modelsApplied_ = true;
-            RefreshTranscription();
-        }
-        return;
-    }
 
     setupAwaitSeconds_ = std::max(0.0, setupAwaitSeconds_ - dtSeconds);
     if (setup_.phase == SetupPhase::Finished && !setupDismissed_ && setup_.result != SetupResult::Failed) {

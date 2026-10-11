@@ -63,7 +63,7 @@ public:
     TranscriptionSetup(const TranscriptionSetup &) = delete;
     TranscriptionSetup &operator=(const TranscriptionSetup &) = delete;
 
-    /* Begins the first run, on a thread of its own; returns at once. */
+    /* Begins the first run, on a thread of its own; returns at once, with the status already Scanning. */
     void Start();
 
     /* ISetupSource (UI thread) */
@@ -91,7 +91,6 @@ private:
 
     std::atomic<bool> stop_{false};                     /* the program is closing */
     std::atomic<bool> cancel_{false};                   /* the user ended the download */
-    std::atomic<bool> running_{false};
     std::thread       thread_;
 };
 

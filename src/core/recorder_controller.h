@@ -142,6 +142,7 @@ private:
     void DrainPeaks();
     void DrainTranscripts();
     void PollSetup(double dtSeconds);
+    bool TakeSetup();
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
@@ -167,7 +168,7 @@ private:
     bool          setupDismissed_ = false;
     double        setupShownSeconds_ = 0.0;     /* how long a finished set-up has been on show */
     double        setupAwaitSeconds_ = 0.0;     /* how much longer to keep polling for the answer to a request */
-    bool          gpuApplied_ = false;          /* this run's findings have been applied */
+    bool          gpuApplied_ = false;          /* this run's findings have been applied (reset by RetrySetup) */
     bool          modelsApplied_ = false;
 };
 

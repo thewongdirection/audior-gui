@@ -68,7 +68,6 @@ private:
     int     ToPixels(float dips) const;
     UINT    FrameMs() const;
     void    RearmTimer();
-    void    EnsureMinimumHeight();
 
     bool    RegisterHotkey(int index, const Hotkey &hotkey);
     void    RegisterSavedHotkeys();

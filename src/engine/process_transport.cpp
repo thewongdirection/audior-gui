@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "../core/settings.h"
 #include "hresult.h"
 
 namespace audiorgui {
@@ -35,12 +36,6 @@ private:
     HANDLE h_ = nullptr;
 };
 
-bool IsAbsolute(const std::wstring &path)
-{
-    return (path.size() > 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/')) ||
-           (path.size() > 2 && path[0] == L'\\' && path[1] == L'\\');
-}
-
 std::wstring Failed(const wchar_t *what)
 {
     return WithHr(what, static_cast<long>(HRESULT_FROM_WIN32(GetLastError())));
@@ -51,7 +46,7 @@ std::wstring Failed(const wchar_t *what)
 std::unique_ptr<ProcessTransport> ProcessTransport::Launch(const std::wstring &exePath, const std::wstring &arguments,
                                                            const Limits &limits, std::wstring *problem)
 {
-    if (!IsAbsolute(exePath)) {
+    if (!IsAbsolutePath(exePath)) {
         *problem = L"The transcription engine's location is not a full path.";
         return nullptr;
     }

@@ -12,8 +12,11 @@
  *   - Windows' own WinHTTP, with the system's proxy settings and certificate
  *     checks, and nothing else: no third-party library;
  *   - only an https address on huggingface.co (where the models of the table in
- *     core/asr_models.h are), with TLS 1.2 or later, redirects allowed but never
- *     from https to http (a model's file is served from a CDN, whose name changes);
+ *     core/asr_models.h are), with TLS 1.2 or later, and no cookies.  Redirects are
+ *     followed, to any https host but never to plain http: a model's file is served
+ *     from a CDN whose name changes, so it is not the host that vouches for the file
+ *     but the SHA-256 the recorder checks, so a redirect cannot make a wrong file
+ *     get used;
  *   - it creates a new file, which must be called "*.part", and writes nothing
  *     else, never more than the size it was told to expect;
  *   - 64 KiB of buffer, whatever the size of the file.
@@ -30,6 +33,7 @@
 #include <string>
 
 #include "../core/fetch_protocol.h"
+#include "../core/settings.h"
 
 namespace {
 
@@ -41,8 +45,7 @@ constexpr wchar_t kAllowedHost[]       = L"huggingface.co";
 constexpr wchar_t kPartSuffix[]        = L".part";
 constexpr unsigned long long kMaxBytes = 4ull << 30;        /* no model is larger than this */
 constexpr DWORD kBufferBytes           = 64 * 1024;
-constexpr unsigned long long kReportBytes = 256 * 1024;     /* progress is told after this much, or ... */
-constexpr DWORD kReportMs              = 250;               /* ... this long */
+constexpr DWORD kReportMs              = 250;               /* progress is told this often (and at the end) */
 constexpr DWORD kTimeoutMs             = 30000;
 constexpr DWORD kTls12                 = 0x00000800;        /* WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 and _TLS1_3 (newer headers only) */
 constexpr DWORD kTls13                 = 0x00002000;
@@ -104,8 +107,6 @@ bool ParseAddress(const std::wstring &url, std::wstring *host, std::wstring *pat
     return SameText(*host, kAllowedHost) && !path->empty();
 }
 
-bool IsAbsolute(const std::wstring &path) { return path.size() > 3 && path[1] == L':' && path[2] == L'\\'; }
-
 bool EndsWith(const std::wstring &text, const wchar_t *suffix)
 {
     const std::wstring s = suffix;
@@ -134,7 +135,7 @@ int Fail(const std::string &why)
 std::string Receive(HINTERNET request, HANDLE file, unsigned long long expected)
 {
     static char buffer[kBufferBytes];
-    unsigned long long total = 0, reported = 0;
+    unsigned long long total = 0;
     DWORD reportedAt = GetTickCount();
     for (;;) {
         DWORD got = 0;
@@ -148,9 +149,8 @@ std::string Receive(HINTERNET request, HANDLE file, unsigned long long expected)
         if (!WriteFile(file, buffer, got, &written, nullptr) || written != got)
             return "the file could not be written (is the disk full?)";
         total += got;
-        if (total - reported >= kReportBytes || GetTickCount() - reportedAt >= kReportMs) {
+        if (GetTickCount() - reportedAt >= kReportMs) {
             Say(ProgressLine(total));
-            reported = total;
             reportedAt = GetTickCount();
         }
     }
@@ -165,7 +165,7 @@ int Download(const std::wstring &url, const std::wstring &path, unsigned long lo
     std::wstring host, resource;
     if (!ParseAddress(url, &host, &resource))
         return Fail("only https addresses on huggingface.co are accepted");
-    if (!IsAbsolute(path) || !EndsWith(path, kPartSuffix))
+    if (!audiorgui::IsAbsolutePath(path) || !EndsWith(path, kPartSuffix))
         return Fail("the file must be given by a full path and end in .part");
     if (expected == 0 || expected > kMaxBytes)
         return Fail("the size is not one a model can have");
@@ -188,6 +188,10 @@ int Download(const std::wstring &url, const std::wstring &path, unsigned long lo
     Internet request(connection ? WinHttpOpenRequest(connection.Get(), L"GET", resource.c_str(), nullptr, WINHTTP_NO_REFERER,
                                                      WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE)
                                 : nullptr);
+    if (request) {
+        DWORD features = WINHTTP_DISABLE_COOKIES;               /* nothing here needs a cookie, and none is kept or sent */
+        WinHttpSetOption(request.Get(), WINHTTP_OPTION_DISABLE_FEATURE, &features, sizeof(features));
+    }
     if (!request || !WinHttpSendRequest(request.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
         !WinHttpReceiveResponse(request.Get(), nullptr))
         return Fail(Describe(GetLastError()));

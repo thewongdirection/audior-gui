@@ -37,6 +37,10 @@ struct World {
     std::wstring              failWith;                                 /* a download of this file fails ... */
     std::wstring              failReason;
     std::wstring              blockFile;                                /* ... and one of this file waits until it is cancelled */
+    std::wstring              cancelDuring;                             /* ... and the user cancels in the instant this file arrives */
+    TranscriptionSetup       *setup = nullptr;                          /* (for that) */
+    std::atomic<bool>         holdScan{false};                          /* the scan of the hardware takes as long as this is set */
+    std::atomic<int>          scans{0};
     std::atomic<bool>         installWaiting{false};
     int                       installMs = 0;                            /* each download takes this long */
     std::atomic<bool>         cancelCalled{false};
@@ -50,7 +54,12 @@ struct World {
     TranscriptionSetup::Environment Env()
     {
         TranscriptionSetup::Environment env;
-        env.scan = [this] { return hardware; };
+        env.scan = [this] {
+            ++scans;
+            while (holdScan)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return hardware;
+        };
         env.backendPresent = backend;
         env.installedModels = [this] { return installed; };
         env.voiceModelInstalled = [this] { return voice; };
@@ -72,6 +81,8 @@ struct World {
                 return false;
             }
             progress(ModelInstaller::Stage::Checking, 0);
+            if (model.file == cancelDuring && setup)
+                setup->Cancel();                                        /* it is whole all the same: this install is done */
             if (&model >= kTable && &model < kTable + 2)
                 installed.push_back(&model);                            /* what a download does to the folder */
             else
@@ -461,4 +472,112 @@ TEST(Setup_PollReportsAChangeOnlyOnce)
     setup.Start();
     CHECK(WaitFor(setup, &s, Finished));
     CHECK(!setup.Poll(&s));                                             /* the same status is not reported twice */
+}
+
+TEST(Setup_ACancelThatComesAsTheLastFileArrivesChangesNothing)
+{
+    World world;
+    world.cancelDuring = L"voice.bin";                                  /* the last file of the plan */
+    TranscriptionSetup setup(world.Env());
+    world.setup = &setup;
+    setup.Start();
+    SetupStatus s;
+    CHECK(WaitFor(setup, &s, Asking));
+    setup.Answer(true);
+    CHECK(WaitFor(setup, &s, Finished));
+    CHECK(s.result == SetupResult::Ready);                              /* everything is in place: not "cancelled" ... */
+    CHECK(s.modelsChanged);                                             /* ... and the recorder is told to look */
+    CHECK_EQ(world.downloads.size(), std::size_t(3));
+}
+
+TEST(Setup_ACancelBetweenTwoFilesStopsBeforeTheNextOne)
+{
+    World world;
+    world.cancelDuring = L"small.bin";                                  /* arrives whole, then the user cancels */
+    TranscriptionSetup setup(world.Env());
+    world.setup = &setup;
+    setup.Start();
+    SetupStatus s;
+    CHECK(WaitFor(setup, &s, Asking));
+    setup.Answer(true);
+    CHECK(WaitFor(setup, &s, Finished));
+    CHECK(s.result == SetupResult::Skipped && Has(s.title, L"cancelled"));
+    CHECK(s.modelsChanged);                                             /* the first one is in place */
+    CHECK_EQ(world.downloads.size(), std::size_t(1));                   /* the next is never started */
+}
+
+TEST(Setup_RetryAfterACancelStartsCleanly)
+{
+    World world;
+    world.blockFile = L"small.bin";
+    TranscriptionSetup setup(world.Env());
+    setup.Start();
+    SetupStatus s;
+    CHECK(WaitFor(setup, &s, Asking));
+    setup.Answer(true);
+    for (int i = 0; i < 5000 && !world.installWaiting; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    CHECK(WaitFor(setup, &s, Downloading));
+    setup.Cancel();
+    CHECK(WaitFor(setup, &s, Finished));
+
+    world.blockFile.clear();                                            /* a better connection */
+    setup.Retry();
+    CHECK(WaitFor(setup, &s, Asking));
+    setup.Answer(true);
+    CHECK(WaitFor(setup, &s, [](const SetupStatus &x) { return x.phase == SetupPhase::Finished; }));
+    CHECK(s.result == SetupResult::Ready && s.modelsChanged);          /* the old cancel is not remembered */
+}
+
+TEST(Setup_TheFirstPollAfterStartAlreadyHasSomethingToSay)
+{
+    World world;
+    world.holdScan = true;                                              /* the thread has not got further than starting */
+    TranscriptionSetup setup(world.Env());
+    setup.Start();
+    SetupStatus s;
+    CHECK(setup.Poll(&s));                                              /* so a window that looks at once is not left with nothing */
+    CHECK(s.phase == SetupPhase::Scanning);
+    world.holdScan = false;
+    CHECK(WaitFor(setup, &s, Asking));
+}
+
+TEST(Setup_RetryIsRefusedWhileARunIsInProgress)
+{
+    World world;
+    world.holdScan = true;
+    TranscriptionSetup setup(world.Env());
+    setup.Start();
+    setup.Retry();                                                      /* still scanning: no second run */
+    world.holdScan = false;
+    SetupStatus s;
+    CHECK(WaitFor(setup, &s, Asking));
+    setup.Retry();                                                      /* asking: not over either */
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK_EQ(world.scans.load(), 1);
+}
+
+TEST(Setup_ClosingWhileScanningWaitsForTheScanAndNothingElse)
+{
+    World world;
+    world.holdScan = true;
+    std::atomic<bool> closed{false};
+    std::thread closer([&] {
+        {
+            TranscriptionSetup setup(world.Env());
+            setup.Start();
+        }                                                               /* destroyed while the hardware is being looked at */
+        closed = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK(!closed);                                                     /* it cannot cut a scan short ... */
+    world.holdScan = false;
+    for (int i = 0; i < 5000 && !closed; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    CHECK(closed);                                                      /* ... but is not held up beyond it */
+    if (closed)
+        closer.join();
+    else
+        closer.detach();
+    CHECK(world.downloads.empty());
 }

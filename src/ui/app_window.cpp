@@ -217,8 +217,7 @@ void AppWindow::OnTimer()
 
     const std::uint32_t setupBefore = ctl_.SetupVersion();
     ctl_.Tick(std::min(elapsed, kMaxFrameSeconds));
-    if (view_.Update())
-        EnsureMinimumHeight();
+    view_.Update();
     SyncTray();
 
     const bool moving = ctl_.Animating();
@@ -229,21 +228,6 @@ void AppWindow::OnTimer()
         StopTimer();
     else
         RearmTimer();
-}
-
-/* If the Transcript section has appeared (a speech model was downloaded) a window that is too short for it grows. */
-void AppWindow::EnsureMinimumHeight()
-{
-    if (hidden_ || IsIconic(hwnd_) || IsZoomed(hwnd_))
-        return;
-    RECT client, frame;
-    GetClientRect(hwnd_, &client);
-    GetWindowRect(hwnd_, &frame);
-    const int needed = ToPixels(kMinHeight + view_.ExtraMinHeight());
-    if (client.bottom >= needed)
-        return;
-    SetWindowPos(hwnd_, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top + (needed - client.bottom),
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 /* ====================================================================== */
@@ -288,7 +272,6 @@ void AppWindow::RestoreFromTray()
         return;
     LeaveTray();
     ShowWindow(hwnd_, SW_RESTORE);
-    EnsureMinimumHeight();
     SetForegroundWindow(hwnd_);
     Invalidate();
 }
@@ -322,7 +305,7 @@ void AppWindow::SyncTray()
 }
 
 /* A window hidden in the tray cannot show the set-up's notification: a balloon says when its question
- * waits for an answer, and how it ended. */
+ * waits for an answer, and how a download ended (not the all-clear of an ordinary start). */
 void AppWindow::TellTrayAboutSetup()
 {
     const SetupStatus &setup = ctl_.Setup();
@@ -330,7 +313,7 @@ void AppWindow::TellTrayAboutSetup()
     if (hidden_ && phase != lastSetupPhase_) {
         if (phase == SetupPhase::Asking)
             tray_.Balloon(L"Audior-GUI: speech model", L"Live transcripts need a speech model. Open the window to download one.", false);
-        else if (phase == SetupPhase::Finished)
+        else if (phase == SetupPhase::Finished && (setup.modelsChanged || setup.result != SetupResult::Ready))
             tray_.Balloon(L"Audior-GUI: speech model", setup.title + L". " + setup.detail, setup.result == SetupResult::Failed);
     }
     lastSetupPhase_ = phase;

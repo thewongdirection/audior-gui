@@ -241,6 +241,34 @@ TEST(Install_NoFolderMeansNoDownload)
     CHECK(Has(problem, L"folder"));
 }
 
+TEST(Install_AFolderThatIsNotAFullPathIsRefusedBeforeAnythingIsWrittenOrDeleted)
+{
+    Case c;
+    for (const wchar_t *folder : {L"models", L"..\\models", L"\\models", L"C:models", L"C:"}) {
+        ModelInstaller::Options options = c.Options("ok");
+        options.modelsDir = folder;
+        ModelInstaller installer(options);
+        std::wstring problem;
+        CHECK(!installer.Install(c.model, nullptr, [] { return false; }, &problem));
+        CHECK(Has(problem, L"not a full path"));
+    }
+    CHECK(c.models.Names().empty());
+}
+
+TEST(Install_AFileThatCannotBeMovedIntoPlaceLeavesNothingBehind)
+{
+    Case c;
+    HANDLE held = CreateFileW(c.models.Path(L"tiny.bin").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+    CHECK(held != INVALID_HANDLE_VALUE);                            /* another program has the old file open */
+    std::wstring problem;
+    CHECK(!c.Install("ok", &problem));
+    CHECK(Has(problem, L"could not be moved"));
+    CloseHandle(held);
+    const std::vector<std::wstring> names = c.models.Names();
+    CHECK_EQ(names.size(), std::size_t(1));                         /* the old file, and no .part beside it */
+    CHECK(!names.empty() && names[0] == L"tiny.bin");
+}
+
 TEST(Install_AFolderThatCouldBreakTheArgumentsIsRefused)
 {
     Case c;
@@ -249,6 +277,6 @@ TEST(Install_AFolderThatCouldBreakTheArgumentsIsRefused)
     ModelInstaller installer(options);
     std::wstring problem;
     CHECK(!installer.Install(c.model, nullptr, [] { return false; }, &problem));
-    CHECK(Has(problem, L"not a valid path"));
+    CHECK(Has(problem, L"not a full path"));
     CHECK(c.models.Names().empty());
 }

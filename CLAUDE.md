@@ -30,7 +30,9 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
     (`src/fetch`, built by every `build.bat`, with its own hash list `audior_fetch.sha256`).
     It uses only Windows' own WinHTTP (the one DLL `check_imports.ps1 -Allow winhttp`
     lets it import; the recorder and the helper must never import it), takes only an
-    https address on `huggingface.co`, writes only a new `*.part` file of at most the size
+    https address on `huggingface.co` (its redirects, to the CDN that really serves a file,
+    may go to any https host: the SHA-256 checked by the recorder, not the host, vouches for
+    the file), sends no cookies, writes only a new `*.part` file of at most the size
     it was told, and is started by the recorder (in a Job object, by absolute path,
     after its hash is checked) only after the user has answered *Download*. The recorder,
     not the program, decides what counts as a model: size and SHA-256 from

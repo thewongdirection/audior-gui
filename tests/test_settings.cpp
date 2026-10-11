@@ -347,3 +347,17 @@ TEST(Validate_ChecksTheFileName)
     s.fileName = L"a?b";
     CHECK(!Validate(s).empty());
 }
+
+TEST(Settings_AFullPathHasADriveOrAShare)
+{
+    CHECK(IsAbsolutePath(L"C:\\models"));
+    CHECK(IsAbsolutePath(L"d:/models"));
+    CHECK(IsAbsolutePath(L"\\\\server\\share\\models"));
+    CHECK(!IsAbsolutePath(L""));
+    CHECK(!IsAbsolutePath(L"models"));
+    CHECK(!IsAbsolutePath(L"..\\models"));
+    CHECK(!IsAbsolutePath(L"\\models"));                    /* the root of the current drive: not a full path */
+    CHECK(!IsAbsolutePath(L"C:models"));                    /* relative to the current folder of drive C */
+    CHECK(!IsAbsolutePath(L"C:"));
+    CHECK(!IsAbsolutePath(L"\\\\"));
+}

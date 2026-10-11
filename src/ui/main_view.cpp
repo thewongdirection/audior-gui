@@ -411,18 +411,14 @@ void MainView::RefreshSetup()
     }
 }
 
-/* The notification's buttons are stacked at its right edge, one alone in the middle. */
+/* The notification's buttons are stacked at its right edge, each always in its own place: a second click on
+ * the spot of "Download" must not land on the "Cancel" that follows it. */
 void MainView::PositionBanner()
 {
     const float x = bannerRect_.right - 16.0f - kBannerButtonWidth;
     const float middle = (bannerRect_.top + bannerRect_.bottom) * 0.5f;
-    if (bannerPrimary_.visible && bannerSecondary_.visible) {
-        bannerPrimary_.rect = RectXYWH(x, middle - kBannerButtonHeight - 4.0f, kBannerButtonWidth, kBannerButtonHeight);
-        bannerSecondary_.rect = RectXYWH(x, middle + 4.0f, kBannerButtonWidth, kBannerButtonHeight);
-    } else {
-        bannerPrimary_.rect = bannerSecondary_.rect =
-            RectXYWH(x, middle - kBannerButtonHeight * 0.5f, kBannerButtonWidth, kBannerButtonHeight);
-    }
+    bannerPrimary_.rect = RectXYWH(x, middle - kBannerButtonHeight - 4.0f, kBannerButtonWidth, kBannerButtonHeight);
+    bannerSecondary_.rect = RectXYWH(x, middle + 4.0f, kBannerButtonWidth, kBannerButtonHeight);
 }
 
 /* One of the notification's buttons (or the Transcript section's link) was used. */
@@ -441,14 +437,10 @@ void MainView::Act(BannerAct act)
     Refresh();
 }
 
-bool MainView::Update()
+void MainView::Update()
 {
     if (ctl_.GetPhase() != lastPhase_ || ctl_.SetupVersion() != setupVersion_)
         Refresh();          /* a recording ended by itself (a device failed), or the set-up has news */
-    const float extra = ExtraMinHeight();
-    const bool taller = extra > extraMinHeight_;
-    extraMinHeight_ = extra;
-    return taller;
 }
 
 void MainView::ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor)
@@ -626,7 +618,6 @@ void MainView::Layout(float w, float h)
     height_ = h;
     bannerShown_ = ctl_.SetupVisible();
     sectionShown_ = ctl_.CanTranscribe() || ctl_.HasSetup();
-    extraMinHeight_ = ExtraMinHeight();
 
     const float bottom = h - kTransportH - kGap;
     const float contentRight = w - kMargin - kPanelW - kGap;

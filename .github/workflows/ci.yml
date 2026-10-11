@@ -64,5 +64,9 @@ jobs:
           name: audior-gui-windows
           path: |
             bin/x64/Audior-GUI.exe
+            bin/x64/audior_fetch.exe
+            bin/x64/audior_fetch.sha256
             bin/x86/Audior-GUI.exe
+            bin/x86/audior_fetch.exe
+            bin/x86/audior_fetch.sha256
           retention-days: 14

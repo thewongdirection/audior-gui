@@ -24,23 +24,26 @@ void TranscriptionSetup::Start() { Launch(false); }
 void TranscriptionSetup::Launch(bool forced)
 {
     if (thread_.joinable())
-        thread_.join();                                 /* the last run has ended (see Retry) */
+        thread_.join();                                 /* the last run has ended, or is about to (see Retry) */
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::mutex> lock(mutex_);      /* Scanning is said here, not by the thread: whoever polls next has something to see */
         reply_ = Reply::Pending;
+        status_ = ScanningStatus();
+        ++version_;
     }
     cancel_ = false;
-    running_ = true;
-    thread_ = std::thread([this, forced] {
-        Run(forced);
-        running_ = false;
-    });
+    thread_ = std::thread([this, forced] { Run(forced); });
 }
 
+/* Only a run that has said its last word can be repeated. */
 void TranscriptionSetup::Retry()
 {
-    if (!running_ && !stop_)
-        Launch(true);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_ || (status_.phase != SetupPhase::Idle && status_.phase != SetupPhase::Finished))
+            return;
+    }
+    Launch(true);
 }
 
 bool TranscriptionSetup::Poll(SetupStatus *out)
@@ -92,7 +95,6 @@ bool TranscriptionSetup::WaitForAnswer(Reply *reply)
 
 void TranscriptionSetup::Run(bool forced)
 {
-    Publish(ScanningStatus());
     const HardwareProfile hardware = env_.scan();
     const std::vector<const AsrModel *> installed = env_.installedModels();
     const SetupPlan plan = PlanSetup(hardware, env_.backendPresent, installed, env_.voiceModelInstalled(), env_.models,
@@ -137,6 +139,10 @@ void TranscriptionSetup::Run(bool forced)
     std::uint64_t before = 0;                           /* the bytes of the files that are done */
     bool any = false;
     for (std::size_t i = 0; i < plan.download.size(); ++i) {
+        if (cancel_) {                                  /* ended between two files */
+            finish(SkippedStatus(true), any);
+            return;
+        }
         const AsrModel &model = *plan.download[i];
         Publish(stamped(DownloadingStatus(plan, i, before)));
         const auto progress = [&](ModelInstaller::Stage stage, std::uint64_t bytes) {
@@ -147,16 +153,16 @@ void TranscriptionSetup::Run(bool forced)
         const bool ok = env_.install(model, progress, [this] { return StopRequested(); }, &problem);
         if (stop_)
             return;                                     /* closing: nobody is left to tell */
-        if (cancel_) {
+        if (ok) {                                       /* whole and in place, whatever came after: a late Cancel changes nothing */
+            before += model.bytes;
+            any = true;
+            continue;
+        }
+        if (cancel_)
             finish(SkippedStatus(true), any);
-            return;
-        }
-        if (!ok) {
+        else
             finish(FailedStatus(L"Download failed", problem), any);
-            return;
-        }
-        before += model.bytes;
-        any = true;
+        return;
     }
 
     const std::vector<const AsrModel *> now = env_.installedModels();

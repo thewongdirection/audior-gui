@@ -46,19 +46,26 @@ bool ModelInstaller::Install(const AsrModel &model, const Progress &progress, co
         if (progress)
             progress(stage, bytes);
     };
+    if (stopped()) {
+        *problem = L"The download was cancelled.";
+        return false;
+    }
+    /* The folder is checked before a single path is made from it, so that nothing is ever written, or deleted, anywhere else. */
+    if (options_.modelsDir.empty()) {
+        *problem = L"There is no folder to keep the speech models in.";
+        return false;
+    }
+    if (!IsAbsolutePath(options_.modelsDir) || options_.modelsDir.find(L'"') != std::wstring::npos) {
+        *problem = L"The folder for the speech models (" + options_.modelsDir + L") is not a full path.";    /* or its quote would break the arguments */
+        return false;
+    }
+
     const std::wstring path = JoinPath(options_.modelsDir, model.file), part = path + L".part";
     const auto fail = [&](const std::wstring &why) {
         DeleteFileW(part.c_str());                          /* no half-finished file is left behind */
         *problem = why;
         return false;
     };
-    if (stopped())
-        return fail(L"The download was cancelled.");
-
-    if (options_.modelsDir.empty())
-        return fail(L"There is no folder to keep the speech models in.");
-    if (options_.modelsDir.find(L'"') != std::wstring::npos)    /* no path has one; it would break the quoting of the arguments */
-        return fail(L"The folder for the speech models is not a valid path.");
     if (options_.verify) {
         const std::wstring why = options_.verify();
         if (!why.empty())

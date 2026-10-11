@@ -65,10 +65,11 @@ if you say yes** (see *Live transcripts* below). When the transcription helper i
 installed but no model is, the program asks whether to download one; if you decline,
 nothing is ever sent and transcription simply is not offered. The download is done by
 a separate small program, `audior_fetch.exe`, so that the recorder itself stays free of
-networking code. It uses only Windows' own WinHTTP; speaks HTTPS to `huggingface.co`
-and nothing else; creates one new `.part` file and writes nothing else; and what it
-brings is checked by the recorder against the size and SHA-256 published for that model
-before it is used. Delete `audior_fetch.exe` and the program cannot download anything.
+networking code. It uses only Windows' own WinHTTP; asks `huggingface.co` over HTTPS
+(which sends it on to the CDN that serves the file) and no other address; creates one
+new `.part` file and writes nothing else; and what it brings is checked by the recorder
+against the size and SHA-256 published for that model before it is used, so a file from
+anywhere else would simply be refused. Delete `audior_fetch.exe` and the program cannot download anything.
 Your audio never leaves the PC. Transcription runs in a separate helper program, so
 neither a model nor a problem in it can touch a recording, and the recorder itself
 stays dependency-free. A transcription problem never stops or damages a recording.

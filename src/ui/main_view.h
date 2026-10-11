@@ -78,12 +78,12 @@ public:
     void Layout(float width, float height);
 
     /* How much taller than the window's base minimum it must be for every control of the settings
-     * panel to fit: the Transcript section exists only when transcription is installed. */
+     * panel to fit: the Transcript section exists only when the transcription helper is installed
+     * (without a speech model it says so, and offers to download one). */
     float ExtraMinHeight() const;
 
-    /* Call after each RecorderController::Tick().  True if the window must now be taller than its
-     * minimum height was (the Transcript section has appeared). */
-    bool Update();
+    /* Call after each RecorderController::Tick(). */
+    void Update();
 
     void Paint(Painter &painter);
 
@@ -195,7 +195,6 @@ private:
     std::uint32_t bannerLayoutVersion_ = 0;
     float         bannerLayoutWidth_ = 0.0f;
     std::uint32_t setupVersion_ = 0;
-    float         extraMinHeight_ = 0.0f;
     bool          sectionShown_ = false;
 
     LaneView micView_, systemView_;

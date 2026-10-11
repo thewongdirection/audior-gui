@@ -122,6 +122,13 @@ std::wstring DefaultBaseName(const LocalTime &t);
 
 const wchar_t *ExtensionFor(Format format);                 /* L".mp3" / L".wav" */
 
+/* A full path: a drive and a separator ("C:\x", "C:/x") or a network share ("\\server\share"). */
+inline bool IsAbsolutePath(const std::wstring &path)
+{
+    return (path.size() > 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/')) ||
+           (path.size() > 2 && path[0] == L'\\' && path[1] == L'\\');
+}
+
 /* `dir` + `\` + `name`, without doubling a trailing separator. */
 std::wstring JoinPath(const std::wstring &dir, const std::wstring &name);
 

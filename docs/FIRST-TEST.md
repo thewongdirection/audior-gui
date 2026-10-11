@@ -157,6 +157,18 @@ folder, and the registry value `DownloadDeclined` under `HKEY_CURRENT_USER\Softw
 | Remove `audior_fetch.exe` | The notification says a model can be put in the folder by hand; transcription with a model that is there is not affected. |
 | `Audior-GUI --demo` | No notification at all: the demo has its own simulated models. |
 
+The download program can also be run by hand, which is the way to check its network paths (the
+unit tests only cover what it refuses before it touches the network):
+`audior_fetch.exe <address> <full path ending in .part> <size>`.
+
+| Try | Expect |
+|---|---|
+| The address and size of `ggml-silero-v5.1.2.bin` (see `src/core/asr_models.h`; the address is the source, then `/resolve/main/`, then the file name), a path in an empty folder | Lines `P <bytes>` about four times a second, `P <size>` and `D`; the file has exactly that size and the SHA-256 of the table. |
+| The same with a size that is one byte off | `E the file on the server is not the size it should be`, and no file is created. |
+| The same for a file that does not exist on the server | `E the server answered with HTTP status 404`, no file. |
+| The same with a path of a file that already exists | `E the file could not be created (80)`, and the existing file is untouched. |
+| Unplug the network in the middle of a large model | An `E` line, and the `.part` file is gone. |
+
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of
