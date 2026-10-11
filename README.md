@@ -64,28 +64,22 @@ loaded on demand, so the program also starts on a Windows N edition without it
 
 ## What works offline, and what needs the internet
 
-**Today everything is local.** Recording both streams, the gains, the merge, WAV and
-MP3 encoding, the waveforms and every command-line option work with no connection,
-no account and no key. The program sends nothing anywhere: it contains no networking
-code, and `tests\check_imports.ps1` fails the build if the executable ever imports a
-networking DLL. Unplugging the network changes nothing.
+**Everything is local.** Recording both streams, the gains, the merge, WAV and MP3
+encoding, the waveforms, live transcripts and every command-line option work with no
+connection, no account and no key. The program sends nothing anywhere: neither the
+recorder nor the transcription helper contains networking code, and
+`tests\check_imports.ps1` fails the build if either imports a networking DLL.
+Unplugging the network changes nothing.
 
-**Live transcription is planned, not built.** `main` has no transcription code yet.
-The design is a live transcript scrolling in each stream's pane, local first; details
-may change before it ships.
+The internet is used for one thing only, and not by this program: you download a
+speech model once, in your browser (see *Live transcripts* below). Your audio never
+leaves the PC. Transcription runs in a separate helper program, so neither a model nor
+a problem in it can touch a recording, and the recorder itself stays dependency-free.
+A transcription problem never stops or damages a recording.
 
-| | Offline: only what is installed on the PC | Online: an internet connection and an API key |
-|---|---|---|
-| Recording, mixing, MP3 and WAV, waveforms, command line | All of it (available now) | No difference: recording never uses the network |
-| Live transcript (planned) | A speech-to-text model that runs on your own CPU, with GPU acceleration to follow. You download the model file once; it is never bundled with the program. After that no connection is needed and your audio never leaves the PC | Streaming transcription by a cloud service (Deepgram is the first planned). Needs a connection and your own API key, and your audio is sent to that service. Off unless you switch it on, and the pane shows when it is in use |
-| Where the key lives (planned) | Not needed | Windows Credential Manager. Never in the settings, on the command line or in a log |
-
-The internet would be used for exactly two things: the one-time download of a model,
-and cloud transcription if you turn it on. An *Auto* choice would pick a local model
-from what the PC has free (GPU memory, CPU, battery) and never use the cloud unless
-you enabled it. Transcription would run in a separate helper program, so neither a
-model nor a GPU driver problem can touch a recording, and the recorder itself stays
-dependency-free. A transcription problem never stops or damages a recording.
+**Cloud transcription is a placeholder.** Nothing for it is built. If it is ever added
+it will be opt-in, off unless you switch it on, and the pane will show when it is in
+use.
 
 ## Build and run
 

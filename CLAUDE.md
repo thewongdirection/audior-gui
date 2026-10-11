@@ -18,11 +18,11 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
     separate helper process (`audior_asr.exe`, built by `build.bat asr` from
     `src/asr`) that uses a third-party inference library (whisper.cpp, vendored
     in `third_party`, CPU only so far); later it may use GPU backends, extra
-    DLLs and, opt-in only, the internet. The helper and its DLLs sit next to the exe, are started by
+    DLLs. It does no networking, and neither does the recorder (cloud engines
+    are only a placeholder for now). The helper and its DLLs sit next to the exe, are started by
     absolute path and checked against a hash list first; models are files the
     user downloads (never in the repo); a notices file lists every third-party
-    library and model licence; API keys live in Credential Manager, never in
-    settings, the command line or logs. A failing helper never ends a recording.
+    library and model licence. A failing helper never ends a recording.
 - **audior is private; this repository is public.** Never copy audior's source
   (or its docs) here. The recording engine in this repo is its own WASAPI
   implementation behind `IRecordingEngine`. audior's *behaviour* (options,
