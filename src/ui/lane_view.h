@@ -25,8 +25,8 @@ struct LaneStyle {
 
 class LaneView {
 public:
-    /* Where the waveform starts, below the pane's controls. */
-    static constexpr float kControlsHeight = 96.0f;
+    /* Where the waveform starts, below the pane's controls and the line of note under them. */
+    static constexpr float kControlsHeight = 100.0f;
 
     /* `included`: the stream is part of the recording (else the pane is dimmed
      * and says so).  `recording` only changes the hint shown while the lane is

@@ -125,7 +125,8 @@ private:
     bool    focusVisible_ = false;      /* the focus ring shows only for keyboard use */
 
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
-    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {};
+    D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, micNoteRect_ = {};
+    bool        micBluetooth_ = false;  /* the microphone to be recorded is a Bluetooth one: say what that does */
     Caption     captions_[4] = {};
 
     LaneView micView_, systemView_;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/bluetooth.h"
 #include "../core/format.h"
 
 namespace audiorgui::ui {
@@ -209,6 +210,7 @@ void MainView::Refresh()
     micCheck_.enabled = unlocked;
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
+    micBluetooth_ = s.includeMicrophone && MicrophoneIsBluetooth(ctl_.Devices(DeviceKind::Microphone), s.microphoneId);
     gain_[0].slider.value = s.micAmplifyPercent;
     gain_[0].slider.enabled = micField_.enabled;
     gain_[0].text = GainText(s.micAmplifyPercent);
@@ -330,7 +332,7 @@ void MainView::ChooseBitrate()
 void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Button &device)
 {
     include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
-    device.rect = RectXYWH(card.left + 20, card.top + 48, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
+    device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
 void MainView::Layout(float w, float h)
@@ -349,11 +351,12 @@ void MainView::Layout(float w, float h)
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
     LayoutPane(micCard_, micCheck_, micField_);
     LayoutPane(systemCard_, systemCheck_, systemField_);
+    micNoteRect_ = RectF(micField_.rect.left, micField_.rect.bottom + 2, micCard_.right - 20, micField_.rect.bottom + 20);
     const Button *const fields[kStreamCount] = {&micField_, &systemField_};
     const D2D1_RECT_F *const cards[kStreamCount] = {&micCard_, &systemCard_};
     for (int i = 0; i < kStreamCount; ++i) {            /* the gain sits right of the device drop-down */
         GainControl &gain = gain_[i];
-        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 48, cards[i]->right - 20, cards[i]->top + 84);
+        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 44, cards[i]->right - 20, cards[i]->top + 80);
         gain.slider.rect = RectF(gain.row.left + 40, gain.row.top + 6, gain.row.right - 52, gain.row.bottom - 6);
     }
 
@@ -443,9 +446,11 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
-/* Each stream's gain label and value (the slider is a widget). */
+/* Each stream's gain label and value (the slider is a widget), and the microphone's Bluetooth note. */
 void MainView::PaintPaneControls(Painter &p)
 {
+    if (micBluetooth_)
+        p.Text(BluetoothMicrophoneNote(), micNoteRect_, Font::Small, theme::kWarn);
     for (const GainControl &gain : gain_) {
         const bool on = gain.slider.enabled;
         const D2D1_RECT_F &row = gain.row;

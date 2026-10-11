@@ -24,6 +24,7 @@ struct DeviceInfo {
     std::wstring id;          /* endpoint ID; usable as a device selector */
     std::wstring name;        /* friendly name                            */
     bool         isDefault = false;
+    bool         bluetooth = false;   /* attached over Bluetooth (see bluetooth.h) */
 };
 
 /* The extremes of the normalised (-1..+1) samples over one short slice of

@@ -60,6 +60,7 @@ signed), choose *More info*, then *Run anyway*.
 | Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
 | System audio gain 150% | The system waveform is taller and the file louder. |
 | Untick **Microphone**, keep **System audio** | Only the system file/lane. |
+| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. |
 | Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
 | Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
