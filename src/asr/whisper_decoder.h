@@ -2,11 +2,12 @@
  * whisper_decoder.h - whisper.cpp behind the one call the helper needs: the
  * text of a stretch of 16 kHz audio.
  *
- * CPU only.  A model with English-only weights is told to expect English, and
- * so is a multilingual one if asked to; otherwise it finds the language of each
- * utterance itself.  The encoder is
- * given only as much context as the utterance needs (it costs the same for a
- * clip of any length otherwise), which about halves the time of a short phrase.
+ * A model with English-only weights is told to expect English, and so is a
+ * multilingual one if asked to; otherwise it finds the language of each
+ * utterance itself.  On the processor the encoder is given only as much context
+ * as the utterance needs (it costs the same for a clip of any length otherwise),
+ * which about halves the time of a short phrase; on a graphics card of its own it
+ * gets its whole window and one kept state (see Decode).
  */
 #pragma once
 
@@ -16,6 +17,7 @@
 #include <vector>
 
 struct whisper_context;
+struct whisper_state;
 
 namespace audiorasr {
 
@@ -45,6 +47,8 @@ private:
     bool             english_ = true;           /* told so, or a model that knows nothing else */
     int              threads_ = 4;
     std::string      device_;
+    bool             discrete_ = false;         /* computing on a graphics card of its own */
+    whisper_state   *kept_ = nullptr;           /* its state, kept between decodes (see Decode) */
     std::vector<float> pcm_;                    /* reused for every utterance */
 };
 

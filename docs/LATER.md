@@ -21,12 +21,15 @@ blocks using it; each item is worth doing when it starts to matter.
   model keeps up on the iGPU, the large turbo one does not (slower than the processor).
   Intel cards are untested; the first GPU in ggml's list is used, with no way to choose
   another.
-- On NVIDIA about 80 % of the helper's processor time is one thread of the card's driver
-  (`nvoglv64.dll`); it is zero while nobody speaks, about 0.15 core in a normal recording and
-  up to about one core during minutes of unbroken speech, so "on the card" is not "free".
-  Each decode makes a fresh whisper state (`WhisperDecoder::Decode`), allocating and freeing
-  several hundred MB each time; reusing a state, or decoding the drafts of a long phrase less
-  often, is the obvious thing to try and measure.
+- The helper's processor time on a card of its own is now small: 54 s of speech with the
+  large model took 3.9 s of processor time (0.07 core) instead of 11 to 12 s (0.2 core),
+  because the card's state is kept between decodes and the model gets its whole 30 s window
+  (`WhisperDecoder::Decode`; the shortened window also made the large model repeat itself,
+  62% extra words). An integrated GPU and the processor keep the old way, which is the
+  faster one there (the full window made the small model 2.5 s behind on the Radeon iGPU
+  and the large one unusable). The f16 and large-v3 files use far more processor time on the
+  card (0.8 to 1.1 core in the same test; the card was shared with another program using
+  most of its memory at the time), so memory on the card matters.
 - The first use of the card takes about eight seconds (the driver builds its shader
   code); a pipeline cache kept between runs, or starting the helper earlier, would hide it.
 - The large (turbo) model on the RTX 5080 keeps up (53 s of speech in 2.2 s when given at

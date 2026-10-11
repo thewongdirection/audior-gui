@@ -118,12 +118,61 @@ TEST(AsrText_RepeatsAreComparedWithoutCaseOrPunctuation)
     CHECK(found);
 }
 
+TEST(AsrText_ALongPhraseSaidTwiceInARowKeepsOneCopyButIsNotALoop)
+{
+    bool found = true;
+    CHECK_EQ(Collapse(L"We meet at the station at nine. We meet at the station at nine.", &found),
+             std::wstring(L"We meet at the station at nine."));
+    CHECK(!found);                                      /* a draft with this is still shown, once */
+    CHECK_EQ(Collapse(L"Well. We meet at the station. We meet at the station. Then we walk.", &found),
+             std::wstring(L"Well. We meet at the station. Then we walk."));
+    CHECK(!found);
+    CHECK_EQ(Collapse(L"we meet at the station, WE MEET AT THE STATION!", &found), std::wstring(L"we meet at the station,"));
+    CHECK(!found);
+    /* three or more is a loop, as before */
+    CHECK_EQ(Collapse(Times(L"We meet at the station at nine.", 3), &found), std::wstring(L"We meet at the station at nine."));
+    CHECK(found);
+}
+
+TEST(AsrText_AWholeLongSentenceRepeatedAndACutShortLastCopyKeepOneCopy)
+{
+    bool found = true;
+    const std::wstring sentence = L"Today the weather is mild, the river is calm, and the mountain road is open.";      /* 15 words */
+    CHECK_EQ(Collapse(sentence + L" " + sentence, &found), sentence);
+    CHECK(!found);
+    CHECK_EQ(Collapse(Times(sentence, 4), &found), sentence);
+    CHECK(found);
+
+    /* what the model writes when it runs out of room in the middle of a copy */
+    CHECK_EQ(Collapse(sentence + L" Today the weather is mild, the river is", &found), sentence);
+    CHECK(!found);
+    CHECK_EQ(Collapse(sentence + L" " + sentence + L" Today the weather is mild, the", &found), sentence);
+    CHECK(!found);
+    CHECK_EQ(Collapse(L"Fine. " + sentence + L" Today the weather is mild, the river is", &found), L"Fine. " + sentence);
+    CHECK(!found);
+}
+
+TEST(AsrText_ASentenceThatOnlyBeginsLikeTheOneBeforeIsLeftAlone)
+{
+    bool found = true;
+    const std::wstring text = L"We went to the old market on Monday and we went to the old harbour on Tuesday.";
+    CHECK_EQ(Collapse(text, &found), text);
+    CHECK(!found);
+    const std::wstring four = L"I think we should go home and I think we should go now.";             /* four words in common after a gap */
+    CHECK_EQ(Collapse(four, &found), four);
+    CHECK(!found);
+}
+
 TEST(AsrText_PeopleDoRepeatThemselvesALittle)
 {
     bool found = true;
     CHECK_EQ(Collapse(L"ha ha ha ha ha", &found), std::wstring(L"ha ha ha ha ha"));         /* five of one word */
     CHECK(!found);
     CHECK_EQ(Collapse(L"Hello there. Hello there.", &found), std::wstring(L"Hello there. Hello there."));
+    CHECK(!found);
+    CHECK_EQ(Collapse(L"I don't know, I don't know.", &found), std::wstring(L"I don't know, I don't know."));      /* a short phrase twice */
+    CHECK(!found);
+    CHECK_EQ(Collapse(L"We need to leave. We need to go.", &found), std::wstring(L"We need to leave. We need to go."));    /* alike, not equal */
     CHECK(!found);
     CHECK_EQ(Collapse(L"no no no no", &found), std::wstring(L"no no no no"));
     CHECK(!found);

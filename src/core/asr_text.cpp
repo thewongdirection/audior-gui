@@ -114,8 +114,13 @@ std::string Utf8FromWide(const std::wstring &text)
 
 namespace {
 
-constexpr std::size_t kMaxPhraseWords = 12;
+constexpr std::size_t kMaxPhraseWords = 30;             /* a long sentence, as the large model repeats whole ones */
 constexpr std::size_t kLoopRepeats = 3, kLoopRepeatsOfOneWord = 6;
+/* A phrase this long, said twice in a row word for word, is the model's doing, not the speaker's (the large
+ * model does it when it is given a shortened audio window): one copy is kept, without calling it a loop.  So
+ * is the start of a long phrase (at least 5 of its words) that follows a copy of it at once and ends the text:
+ * the copy the model was cut off in. */
+constexpr std::size_t kLongPhraseWords = 5, kLongPhraseRepeats = 2, kPartialCopyMinWords = 8;
 
 std::vector<std::wstring> Words(const std::wstring &text)
 {
@@ -157,14 +162,25 @@ std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found)
     for (std::size_t i = 0; i < words.size();) {
         std::size_t skip = 0;                           /* how many words of a loop starting here can be dropped */
         std::size_t kept = 1;
-        for (std::size_t length = 1; length <= kMaxPhraseWords && i + 2 * length <= words.size(); ++length) {
+        bool loop = false;                              /* ...and whether that was a loop, not just a phrase said twice */
+        for (std::size_t length = 1; length <= kMaxPhraseWords && i + length < words.size(); ++length) {
             std::size_t repeats = 1;
             while (i + (repeats + 1) * length <= words.size() &&
                    std::equal(plain.begin() + i, plain.begin() + i + length, plain.begin() + i + repeats * length))
                 ++repeats;
-            if (repeats >= (length == 1 ? kLoopRepeatsOfOneWord : kLoopRepeats) && (repeats - 1) * length > skip) {
-                skip = (repeats - 1) * length;
+            /* A last copy that was cut short (the model ran out of room): the words after the phrase begin it again. */
+            std::size_t tail = 0;
+            const std::size_t after = i + repeats * length;
+            while (tail + 1 < length && after + tail < words.size() && plain[i + tail] == plain[after + tail])
+                ++tail;
+            const bool cutShort = after + tail == words.size();         /* the cut-off copy ends the text */
+            const std::size_t extra = length >= kPartialCopyMinWords && tail >= kLongPhraseWords && cutShort ? tail : 0;
+            const std::size_t loopRepeats = length == 1 ? kLoopRepeatsOfOneWord : kLoopRepeats;
+            const std::size_t needed = length >= kLongPhraseWords ? kLongPhraseRepeats : loopRepeats;
+            if ((repeats >= needed || extra > 0) && (repeats - 1) * length + extra > skip) {
+                skip = (repeats - 1) * length + extra;
                 kept = length;
+                loop = repeats >= loopRepeats;
             }
         }
         for (std::size_t k = 0; k < kept; ++k) {
@@ -172,7 +188,7 @@ std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found)
                 out.push_back(L' ');
             out += words[i + k];
         }
-        if (skip > 0)
+        if (skip > 0 && loop)
             *found = true;
         i += kept + skip;
     }

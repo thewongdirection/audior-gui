@@ -173,6 +173,12 @@ after the speech ended, all ten key words found. On the processor, for compariso
 2.4 s, first text at 3.0 s, 1.7 s behind on average and 4.3 s at most (it would say *catching up*),
 the last phrase settled 2.2 s after the end, all ten key words found.
 
+That run also showed the text had 238 words for 146 spoken: with the shortened audio window the
+large model repeats sentences. The helper now gives a card of its own the whole window and one kept
+state (processor time over the minute: 3.9 s instead of 11 to 12 s) and cuts a repeated sentence on
+the processor; T17 now checks "nothing is said twice" (146 words for 146 spoken, on the card, with
+0.1 s lag on average; on the processor 146 words, 1.3 s behind on average and 3.7 s at most).
+
 ## Findings
 
 ### 1. FIXED: the streams started out of step (system track longer than the mic track)
