@@ -36,14 +36,14 @@ The rest of this page is the manual version of everything.
 
 Either build it (`build.bat x64`), or download **audior-gui-windows** from the
 *Artifacts* of the latest green run of the CI workflow and unzip it. Run
-`audior_gui.exe`; there is nothing to install.
+`Audior-GUI.exe`; there is nothing to install.
 
 If Windows SmartScreen warns about an unknown publisher (the file is not code
 signed), choose *More info*, then *Run anyway*.
 
 ## 1. The window
 
-1. Start `audior_gui.exe`. Both drop-downs should list your devices, each marked
+1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
    *Default · name* at the top.
 2. While idle the waveforms rest; they move only while recording.
 3. Press **Start recording**, speak, play some music, press **Stop**.
@@ -90,12 +90,12 @@ The saved shortcuts are two text values in `HKEY_CURRENT_USER\Software\Audior-GU
 ## 4. From a command prompt
 
 ```bat
-audior_gui --list-devices
-audior_gui -o "%TEMP%\cli-test" -f wav -i --separate     :: the window opens already recording
-audior_gui --stop                                         :: from another prompt: ends it
+Audior-GUI --list-devices
+Audior-GUI -o "%TEMP%\cli-test" -f wav -i --separate     :: the window opens already recording
+Audior-GUI --stop                                         :: from another prompt: ends it
 ```
 
-`audior_gui --stop` prints `Stop signal sent.`; with nothing recording it prints
+`Audior-GUI --stop` prints `Stop signal sent.`; with nothing recording it prints
 `No active recording to stop.` and exits with code 1. While other programs play
 audio, their volume should not drop when you start recording (the communications
 ducking opt-out).
@@ -103,4 +103,4 @@ ducking opt-out).
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of
-`audior_gui --list-devices`.
+`Audior-GUI --list-devices`.

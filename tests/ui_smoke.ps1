@@ -3,7 +3,7 @@
 
   Runs on a Windows machine with a desktop (the CI runner, or your own PC):
 
-      powershell -ExecutionPolicy Bypass -File tests\ui_smoke.ps1 [-Exe bin\x64\audior_gui.exe] [-Out shots]
+      powershell -ExecutionPolicy Bypass -File tests\ui_smoke.ps1 [-Exe bin\x64\Audior-GUI.exe] [-Out shots]
 
   1. The command-line options: --help, --list-devices, --stop, a bad option.
   2. The window with simulated audio (--demo): clicks Start, then Stop.
@@ -18,7 +18,7 @@
   and places its clicks and its pixel probe from the window's DPI.
 #>
 param(
-    [string]$Exe = 'bin\x64\audior_gui.exe',
+    [string]$Exe = 'bin\x64\Audior-GUI.exe',
     [string]$Out = 'shots'
 )
 $ErrorActionPreference = 'Stop'
@@ -135,8 +135,8 @@ try {
             Start-Sleep -Milliseconds 100
             $p.Refresh()
         }
-        if ($p.HasExited) { throw "audior_gui exited with code $($p.ExitCode) before showing a window" }
-        if ($p.MainWindowHandle -eq 0) { $p.Kill(); throw 'audior_gui showed no window within 10 seconds' }
+        if ($p.HasExited) { throw "Audior-GUI exited with code $($p.ExitCode) before showing a window" }
+        if ($p.MainWindowHandle -eq 0) { $p.Kill(); throw 'Audior-GUI showed no window within 10 seconds' }
         $null = $p.Handle                  # keep the process handle so ExitCode can be read later
     $started.Add($p)
         Start-Sleep -Milliseconds 700      # the first frame

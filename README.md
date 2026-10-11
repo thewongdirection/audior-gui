@@ -99,7 +99,7 @@ build.bat x64          :: one architecture
 build.bat x64 tests    :: just the unit tests (the quick edit-test loop)
 build.bat hardware     :: also builds bin\<arch>\hardware_tests.exe (not run: it records)
 
-bin\x64\audior_gui.exe
+bin\x64\Audior-GUI.exe
 ```
 
 `build.bat` finds Visual Studio itself (via `vswhere`), so any command prompt
@@ -143,14 +143,14 @@ waveforms with a peak level and a clipping flag for every stream.
 The command-line options only preset the window, so a shortcut such as
 
 ```bat
-audior_gui.exe -o "%USERPROFILE%\Music\standup" -f wav -i --separate -a 50
+Audior-GUI.exe -o "%USERPROFILE%\Music\standup" -f wav -i --separate -a 50
 ```
 
 opens the window already recording, with everything still adjustable.
-`audior_gui --help` lists the options; `audior_gui --list-devices` prints the
+`Audior-GUI --help` lists the options; `Audior-GUI --list-devices` prints the
 devices as `audior --list-devices` does. Output goes to the console that started
 the program, or to the file or pipe it was redirected to
-(`audior_gui --list-devices | more`).
+(`Audior-GUI --list-devices | more`).
 
 ## How a recording behaves
 
@@ -180,7 +180,7 @@ the program, or to the file or pipe it was redirected to
 - **Closing the window, `--stop`, or Stop** all finalise the files and release
   the devices (a Bluetooth headset returns to normal playback).
 - **Stopping from outside.** While recording, the program holds the named event
-  `Local\AudiorStopEvent`, the same one audior uses, so `audior_gui --stop` and
+  `Local\AudiorStopEvent`, the same one audior uses, so `Audior-GUI --stop` and
   `audior --stop` each end a recording started by either.
 
 ## Tray and hotkeys
@@ -235,7 +235,7 @@ Colours, sizes and the type scale live in `src/ui/theme.h` and `src/ui/gfx.cpp`.
 To see the UI without opening it, render a scenario to a PNG:
 
 ```bat
-bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
+bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
@@ -299,7 +299,7 @@ in-memory files. The GUI sees audio only as peak bins through
 
 - A microphone whose clock runs faster than the PC's is not trimmed, so a very long
   recording could show a small difference between separate tracks.
-- Every `audior_gui.exe` ends on one machine-wide stop event, so a second recording
+- Every `Audior-GUI.exe` ends on one machine-wide stop event, so a second recording
   program instance, or `--stop` from another one, stops them all.
 - The hardware tests have run on one PC (a Bluetooth headset and two digital outputs);
   other devices, sample rates and wired microphones are untested.

@@ -2,7 +2,7 @@
 
 CI runners have no audio devices, so the capture path (`wasapi_capture.cpp`,
 `devices.cpp`) is only unit-tested for its failure paths. `hardware_tests.exe` closes
-that gap: it starts the **real `audior_gui.exe`**, records on **real devices**, and checks
+that gap: it starts the **real `Audior-GUI.exe`**, records on **real devices**, and checks
 the files that come out. It is native C++ like the rest of the project (Win32 and Media
 Foundation only; no scripts, no third-party tools).
 
@@ -26,7 +26,7 @@ not be set up (no application next to the test program, no microphone or playbac
 device, a bad option). The whole run takes about 13 minutes.
 
 **Needs:** a microphone and a playback device, a desktop session, and
-`audior_gui.exe` in the same folder as `hardware_tests.exe` (`build.bat hardware`
+`Audior-GUI.exe` in the same folder as `hardware_tests.exe` (`build.bat hardware`
 puts them there). T12 also uses the other architecture's build if it is built.
 
 ### What it does to your PC
@@ -43,10 +43,10 @@ puts them there). T12 also uses the other architecture's build if it is built.
   by visibility), restores it with `SW_SHOWNOACTIVATE` and sends it to the bottom of the window stack
   (`tests/hardware/app_process.cpp`). T14 samples the foreground window every 100 ms and fails
   if it ever belongs to the application; clicking a window yourself counts as stolen focus.
-- **Nothing else may record meanwhile.** Every `audior_gui.exe` ends on the same machine-wide stop
+- **Nothing else may record meanwhile.** Every `Audior-GUI.exe` ends on the same machine-wide stop
   event (`Local\AudiorStopEvent`) and the microphone is shared, so a second instance recording or
   sending `--stop` cuts these recordings short. The tests refuse to start while another
-  `audior_gui.exe` or `hardware_tests.exe` is running and T14 notes any that appears during the
+  `Audior-GUI.exe` (or a build from before the rename, `audior_gui.exe`) or `hardware_tests.exe` is running and T14 notes any that appears during the
   run (short `--demo` or screenshot runs are harmless).
 - **Bluetooth headsets:** opening the microphone switches the headset to its hands-free
   profile, so its audio quality drops for the duration and music may stutter. That is the
@@ -74,7 +74,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T11 | Closing the window while recording | the window closes with exit 0 and both MP3 files are complete and 30 s+ |
 | T12 | The other architecture's build | mic + system, 30 s+, clock, tone captured, tracks the same length |
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
-| T14 | Focus | the foreground window never belonged to the application during the run; any other `audior_gui.exe` seen during the run is noted (they share the stop signal) |
+| T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 
 ### How the files are measured
 
@@ -111,7 +111,7 @@ the fix described in finding 1.
 | Hardware tests, after the fix | **100 checks: all pass**; the foreground window never belonged to the application in 5,951 samples |
 
 The "before" run's T13 handle check had been changed after the first attempt (finding 2) and
-its figures count T13 under the final rule. The "after" run also noted 13 other `audior_gui.exe`
+its figures count T13 under the final rule. The "after" run also noted 13 other `Audior-GUI.exe`
 processes during its 14 minutes, short runs by other sessions on the same PC; it then counted
 that as a failed check (101 checks, 100 passed), which was changed to a note because none of
 them touched a recording (every other check passed).

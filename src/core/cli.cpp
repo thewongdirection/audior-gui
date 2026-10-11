@@ -249,7 +249,7 @@ std::wstring HelpText()
 {
     return L"Audior-GUI - record the microphone and/or the sound your PC plays\n"
            L"\n"
-           L"Usage: audior_gui [options]\n"
+           L"Usage: Audior-GUI [options]\n"
            L"\n"
            L"With no options the window opens. Options preset the window; giving --output starts\n"
            L"recording straight away. The options are audior's, plus --system-amplify and --demo.\n"

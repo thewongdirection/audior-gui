@@ -9,7 +9,7 @@ REM    build.bat notest          build, but do not run the unit tests
 REM    build.bat hardware        also build the hardware tests (they record, so they are not run)
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
-REM    audior_gui.exe     the application
+REM    Audior-GUI.exe     the application
 REM    run_tests.exe      the unit tests (run by this script)
 REM    hardware_tests.exe the tests that record on this PC's audio devices (hardware option only)
 REM  Intermediate files go to build\<arch>.
@@ -102,9 +102,9 @@ if not "%RUN_TESTS%"=="1" goto :build_app
 if not "%WANT_APP%"=="1" goto :build_hardware
 set "UI_SRC=src\main.cpp src\console.cpp"
 for %%f in (src\ui\*.cpp) do set "UI_SRC=!UI_SRC! %%f"
-cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\audior_gui.exe" !UI_SRC! !CORE_OBJ! ^
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\Audior-GUI.exe" !UI_SRC! !CORE_OBJ! ^
     /link %LFLAGS% /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:src\app.manifest %GUILIBS% %ENGLIBS% || goto :buildfail
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\audior_gui.exe || goto :buildfail
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT%\Audior-GUI.exe || goto :buildfail
 
 :build_hardware
 if not "%WANT_HW%"=="1" goto :builddone

@@ -1,5 +1,5 @@
 /*
- * app_process.h - Starts and watches the real audior_gui.exe for the hardware tests.
+ * app_process.h - Starts and watches the real Audior-GUI.exe for the hardware tests.
  *
  * A window can be started "in the background": visible, fully usable, but at the bottom of the
  * window stack and never activated, so it neither covers what the person at the PC is doing

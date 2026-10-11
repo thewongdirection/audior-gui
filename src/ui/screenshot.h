@@ -1,7 +1,7 @@
 /*
  * screenshot.h - Renders the window's content to a PNG without showing a window.
  *
- *     audior_gui.exe --screenshot out.png [--scenario recording] [--size 1120x720]
+ *     Audior-GUI.exe --screenshot out.png [--scenario recording] [--size 1120x720]
  *
  * Uses the same MainView and painter as the real window, over a WIC bitmap
  * with Direct2D's software renderer, driven by a simulated engine on a manual
