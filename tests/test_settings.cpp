@@ -49,6 +49,40 @@ TEST(Settings_SystemAudioOnlyTurnsTheMicrophoneOffAndTheSystemOn)
     CHECK(!both.includeMicrophone && both.includeSystemAudio);
 }
 
+TEST(Settings_SystemAudioOnlyCarriesTheMicrophonesTranscriptOver)
+{
+    RecordingSettings s = Valid();
+    s.transcribeMicrophone = true;                       /* the transcript was asked for on the microphone... */
+    UseSystemAudioOnly(&s);
+    CHECK(s.transcribeSystem);                           /* ...so the system audio gets one */
+    CHECK(s.transcribeMicrophone);                       /* and the microphone's own choice is left as it was */
+    CHECK(Transcribes(s, StreamId::System));
+    CHECK(!Transcribes(s, StreamId::Microphone));        /* (it is not recorded now) */
+
+    RecordingSettings none = Valid();                    /* no transcript anywhere: none appears */
+    UseSystemAudioOnly(&none);
+    CHECK(!none.transcribeSystem && !none.transcribeMicrophone);
+
+    RecordingSettings kept = Valid();                    /* a system transcript that is on is never switched off */
+    kept.includeSystemAudio = kept.transcribeSystem = true;
+    UseSystemAudioOnly(&kept);
+    CHECK(kept.transcribeSystem);
+    UseSystemAudioOnly(&kept);
+    CHECK(kept.transcribeSystem && !kept.transcribeMicrophone);
+}
+
+TEST(Settings_ATranscriptIsSavedBesideTheRecordingUnderItsOwnName)
+{
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::Microphone),
+             std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - microphone.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::System),
+             std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - system audio.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\meeting.wav", StreamId::System), std::wstring(L"C:\\Rec\\meeting - system audio.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\My.Calls\\meeting", StreamId::Microphone),
+             std::wstring(L"C:\\My.Calls\\meeting - microphone.txt"));            /* a dot in a folder is not an extension */
+    CHECK_EQ(PlannedTranscriptFile(L"meeting (2).mp3", StreamId::Microphone), std::wstring(L"meeting (2) - microphone.txt"));
+}
+
 TEST(Settings_Mp3BitrateList)
 {
     const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};

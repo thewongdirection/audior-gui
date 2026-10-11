@@ -111,21 +111,45 @@ std::wstring JoinPath(const std::wstring &dir, const std::wstring &name)
     return dir + L'\\' + name;
 }
 
-std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix)
+namespace {
+
+/* The extension starts at the last '.' after the last path separator. */
+std::size_t ExtensionStart(const std::wstring &path)
 {
-    /* The extension starts at the last '.' after the last path separator. */
-    std::size_t dot = std::wstring::npos;
     for (std::size_t i = path.size(); i-- > 0;) {
         if (IsSeparator(path[i]))
             break;
-        if (path[i] == L'.') {
-            dot = i;
-            break;
-        }
+        if (path[i] == L'.')
+            return i;
     }
+    return std::wstring::npos;
+}
+
+}  // namespace
+
+std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix)
+{
+    const std::size_t dot = ExtensionStart(path);
     if (dot == std::wstring::npos)
         return path + suffix;
     return path.substr(0, dot) + suffix + path.substr(dot);
+}
+
+std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream)
+{
+    const std::size_t dot = ExtensionStart(outputPath);
+    return (dot == std::wstring::npos ? outputPath : outputPath.substr(0, dot)) +
+           (stream == StreamId::Microphone ? L" - microphone.txt" : L" - system audio.txt");
+}
+
+std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &s, const std::wstring &outputPath)
+{
+    std::vector<std::wstring> files;
+    for (int i = 0; i < kStreamCount; ++i) {
+        if (Transcribes(s, static_cast<StreamId>(i)))
+            files.push_back(PlannedTranscriptFile(outputPath, static_cast<StreamId>(i)));
+    }
+    return files;
 }
 
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &s,

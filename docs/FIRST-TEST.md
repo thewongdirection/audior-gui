@@ -50,6 +50,8 @@ with `--defaults` (which neither reads nor writes it).
 
 1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
    *Default · name* at the top.
+   The window opens wholly on screen: its bottom edge, with **Start recording**, is above the
+   taskbar even on a big monitor (Windows alone would cascade it too low there).
 2. While idle the waveforms rest; they move only while recording.
 
    ![The idle window: green Ready status, both device drop-downs, resting waveforms, and the Start recording button](screenshots/idle.png)
@@ -71,7 +73,7 @@ with `--defaults` (which neither reads nor writes it).
 | Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
 | System audio gain 150% | The system waveform is taller and the file louder. |
 | Untick **Microphone**, keep **System audio** | Only the system file/lane. |
-| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes. |
+| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Transcript** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
 | Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
 | Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
@@ -124,6 +126,7 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | Try | Expect |
 |---|---|
 | Switch the microphone's transcript on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
+| Record a minute with a transcript switched on, speak or play speech (another language too, with a multilingual model and *Auto*), stop | Beside the recording a text file appears for each pane that was spoken on: `<name> - microphone.txt` / `<name> - system audio.txt`. It opens in Notepad with right letters and accents, one `[0:06] words` line per phrase in order; the status after Stop says *1 transcript* (*2 transcripts*). A pane nobody spoke in leaves no file. Recording again with the same name never overwrites it (` (2)`). |
 | Both streams on, play a video with speech while you speak | Each pane shows its own stream's words. The computer stays usable; recording and the waveforms do not stutter. |
 | A long stretch of talking (a minute or more) | Old lines scroll away upwards; the program's memory does not keep growing (Task Manager). |
 | Switch the transcript off before recording | `audior_asr.exe` does not appear in Task Manager at all. |

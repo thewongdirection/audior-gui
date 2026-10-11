@@ -131,7 +131,9 @@ It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
 
 1. **The helper**, `audior_asr.exe` with its DLLs and `audior_asr.sha256` (the
-   list of them with their SHA-256), next to `audior_gui.exe`. `build.bat x64 asr`
+   list of them with their SHA-256), next to `audior_gui.exe`. It must come from the
+   same build as the program: one of another version refuses to start with *do not
+   speak the same version*, so build it again whenever the program is. `build.bat x64 asr`
    builds it (it compiles whisper.cpp, so it needs the *C++ CMake tools for
    Windows* of Visual Studio, and takes a few minutes the first time).
    `build.bat x64 vulkan` builds it with the Vulkan backend (`ggml-vulkan.dll`), so
@@ -170,6 +172,23 @@ model takes over by itself (*smaller model* shows in the pane) and the recording
 not touched; with *Auto* chosen only another multilingual model may take over, so no
 language stops being understood. A phrase that was still not decoded in time is shown
 as `…` instead of being left out silently.
+
+**Saved transcripts.** Each pane's text is also saved, phrase by phrase as it settles, in a
+text file beside the recording: `<recording> - microphone.txt` and
+`<recording> - system audio.txt`. A line is a time and a phrase, `[0:06] The weather today is
+cold.`, and the file is UTF-8 with a byte-order mark, so any language (and Notepad) reads right.
+It is written while recording, not at the end, so it is as long as the recording, however far
+behind the window falls, and a recording that ends badly keeps what was said. It holds what the
+pane shows: a phrase still being spoken when the recording stops (or when the helper dies or is
+changed to a smaller model) is written as it stood. What the helper has not decoded by about three
+seconds after Stop is lost, in the pane too. A pane nobody spoke in leaves no file. A recording
+and its transcripts take the next free number together (`meeting (2).mp3`,
+`meeting (2) - microphone.txt`), so a transcript is never overwritten. After Stop the status says
+*1 transcript* or *2 transcripts*. A phrase is at most 511 characters (15 s of fast speech is about
+300). If a file cannot be written the status says so and the recording is not affected.
+
+![The window after a recording with both transcripts on: the status says Saved, with the file name and 2 transcripts](docs/screenshots/transcript-saved.png)
+
 
 The helper is a separate process, so a problem with it can never end or damage a
 recording: it is started at low priority inside a Windows Job object, restarted if
@@ -287,7 +306,8 @@ stopHotkey=Ctrl+Alt+S
   thinner. That is the headset and Windows, not this program, and it cannot be avoided
   while the microphone is open, so the microphone pane says so when the chosen
   microphone is Bluetooth, with a **Record system audio only** link that unticks the
-  microphone and ticks system audio in one click. System audio only does not trigger
+  microphone and ticks system audio in one click (a **Transcript** switched on for the
+  microphone is switched on for the system audio too). System audio only does not trigger
   the switch, nor does a microphone that is not Bluetooth. Measurements in
   [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
 
@@ -362,7 +382,7 @@ bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
-headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `catching-up` (the transcription has fallen behind), `model` (the
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `transcript-saved`, `catching-up` (the transcription has fallen behind), `model` (the
 multilingual model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
 program owns).

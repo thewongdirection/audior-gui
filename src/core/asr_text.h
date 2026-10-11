@@ -14,6 +14,9 @@ namespace audiorgui {
 /* UTF-8 to UTF-16 (a byte sequence that is not valid UTF-8 becomes U+FFFD). */
 std::wstring WideFromUtf8(const std::string &utf8);
 
+/* UTF-16 to UTF-8 (a surrogate without its partner becomes U+FFFD). */
+std::string Utf8FromWide(const std::wstring &text);
+
 /* A speech model sometimes gets stuck and repeats a phrase until it runs out
  * of room.  Keeps one copy of any run of a phrase (up to 12 words, compared
  * without case or punctuation) that repeats three times or more in a row (six

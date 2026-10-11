@@ -153,6 +153,22 @@ TEST(Asr_InstalledModelsAreTheWholeOnesInTheTablesOrder)
     CHECK(found.size() == 1 && found[0] == &table[1]);
 }
 
+TEST(Asr_ModelInstalledNeedsTheNamedModelWhole)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir models;
+    CHECK(!ModelInstalled(models.Dir(), L"a.bin", table, 2));
+    Write(models.Path(L"a.bin"), "123");
+    Write(models.Path(L"b.bin"), "12");                 /* not whole */
+    CHECK(ModelInstalled(models.Dir(), L"a.bin", table, 2));
+    CHECK(ModelInstalled(models.Dir(), L"A.BIN", table, 2));
+    CHECK(!ModelInstalled(models.Dir(), L"b.bin", table, 2));
+    CHECK(!ModelInstalled(models.Dir(), L"c.bin", table, 2));       /* not in the table */
+    CHECK(!ModelInstalled(models.Dir(), std::wstring(), table, 2));
+    CHECK(!ModelInstalled(std::wstring(), L"a.bin", table, 2));
+}
+
 TEST(Asr_TheModelAskedForIsTheOneFound)
 {
     const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},

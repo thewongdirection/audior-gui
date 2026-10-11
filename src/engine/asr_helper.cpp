@@ -63,6 +63,16 @@ std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, con
     return found;
 }
 
+bool ModelInstalled(const std::wstring &modelsDir, const std::wstring &file, const AsrModel *models,
+                    std::size_t modelCount)
+{
+    for (const AsrModel *model : InstalledModels(modelsDir, models, modelCount)) {
+        if (_wcsicmp(file.c_str(), model->file) == 0)
+            return true;
+    }
+    return false;
+}
+
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
              std::size_t modelCount, const std::wstring &preferred, const AsrModel *vad)
 {

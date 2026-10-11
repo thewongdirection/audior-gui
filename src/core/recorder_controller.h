@@ -39,6 +39,8 @@ struct Outcome {
     Kind                      kind = Kind::None;
     std::wstring              message;      /* Failed: what went wrong          */
     std::vector<std::wstring> files;        /* what was written, even if Failed */
+    std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcribed stream that was spoken on */
+    std::wstring              transcriptProblem;    /* a transcript file that could not be saved, in a few words */
 };
 
 class RecorderController {
@@ -116,6 +118,9 @@ private:
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
+    /* The transcript files this recording will make: none where the engine cannot transcribe, however the
+     * (saved) switches stand: their boxes are hidden then, so they cannot be switched off. */
+    std::vector<std::wstring> PlannedTranscripts(const std::wstring &path) const;
 
     IRecordingEngine  &engine_;
     Clock              clock_;

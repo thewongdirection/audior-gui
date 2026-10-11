@@ -56,10 +56,10 @@ bool Build(Scene &scene, const std::wstring &name)
         return true;
     }
 
-    if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping" ||
-        name == L"transcript" || name == L"catching-up") {
+    const bool transcripts = name == L"transcript" || name == L"transcript-saved" || name == L"catching-up";
+    if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping" || transcripts) {
         ctl.Settings().includeSystemAudio = true;
-        if (name == L"transcript" || name == L"catching-up")
+        if (transcripts)
             ctl.Settings().transcribeMicrophone = ctl.Settings().transcribeSystem = true;
         if (name == L"catching-up")
             scene.engine.FallBehindAfter(8.0);
@@ -83,9 +83,9 @@ bool Build(Scene &scene, const std::wstring &name)
         for (int i = 0; i < 3600 && !ctl.Lane(StreamId::Microphone).Clipping(); ++i)
             scene.Run(1.0 / 60.0);
     } else {
-        scene.Run(name == L"error" ? 6.0 : name == L"transcript" || name == L"catching-up" ? 21.0 : 9.0);    /* the transcript: mid-sentence */
+        scene.Run(name == L"error" ? 6.0 : transcripts ? 21.0 : 9.0);    /* the transcript: mid-sentence */
     }
-    if (name == L"saved")
+    if (name == L"saved" || name == L"transcript-saved")
         ctl.Stop();
     return true;
 }

@@ -148,3 +148,25 @@ TEST(AsrText_NothingButNotesAndPunctuationIsEmpty)
     CHECK_EQ(CleanTranscript(L""), std::wstring());
     CHECK_EQ(CleanTranscript(L"�"), std::wstring());
 }
+
+TEST(AsrText_Utf8Encodes)
+{
+    CHECK_EQ(Utf8FromWide(L""), std::string());
+    CHECK_EQ(Utf8FromWide(L"plain ascii"), std::string("plain ascii"));
+    CHECK_EQ(Utf8FromWide(L"caf\u00e9"), std::string("caf\xC3\xA9"));                       /* two bytes */
+    CHECK_EQ(Utf8FromWide(L"\u2019"), std::string("\xE2\x80\x99"));                        /* three bytes: a curly quote */
+    CHECK_EQ(Utf8FromWide(L"\u65e5\u672c"), std::string("\xE6\x97\xA5\xE6\x9C\xAC"));      /* two CJK characters */
+    CHECK_EQ(Utf8FromWide(L"\U0001F600"), std::string("\xF0\x9F\x98\x80"));              /* a surrogate pair: four bytes */
+}
+
+TEST(AsrText_Utf8EncodingRoundTripsAndReplacesALoneSurrogate)
+{
+    const std::wstring text = L"\u041f\u0440\u0438\u0432\u0435\u0442, \u4f60\u597d, \u039a\u03b1\u03bb\u03b7\u03bc\u03ad\u03c1\u03b1, caf\u00e9, \U0001F600!";
+    CHECK_EQ(WideFromUtf8(Utf8FromWide(text)), text);
+
+    const std::string replacement = "\xEF\xBF\xBD";                                      /* U+FFFD */
+    CHECK_EQ(Utf8FromWide(std::wstring(1, static_cast<wchar_t>(0xD83D))), replacement);   /* a high half alone */
+    CHECK_EQ(Utf8FromWide(std::wstring(1, static_cast<wchar_t>(0xDE00))), replacement);   /* a low half alone */
+    CHECK_EQ(Utf8FromWide(std::wstring(L"a") + static_cast<wchar_t>(0xD83D) + L"b"),
+             std::string("a") + replacement + "b");                                         /* and what is round it stays */
+}

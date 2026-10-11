@@ -34,6 +34,20 @@ std::wstring FormatClock(double seconds)
     return buf;
 }
 
+std::wstring FormatTranscriptLine(double startSeconds, const wchar_t *text)
+{
+    std::wstring words(text);
+    bool anyText = false;
+    for (wchar_t &c : words) {
+        if (c == L'\r' || c == L'\n' || c == L'\t')
+            c = L' ';                                   /* one phrase, one line */
+        anyText = anyText || c != L' ';
+    }
+    if (!anyText)
+        return std::wstring();
+    return L"[" + FormatClock(startSeconds) + L"] " + words;
+}
+
 std::wstring FormatLag(float seconds)
 {
     if (!(seconds > 0.0f))

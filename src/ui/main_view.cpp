@@ -335,6 +335,10 @@ void MainView::Refresh()
         savedName_ = FileName(o.files[0]);
         if (o.files.size() > 1)
             savedName_ += L"  +" + std::to_wstring(o.files.size() - 1) + L" more";
+        if (!o.transcriptProblem.empty())                   /* the audio is saved; what happened to the text, in a few words */
+            savedName_ += L"  ·  " + o.transcriptProblem;
+        else if (!o.transcripts.empty())                    /* beside the recording, one for each transcribed pane */
+            savedName_ += L"  ·  " + std::to_wstring(o.transcripts.size()) + (o.transcripts.size() == 1 ? L" transcript" : L" transcripts");
     }
 
     summary_ = Summarize(ctl_.Active());

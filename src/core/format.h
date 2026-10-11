@@ -15,6 +15,10 @@ std::wstring FormatDuration(double seconds);
 /* "0:07", "12:34", "1:02:03": a moment in a recording, for the transcript. */
 std::wstring FormatClock(double seconds);
 
+/* A settled utterance as one line of a transcript file: "[0:06] The weather today ...", with no line break
+ * (the clock is the one the panes show).  Empty for text that is only white space: a phrase taken back. */
+std::wstring FormatTranscriptLine(double startSeconds, const wchar_t *text);
+
 /* "0.4 s": how far behind the speech a transcript runs (one decimal). */
 std::wstring FormatLag(float seconds);
 
