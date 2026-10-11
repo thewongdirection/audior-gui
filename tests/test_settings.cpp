@@ -177,6 +177,34 @@ TEST(PlannedOutputFiles_SeparateTracksNeedBothStreams)
     CHECK(!RecordsBoth(s));
 }
 
+/* ---- live transcripts ---- */
+
+TEST(Settings_TranscriptsAreOffByDefault)
+{
+    RecordingSettings s;
+    CHECK(!s.transcribeMicrophone && !s.transcribeSystem);
+    CHECK(!Transcribes(s, StreamId::Microphone));
+    CHECK(!Transcribes(s, StreamId::System));
+
+    s.outputDirectory = L"C:\\Rec";                     /* transcript switches never make settings invalid */
+    CHECK(Validate(s).empty());
+    s.transcribeMicrophone = s.transcribeSystem = true;
+    CHECK(Validate(s).empty());
+}
+
+TEST(Settings_ATranscriptNeedsTheStreamToBeRecorded)
+{
+    RecordingSettings s;
+    s.transcribeMicrophone = s.transcribeSystem = true;
+    CHECK(Transcribes(s, StreamId::Microphone));
+    CHECK(!Transcribes(s, StreamId::System));           /* system audio is not recorded */
+
+    s.includeSystemAudio = true;
+    s.includeMicrophone = false;
+    CHECK(!Transcribes(s, StreamId::Microphone));
+    CHECK(Transcribes(s, StreamId::System));
+}
+
 /* ---- system audio gain and the output file name ---- */
 
 TEST(Settings_SystemGainAndFileNameDefaults)

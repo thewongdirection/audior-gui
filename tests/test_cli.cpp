@@ -157,6 +157,34 @@ TEST(Cli_DeviceSelectorsAreKeptForLaterLookup)
     CHECK(!Parse({L"--mic"}).result.error.empty());
 }
 
+TEST(Cli_TranscribeFlagsSwitchOnEachStreamsTranscript)
+{
+    Parsed none = Parse({});
+    CHECK(!none.settings.transcribeMicrophone && !none.settings.transcribeSystem);      /* off by default */
+
+    Parsed mic = Parse({L"--transcribe-mic"});
+    CHECK(mic.result.error.empty());
+    CHECK(mic.settings.transcribeMicrophone);
+    CHECK(!mic.settings.transcribeSystem);
+
+    Parsed system = Parse({L"--TRANSCRIBE-SYSTEM"});                /* options ignore case */
+    CHECK(system.result.error.empty());
+    CHECK(!system.settings.transcribeMicrophone);
+    CHECK(system.settings.transcribeSystem);
+
+    Parsed both = Parse({L"--demo", L"-i", L"--transcribe-mic", L"--transcribe-system"});
+    CHECK(both.result.error.empty());
+    CHECK(both.result.demo);
+    CHECK(both.settings.transcribeMicrophone && both.settings.transcribeSystem);
+}
+
+TEST(Cli_TheHelpTextListsTheTranscribeFlags)
+{
+    const std::wstring help = HelpText();
+    CHECK(help.find(L"--transcribe-mic") != std::wstring::npos);
+    CHECK(help.find(L"--transcribe-system") != std::wstring::npos);
+}
+
 TEST(Cli_UnknownOptionsAreRejected)
 {
     const Parsed p = Parse({L"--frobnicate"});

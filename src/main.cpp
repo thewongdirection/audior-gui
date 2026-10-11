@@ -131,6 +131,8 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
 
     RecorderController controller(*engine, LocalNow, FileExists);
     controller.Settings() = settings;
+    if (!controller.CanTranscribe() && (settings.transcribeMicrophone || settings.transcribeSystem))
+        WriteError(L"Warning: live transcription is not available yet; only --demo can transcribe.\n");
     if (!ChooseDevice(controller, DeviceKind::Microphone, cli.microphone, &controller.Settings().microphoneId) ||
         !ChooseDevice(controller, DeviceKind::Playback, cli.outputDevice, &controller.Settings().systemDeviceId))
         return 1;

@@ -53,6 +53,18 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
+    micTranscript_.text = systemTranscript_.text = L"Transcript";
+    micTranscript_.accent = theme::kMic;
+    micTranscript_.onChange = [this](bool on) {
+        ctl_.Settings().transcribeMicrophone = on;
+        Refresh();
+    };
+    systemTranscript_.accent = theme::kSystem;
+    systemTranscript_.onChange = [this](bool on) {
+        ctl_.Settings().transcribeSystem = on;
+        Refresh();
+    };
+
     micField_.style = Button::Style::Field;
     micField_.onClick = [this] {
         ChooseDevice(DeviceKind::Microphone, &RecordingSettings::microphoneId, micField_);
@@ -136,9 +148,9 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     };
 
     Widget *const order[kWidgetCount] = {
-        &micCheck_, &micField_, &gain_[0].slider, &systemCheck_, &systemField_, &gain_[1].slider, &folderField_,
-        &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &startButton_, &stopButton_,
-        &showButton_};
+        &micCheck_, &micTranscript_, &micField_, &gain_[0].slider, &systemCheck_, &systemTranscript_,
+        &systemField_, &gain_[1].slider, &folderField_, &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_,
+        &shareSlider_, &startButton_, &stopButton_, &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     Refresh();
@@ -205,8 +217,12 @@ void MainView::Refresh()
     const bool both = RecordsBoth(s);
     const bool merging = s.mixMode == MixMode::Merge;
 
+    const bool canTranscribe = ctl_.CanTranscribe();
     micCheck_.checked = s.includeMicrophone;
     micCheck_.enabled = unlocked;
+    micTranscript_.checked = s.transcribeMicrophone;
+    micTranscript_.enabled = unlocked;
+    micTranscript_.visible = canTranscribe && s.includeMicrophone;
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
     gain_[0].slider.value = s.micAmplifyPercent;
@@ -215,6 +231,9 @@ void MainView::Refresh()
 
     systemCheck_.checked = s.includeSystemAudio;
     systemCheck_.enabled = unlocked;
+    systemTranscript_.checked = s.transcribeSystem;
+    systemTranscript_.enabled = unlocked;
+    systemTranscript_.visible = canTranscribe && s.includeSystemAudio;
     systemField_.text = DeviceFieldText(DeviceKind::Playback, s.systemDeviceId);
     systemField_.enabled = unlocked && s.includeSystemAudio;
     gain_[1].slider.value = s.systemAmplifyPercent;
@@ -326,10 +345,12 @@ void MainView::ChooseBitrate()
 /* Layout                                                                  */
 /* ====================================================================== */
 
-/* A pane's include checkbox and device drop-down. */
-void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Button &device)
+/* A pane's include checkbox, transcript switch and device drop-down. */
+void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &transcript, Button &device)
 {
     include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
+    transcript.rect = RectXYWH(card.left + LaneView::kSwitchLeft, card.top + 11, LaneView::kSwitchWidth,
+                               LaneView::kSwitchHeight);
     device.rect = RectXYWH(card.left + 20, card.top + 48, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
@@ -347,8 +368,8 @@ void MainView::Layout(float w, float h)
     const float each = (Height(content) - kGap) * 0.5f;
     micCard_    = RectF(content.left, content.top, content.right, content.top + each);
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
-    LayoutPane(micCard_, micCheck_, micField_);
-    LayoutPane(systemCard_, systemCheck_, systemField_);
+    LayoutPane(micCard_, micCheck_, micTranscript_, micField_);
+    LayoutPane(systemCard_, systemCheck_, systemTranscript_, systemField_);
     const Button *const fields[kStreamCount] = {&micField_, &systemField_};
     const D2D1_RECT_F *const cards[kStreamCount] = {&micCard_, &systemCard_};
     for (int i = 0; i < kStreamCount; ++i) {            /* the gain sits right of the device drop-down */
@@ -393,9 +414,9 @@ void MainView::Paint(Painter &p)
 
     const bool recording = ctl_.GetPhase() == Phase::Recording;
     micView_.Paint(p, micCard_, kMicStyle, ctl_.Lane(StreamId::Microphone),
-                   ctl_.StreamEnabled(StreamId::Microphone), recording);
+                   ctl_.StreamEnabled(StreamId::Microphone), recording, PaneOf(StreamId::Microphone));
     systemView_.Paint(p, systemCard_, kSystemStyle, ctl_.Lane(StreamId::System),
-                      ctl_.StreamEnabled(StreamId::System), recording);
+                      ctl_.StreamEnabled(StreamId::System), recording, PaneOf(StreamId::System));
     PaintPaneControls(p);
     PaintPanel(p);
     PaintTransport(p);
@@ -412,6 +433,18 @@ void MainView::Paint(Painter &p)
         if (st.focused && !w->WantsText())          /* a text box shows its focus in its own outline */
             p.StrokeRound(Inflate(w->rect, 3.0f), theme::kControlRadius + 3.0f, theme::kFocusRing, 2.0f);
     }
+}
+
+/* A stream's transcript as its pane shows it: none, unless the stream has one. */
+TranscriptPane MainView::PaneOf(StreamId stream) const
+{
+    TranscriptPane pane;
+    if (ctl_.ShowsTranscript(stream)) {
+        pane.lane = &ctl_.Transcript(stream);
+        pane.status = ctl_.TranscriptionStatus(stream);
+        pane.problem = &ctl_.TranscriptionProblem(stream);
+    }
+    return pane;
 }
 
 void MainView::PaintHeader(Painter &p)

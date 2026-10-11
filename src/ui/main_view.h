@@ -18,7 +18,9 @@
  *   +----------------------------------------------------------------+
  *
  * Each stream has its own pane: a checkbox that says whether it is recorded,
- * a drop-down of every detected device, its gain and its waveform.  MainView only reads
+ * a drop-down of every detected device, its gain and its waveform.  When the
+ * engine can transcribe, a "Transcript" switch beside the title adds the live
+ * text under the waveform.  MainView only reads
  * and drives a RecorderController; everything the operating system has to do
  * (dialogs, menus, the frame timer) goes through IViewHost, so the same view
  * renders into a window or into an offscreen bitmap for screenshots.
@@ -82,7 +84,7 @@ public:
     bool Capturing() const { return pressed_ != nullptr; }
 
 private:
-    static constexpr int kWidgetCount = 15;
+    static constexpr int kWidgetCount = 17;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -101,7 +103,8 @@ private:
     std::wstring Summarize(const RecordingSettings &settings) const;
     Widget *HitTest(float x, float y) const;
     void MoveFocus(int direction);
-    void LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Button &device);
+    void LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &transcript, Button &device);
+    TranscriptPane PaneOf(StreamId stream) const;
 
     void PaintHeader(Painter &p);
     void PaintPaneControls(Painter &p);
@@ -113,6 +116,7 @@ private:
     float               width_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
+    Switch    micTranscript_, systemTranscript_;
     Button    micField_, systemField_, folderField_, bitrateField_;
     Button    startButton_, stopButton_, showButton_;
     Segmented formatSeg_, mixSeg_;

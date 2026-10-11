@@ -7,6 +7,7 @@ namespace audiorgui {
 namespace {
 
 constexpr std::size_t kPullChunk     = 256;     /* bins per TakePeaks() call            */
+constexpr std::size_t kTranscriptChunk = 4;     /* events per TakeTranscript() call     */
 constexpr int         kMaxPullsPerTick = 64;    /* bounds a misbehaving engine's output */
 constexpr int         kMaxNumberedNames = 1000; /* " (2)" ... " (999)" before giving up   */
 
@@ -103,6 +104,11 @@ bool RecorderController::Start()
     stats_ = RecordingStats();
     for (WaveformLane &lane : lanes_)
         lane.Reset();
+    for (int s = 0; s < kStreamCount; ++s) {
+        transcripts_[s].Reset();
+        transcriptStatus_[s] = TranscriptStatus();
+        transcriptProblem_[s].clear();
+    }
     phase_ = Phase::Recording;
     return true;
 }
@@ -128,11 +134,41 @@ void RecorderController::DrainPeaks()
     }
 }
 
+/* New transcript text and each transcribed stream's status.  A stream whose
+ * transcription failed stays marked until the next recording. */
+void RecorderController::DrainTranscripts()
+{
+    if (!Transcribes(active_, StreamId::Microphone) && !Transcribes(active_, StreamId::System))
+        return;
+
+    TranscriptEvent chunk[kTranscriptChunk];
+    for (int s = 0; s < kStreamCount; ++s) {
+        const StreamId stream = static_cast<StreamId>(s);
+        if (!Transcribes(active_, stream))
+            continue;
+        for (int pulls = 0; pulls < kMaxPullsPerTick; ++pulls) {
+            const std::size_t n = engine_.TakeTranscript(stream, chunk, kTranscriptChunk);
+            if (n == 0)
+                break;
+            for (std::size_t i = 0; i < n; ++i)
+                transcripts_[s].Apply(chunk[i]);
+        }
+        if (transcriptStatus_[s].state != TranscriptState::Failed) {
+            transcriptStatus_[s] = engine_.Transcription(stream);
+            if (transcriptStatus_[s].state == TranscriptState::Failed)
+                transcriptProblem_[s] = engine_.TranscriptionProblem(stream);
+        }
+    }
+}
+
 /* The recording is over (stopped, or it failed by itself): collect the last
  * audio and the result. */
 void RecorderController::Finish()
 {
     DrainPeaks();
+    DrainTranscripts();
+    for (TranscriptLane &transcript : transcripts_)
+        transcript.Settle();
     stats_ = engine_.Stats();
 
     const std::wstring failure = engine_.Failure();
@@ -150,6 +186,10 @@ bool RecorderController::Animating() const
         if (lane.Active())
             return true;
     }
+    for (const TranscriptLane &transcript : transcripts_) {
+        if (transcript.Active())
+            return true;
+    }
     return false;
 }
 
@@ -157,6 +197,7 @@ void RecorderController::Tick(double dtSeconds)
 {
     if (phase_ == Phase::Recording) {
         DrainPeaks();
+        DrainTranscripts();
         stats_ = engine_.Stats();
         if (!engine_.IsRecording()) {
             engine_.Stop();         /* lets the engine release and finalise what it holds */
@@ -165,6 +206,8 @@ void RecorderController::Tick(double dtSeconds)
     }
     for (WaveformLane &lane : lanes_)
         lane.Advance(dtSeconds);
+    for (TranscriptLane &transcript : transcripts_)
+        transcript.Advance(dtSeconds);
 }
 
 }  // namespace audiorgui

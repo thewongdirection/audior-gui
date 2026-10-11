@@ -13,6 +13,15 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
   DirectWrite and WIC. No .NET, no WebView2, no third-party library for any
   functionality. `tests/check_imports.ps1` fails the build if the exe imports a
   DLL that is not on its allowlist of in-box Windows DLLs.
+  - *One exception, narrowly:* the optional live-transcription engine. The
+    recorder (`audior_gui.exe`) stays in-box only. Transcription may run in a
+    separate helper process (not yet written) that uses a third-party inference
+    library (whisper.cpp first), GPU backends, extra DLLs and, opt-in only, the
+    internet. The helper and its DLLs sit next to the exe, are started by
+    absolute path and checked against a hash list first; models are files the
+    user downloads (never in the repo); a notices file lists every third-party
+    library and model licence; API keys live in Credential Manager, never in
+    settings, the command line or logs. A failing helper never ends a recording.
 - **audior is private; this repository is public.** Never copy audior's source
   (or its docs) here. The recording engine in this repo is its own WASAPI
   implementation behind `IRecordingEngine`. audior's *behaviour* (options,
@@ -39,8 +48,8 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 
 | Path | What |
 |------|------|
-| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
-| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks) and `SimulatedEngine` (`--demo`, tests). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
+| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform and transcript models, controller, the `IRecordingEngine` seam (audio as peak bins, live transcripts as `TranscriptEvent`s). |
+| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks; it cannot transcribe yet) and `SimulatedEngine` (`--demo`, tests; it plays a scripted transcript). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
 | `src/ui` | Win32 + Direct2D window and widgets. |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
 | `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
@@ -50,9 +59,9 @@ the quick edit-test loop.
 
 **Parity with audior.** Every audior option has a control in the window and the
 same flag on the command line (see the table in `README.md`); the GUI adds a
-system-audio gain and per-stream on/off. A new audior option needs all three:
-a setting + validation (`src/core/settings`), a flag (`src/core/cli`) and a
-control (`src/ui/main_view`), with tests.
+system-audio gain, per-stream on/off and per-stream live transcripts. A new
+audior option needs all three: a setting + validation (`src/core/settings`), a
+flag (`src/core/cli`) and a control (`src/ui/main_view`), with tests.
 
 **What CI cannot do.** The runners have no audio devices, so the WASAPI capture
 code itself (`wasapi_capture.cpp`, `devices.cpp`) is only exercised for its

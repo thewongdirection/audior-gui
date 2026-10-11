@@ -81,6 +81,15 @@ Beyond audior: a **gain for system audio** (`--system-amplify <0-300>`), a
 checkbox to leave the **microphone** out (system audio alone), `--demo`, and live
 waveforms with a peak level and a clipping flag for every stream.
 
+**Live transcripts** (work in progress). Each pane has a **Transcript** switch
+(`--transcribe-mic`, `--transcribe-system`) that shows the stream's speech as text
+under its waveform while recording: words appear as they are spoken, the last
+few can still change, and each phrase is timestamped once it is final. Only the
+simulated audio of `--demo` can do this so far; the real recorder gets an
+engine in a later step (the design: a separate helper process, local models you
+download yourself, cloud engines only if you opt in), so the switch stays hidden
+until an engine is available.
+
 The command-line options only preset the window, so a shortcut such as
 
 ```bat
@@ -131,6 +140,10 @@ the program, or to the file or pipe it was redirected to
 - **Scrolling bars.** Bar heights follow a dB scale (about 54 dB of range),
   newest on the right. The playhead glides at the real-time rate even though audio
   arrives in bursts.
+- **Scrolling text.** With a transcript on, the waveform shrinks to a strip and
+  the newest lines fill the pane, older ones fading upwards. Only the last twelve
+  lines are kept, so memory stays flat however long you record; a transcript
+  problem is shown in its pane and never ends the recording.
 - **Settings lock while recording**, as audior's options do. Everything works from
   the keyboard: Tab moves between controls, Space / Enter activate, arrow keys
   adjust sliders and segmented controls, the file name box edits like any text
@@ -148,7 +161,7 @@ bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `named`, `typing`.
+`error`, `transcript`, `named`, `typing`.
 
 ## Architecture
 
@@ -159,7 +172,7 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, dialogs, clipboard), `MainView`, `LaneView`, widgets, `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`. |

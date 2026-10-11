@@ -65,6 +65,12 @@ void Painter::Text(const wchar_t *text, UINT32 length, const D2D1_RECT_F &r, Fon
     target_->DrawText(text, length, format, r, brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
+void Painter::Draw(IDWriteTextLayout *layout, float x, float y, const D2D1_COLOR_F &color)
+{
+    brush_->SetColor(color);
+    target_->DrawTextLayout(D2D1::Point2F(x, y), layout, brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+}
+
 void Painter::PushClip(const D2D1_RECT_F &r)
 {
     target_->PushAxisAlignedClip(r, D2D1_ANTIALIAS_MODE_ALIASED);

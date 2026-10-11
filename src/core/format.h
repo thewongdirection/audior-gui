@@ -11,6 +11,12 @@ namespace audiorgui {
 /* "00:12:34" (hours grow past two digits when they have to). */
 std::wstring FormatDuration(double seconds);
 
+/* "0:07", "12:34", "1:02:03": a moment in a recording, for the transcript. */
+std::wstring FormatClock(double seconds);
+
+/* "0.4 s": how far behind the speech a transcript runs (one decimal). */
+std::wstring FormatLag(float seconds);
+
 /* "512 B", "1.4 KB", "12.3 MB", "1.2 GB" (binary units). */
 std::wstring FormatBytes(std::uint64_t bytes);
 

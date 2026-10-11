@@ -11,6 +11,10 @@
  * The UI calls Tick() about 60 times a second with the time since the last
  * call.  Passing the time in (instead of reading a clock) keeps the
  * controller deterministic.
+ *
+ * Transcription rides along without being able to hurt the recording: its
+ * text and status are pulled in Tick() beside the audio, and the recording's
+ * own failure path (Outcome) never hears about transcription problems.
  */
 #pragma once
 
@@ -20,6 +24,7 @@
 
 #include "engine.h"
 #include "settings.h"
+#include "transcript_lane.h"
 #include "types.h"
 #include "waveform_lane.h"
 
@@ -83,9 +88,23 @@ public:
     /* The settings in force: the snapshot while recording, else the draft. */
     const RecordingSettings &Active() const;
 
+    /* ---- live transcripts ----
+     * A transcript is kept per stream, like its waveform, and stays on show
+     * after the recording until the next one starts. */
+    bool CanTranscribe() const { return engine_.CanTranscribe(); }
+
+    /* Whether the stream's pane shows a transcript: the engine can make one
+     * and the stream's transcript is switched on. */
+    bool ShowsTranscript(StreamId stream) const { return CanTranscribe() && Transcribes(Active(), stream); }
+
+    const TranscriptLane &Transcript(StreamId stream) const { return transcripts_[StreamIndex(stream)]; }
+    TranscriptStatus      TranscriptionStatus(StreamId stream) const { return transcriptStatus_[StreamIndex(stream)]; }
+    const std::wstring   &TranscriptionProblem(StreamId stream) const { return transcriptProblem_[StreamIndex(stream)]; }
+
 private:
     std::wstring NextOutputPath();
     void DrainPeaks();
+    void DrainTranscripts();
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
@@ -97,6 +116,9 @@ private:
     RecordingSettings  active_;
     Phase              phase_ = Phase::Idle;
     WaveformLane       lanes_[kStreamCount];
+    TranscriptLane     transcripts_[kStreamCount];
+    TranscriptStatus   transcriptStatus_[kStreamCount];
+    std::wstring       transcriptProblem_[kStreamCount];
     RecordingStats     stats_;
     Outcome            outcome_;
     std::vector<DeviceInfo> devices_[2];

@@ -167,6 +167,10 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
         } else if (option == L"--system-amplify") {
             if (needValue())
                 ParsePercent(L"--system-amplify", value, kMaxAmplifyPercent, &s.systemAmplifyPercent, &r);
+        } else if (option == L"--transcribe-mic") {
+            s.transcribeMicrophone = true;
+        } else if (option == L"--transcribe-system") {
+            s.transcribeSystem = true;
         } else if (option == L"-l" || option == L"--list-devices") {
             command(CliResult::Command::ListDevices);
         } else if (option == L"-s" || option == L"--stop") {
@@ -252,7 +256,8 @@ std::wstring HelpText()
            L"Usage: audior_gui [options]\n"
            L"\n"
            L"With no options the window opens. Options preset the window; giving --output starts\n"
-           L"recording straight away. The options are audior's, plus --system-amplify and --demo.\n"
+           L"recording straight away. The options are audior's, plus --system-amplify,\n"
+           L"--transcribe-mic, --transcribe-system and --demo.\n"
            L"\n"
            L"Recording:\n"
            L"  -o, --output <file>          File to record to (at most 247 characters). The extension\n"
@@ -270,6 +275,9 @@ std::wstring HelpText()
            L"      --merge [percent]        Mix both streams into one file. The percentage is the\n"
            L"                               microphone's share of the mix (default 65).\n"
            L"      --separate               Write the streams to <name>_mic and <name>_system files.\n"
+           L"      --transcribe-mic         Show a live transcript of the microphone in its pane.\n"
+           L"      --transcribe-system      Show a live transcript of the system audio in its pane.\n"
+           L"                               (Both need a transcription engine; so far only --demo has one.)\n"
            L"\n"
            L"Other:\n"
            L"  -l, --list-devices           List the audio devices and exit.\n"

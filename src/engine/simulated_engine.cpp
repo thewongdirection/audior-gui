@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cwchar>
 #include <utility>
 
 namespace audiorgui {
@@ -12,6 +13,120 @@ constexpr double kPi = 3.14159265358979323846;
 
 /* Rates for sizing the pretend output, as audior's writers produce. */
 constexpr double kWavBytesPerSecond = 48000.0 * 2 * 2;      /* 48 kHz, 16-bit, stereo */
+
+/* ---- the transcript script ------------------------------------------- */
+
+constexpr double kStartupSeconds = 0.8;             /* the "model" loads: status Starting       */
+constexpr float  kLagSeconds     = 0.4f;
+constexpr double kWordSeconds    = 0.26;            /* one word is spoken, and shown, per 0.26 s */
+constexpr double kFinalDelay     = 0.45;            /* from the last word to the final event     */
+constexpr double kScriptSeconds  = 42.0;            /* the conversation then starts over         */
+
+/* One utterance: when it starts, what is said, and one word the engine first
+ * hears wrongly (fixWord, shown as wrongText for two words before it is
+ * corrected; -1: none). */
+struct Utterance {
+    double         at;
+    const wchar_t *text;
+    int            fixWord;
+    const wchar_t *wrongText;
+};
+
+constexpr Utterance kMicScript[] = {
+    {0.8,  L"Okay, let's get started. Thanks everyone for joining on short notice.", -1, nullptr},
+    {5.0,  L"The agenda today is the Q4 launch timeline and the open risks.", -1, nullptr},
+    {9.0,  L"Maya, can you walk us through where the build stands?", -1, nullptr},
+    {22.5, L"Got it. So the blocker is the installer signing, not the code.", -1, nullptr},
+    {32.0, L"Let's put a hard date on that by Friday.", -1, nullptr},
+};
+
+constexpr Utterance kSystemScript[] = {
+    {13.0, L"Sure. The core features are done and QA signed off on Tuesday.", -1, nullptr},
+    {17.5, L"What's still open is code signing for the installer. We're waiting on the certificate from IT.",
+     5, L"sign in"},
+    {26.5, L"If that lands this week we can still hit the launch date, otherwise it slips about five days.",
+     -1, nullptr},
+    {35.0, L"I'll chase them again today.", -1, nullptr},
+};
+
+struct Script {
+    const Utterance *items;
+    std::size_t      count;
+};
+
+Script ScriptOf(StreamId stream)
+{
+    return stream == StreamId::Microphone ? Script{kMicScript, sizeof(kMicScript) / sizeof(kMicScript[0])}
+                                          : Script{kSystemScript, sizeof(kSystemScript) / sizeof(kSystemScript[0])};
+}
+
+int WordCount(const wchar_t *text)
+{
+    int words = 1;
+    for (; *text; ++text)
+        words += *text == L' ';
+    return words;
+}
+
+/* Where event number `index` of a stream falls: each utterance is one partial
+ * per word (step 0 shows one word) and then its final (step == words). */
+struct Position {
+    std::uint64_t cycle;
+    std::size_t   utterance;
+    int           step;
+    int           words;
+};
+
+Position Locate(const Script &script, std::uint64_t index)
+{
+    std::uint64_t perCycle = 0;
+    for (std::size_t i = 0; i < script.count; ++i)
+        perCycle += static_cast<std::uint64_t>(WordCount(script.items[i].text)) + 1;
+
+    Position p{index / perCycle, 0, 0, 0};
+    std::uint64_t rest = index % perCycle;
+    for (std::size_t i = 0; i < script.count; ++i) {
+        const int words = WordCount(script.items[i].text);
+        if (rest < static_cast<std::uint64_t>(words) + 1) {
+            p.utterance = i;
+            p.step = static_cast<int>(rest);
+            p.words = words;
+            break;
+        }
+        rest -= static_cast<std::uint64_t>(words) + 1;
+    }
+    return p;
+}
+
+double EventTime(const Script &script, const Position &p)
+{
+    const double start = script.items[p.utterance].at + static_cast<double>(p.cycle) * kScriptSeconds;
+    return p.step < p.words ? start + p.step * kWordSeconds : start + p.words * kWordSeconds + kFinalDelay;
+}
+
+/* The text of the first `shown` words, with the one misheard word as it was heard. */
+void PartialText(const Utterance &u, int shown, TranscriptEvent *e)
+{
+    wchar_t text[kTranscriptChars];
+    std::size_t length = 0;
+    const wchar_t *word = u.text;
+    for (int i = 0; i < shown && *word; ++i) {
+        const wchar_t *end = word;
+        while (*end && *end != L' ')
+            ++end;
+        const bool misheard = i == u.fixWord && shown > i && shown <= i + 2;
+        const wchar_t *from = misheard ? u.wrongText : word;
+        const std::size_t n = misheard ? std::wcslen(u.wrongText) : static_cast<std::size_t>(end - word);
+        if (length + n + 2 >= kTranscriptChars)
+            break;
+        if (length)
+            text[length++] = L' ';
+        std::wmemcpy(text + length, from, n);
+        length += n;
+        word = *end ? end + 1 : end;
+    }
+    e->SetText(text, length);
+}
 
 }  // namespace
 
@@ -24,6 +139,12 @@ void SimulatedEngine::FailAfter(double seconds, std::wstring message)
 {
     failAfter_ = seconds;
     failMessage_ = std::move(message);
+}
+
+void SimulatedEngine::FailTranscriptAfter(double seconds, std::wstring message)
+{
+    transcriptFailAfter_ = seconds;
+    transcriptFailMessage_ = std::move(message);
 }
 
 std::vector<DeviceInfo> SimulatedEngine::ListDevices(DeviceKind kind)
@@ -50,6 +171,9 @@ bool SimulatedEngine::Start(const RecordingSettings &settings, const std::wstrin
     startTime_ = endTime_ = now_();
     failAt_ = failAfter_;                   /* a failure applies to one recording only */
     failAfter_ = -1.0;
+    transcriptNext_[0] = transcriptNext_[1] = 0;
+    transcriptFailAt_ = transcriptFailAfter_;
+    transcriptFailAfter_ = -1.0;
     recording_ = true;
     return true;
 }
@@ -106,6 +230,56 @@ std::size_t SimulatedEngine::TakePeaks(StreamId stream, PeakBin *out, std::size_
     for (std::size_t i = 0; i < n; ++i)
         out[i] = Synthesize(stream, produced_[s] + i);
     produced_[s] += n;
+    return n;
+}
+
+/* The recording time the transcript has reached: it stops where a failure of
+ * the transcription cut it, while the recording runs on. */
+double SimulatedEngine::TranscriptElapsed()
+{
+    const double elapsed = Elapsed();
+    return transcriptFailAt_ >= 0.0 ? std::min(elapsed, transcriptFailAt_) : elapsed;
+}
+
+TranscriptStatus SimulatedEngine::Transcription(StreamId stream)
+{
+    TranscriptStatus status;
+    if (!Transcribes(settings_, stream))
+        return status;
+    if (transcriptFailAt_ >= 0.0 && Elapsed() >= transcriptFailAt_) {
+        status.state = TranscriptState::Failed;
+    } else if (IsRecording()) {
+        const bool loaded = Elapsed() >= kStartupSeconds;
+        status.state = loaded ? TranscriptState::Live : TranscriptState::Starting;
+        status.lagSeconds = loaded ? kLagSeconds : 0.0f;
+    }
+    return status;
+}
+
+std::size_t SimulatedEngine::TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity)
+{
+    if (!Transcribes(settings_, stream))
+        return 0;
+
+    const Script script = ScriptOf(stream);
+    const double elapsed = TranscriptElapsed();
+    std::uint64_t &next = transcriptNext_[StreamIndex(stream)];
+    std::size_t n = 0;
+    for (; n < capacity; ++n, ++next) {
+        const Position p = Locate(script, next);
+        if (EventTime(script, p) > elapsed)
+            break;
+
+        const Utterance &u = script.items[p.utterance];
+        TranscriptEvent &e = out[n];
+        e.utterance = static_cast<std::uint32_t>(p.cycle * script.count + p.utterance);
+        e.isFinal = p.step == p.words;
+        e.startSeconds = u.at + static_cast<double>(p.cycle) * kScriptSeconds;
+        if (e.isFinal)
+            e.SetText(u.text, std::wcslen(u.text));
+        else
+            PartialText(u, p.step + 1, &e);
+    }
     return n;
 }
 
