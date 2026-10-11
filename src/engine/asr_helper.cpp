@@ -4,8 +4,10 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 
+#include "../core/settings.h"
 #include "../core/sha256.h"
 #include "process_transport.h"
 
@@ -43,8 +45,8 @@ std::wstring ModelsDirectory()
 {
     wchar_t base[MAX_PATH];
     const DWORD chosen = GetEnvironmentVariableW(L"AUDIOR_MODELS", base, MAX_PATH);
-    if (chosen > 0 && chosen < MAX_PATH)
-        return std::wstring(base, chosen);              /* the user keeps the models somewhere else */
+    if (chosen > 0 && chosen < MAX_PATH && IsFullPath(std::wstring(base, chosen)))
+        return std::wstring(base, chosen);              /* the user keeps the models somewhere else (a relative path would mean two places) */
     const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
         return std::wstring();
@@ -151,6 +153,56 @@ bool HashFile(const std::wstring &path, std::string *hex, const StopCheck &stopp
 
 namespace {
 
+/* The hash of a model is not worked out again while the file is the one that was hashed: the same path, size and time
+ * of last write, and a time of last write long enough before the hashing for a rewrite to show in it.  Whisper large-v3
+ * is 3 GB and takes about ten seconds to hash, which every recording would otherwise wait for with the first of its
+ * speech lost.  (Whoever can swap a file and keep its size and time can also swap the manifest.) */
+constexpr std::uint64_t kQuietTicks = 20000000;             /* 2 s, in the 100 ns of a FILETIME */
+constexpr std::size_t kHashesKept = 8;
+
+struct KnownHash {
+    std::wstring  path;
+    std::uint64_t bytes, written;
+    std::string   hex;
+};
+std::mutex g_knownMutex;
+std::vector<KnownHash> g_known;
+
+std::uint64_t Ticks(const FILETIME &t) { return (static_cast<std::uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; }
+
+bool HashModel(const std::wstring &path, std::string *hex, const StopCheck &stopping)
+{
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data))
+        return false;
+    const std::uint64_t bytes = (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+    const std::uint64_t written = Ticks(data.ftLastWriteTime);
+    {
+        std::lock_guard<std::mutex> lock(g_knownMutex);
+        for (const KnownHash &known : g_known) {
+            if (known.path == path && known.bytes == bytes && known.written == written) {
+                *hex = known.hex;
+                return true;
+            }
+        }
+    }
+    if (!HashFile(path, hex, stopping))
+        return false;
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    if (Ticks(now) > written + kQuietTicks) {
+        std::lock_guard<std::mutex> lock(g_knownMutex);
+        for (std::size_t i = g_known.size(); i-- > 0;) {
+            if (g_known[i].path == path)
+                g_known.erase(g_known.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+        if (g_known.size() >= kHashesKept)
+            g_known.erase(g_known.begin());
+        g_known.push_back({path, bytes, written, *hex});
+    }
+    return true;
+}
+
 bool Lists(const std::vector<ManifestEntry> &entries, const wchar_t *file)
 {
     for (const ManifestEntry &entry : entries) {
@@ -211,12 +263,12 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
 
     if (checkModel) {
         std::string actual;
-        if (!HashFile(setup.modelPath, &actual, stopping))
+        if (!HashModel(setup.modelPath, &actual, stopping))
             return L"The model \"" + std::wstring(setup.model->file) + L"\" cannot be read.";
         if (actual != setup.model->sha256)
             return L"The model \"" + std::wstring(setup.model->file) + L"\" is damaged or is not the published file.";
         if (setup.vad) {                                /* optional, but not to be used unchecked */
-            if (!HashFile(setup.vadPath, &actual, stopping))
+            if (!HashModel(setup.vadPath, &actual, stopping))
                 return L"The model \"" + std::wstring(setup.vad->file) + L"\" cannot be read.";
             if (actual != setup.vad->sha256)
                 return L"The model \"" + std::wstring(setup.vad->file) +

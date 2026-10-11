@@ -187,6 +187,15 @@ void TranscriptionHost::FailAll(const std::wstring &problem)
     }
 }
 
+bool TranscriptionHost::AllFailed()
+{
+    for (int s = 0; s < kStreamCount; ++s) {
+        if (Wanted(static_cast<StreamId>(s)) && Status(static_cast<StreamId>(s)).state != TranscriptState::Failed)
+            return false;
+    }
+    return true;
+}
+
 void TranscriptionHost::SetAllStarting()
 {
     for (int s = 0; s < kStreamCount; ++s) {
@@ -235,7 +244,12 @@ void TranscriptionHost::Run()
     int restarts = 0;
     for (;;) {
         std::wstring problem;
-        std::unique_ptr<IAsrTransport> transport = CurrentFactory()(&problem, [this] { return StopRequested(); });
+        std::unique_ptr<IAsrTransport> transport;
+        try {
+            transport = CurrentFactory()(&problem, [this] { return StopRequested(); });
+        } catch (...) {                                 /* (no memory for the hash): a failed transcription, not a failed recorder */
+            problem = L"The transcription engine could not be started.";
+        }
         if (!transport) {
             if (!StopRequested())                       /* (a start given up on because of Stop() is not a failure) */
                 FailAll(problem);
@@ -249,7 +263,11 @@ void TranscriptionHost::Run()
         }
         std::thread reader(&TranscriptionHost::ReadLoop, this, transport.get());
 
-        const bool finished = WriteLoop(*transport);    /* true: Stop() came and the helper has everything */
+        bool finished = false;                          /* true: Stop() came and the helper has everything */
+        try {
+            finished = WriteLoop(*transport);
+        } catch (...) {                                 /* (no memory): the helper is let go, as one that cannot be written to */
+        }
         if (finished) {                                 /* give it time to say its last words and hang up */
             std::unique_lock<std::mutex> lock(controlMutex_);
             control_.wait_for(lock, std::chrono::milliseconds(options_.flushMs), [&] { return readerDone_; });
@@ -262,8 +280,8 @@ void TranscriptionHost::Run()
         }
         transport.reset();
 
-        if (finished || StopRequested())
-            break;
+        if (finished || StopRequested() || AllFailed())
+            break;                                      /* (told why it cannot work: starting it again would only load the model again) */
 
         /* Not gone by itself but let go, because it cannot keep up: the next model takes over at once. */
         if (TakeStepRequest()) {
@@ -328,9 +346,15 @@ bool TranscriptionHost::WriteLoop(IAsrTransport &transport)
     const auto began = std::chrono::steady_clock::now();
     for (;;) {
         const bool stopping = StopRequested();
+        bool ready;
+        {
+            std::lock_guard<std::mutex> lock(controlMutex_);
+            ready = ready_;
+        }
         bool sent = false;
-        for (int s = 0; s < kStreamCount; ++s) {        /* what is queued, 100 ms at a time */
-            if (!Wanted(static_cast<StreamId>(s)))
+        for (int s = 0; s < kStreamCount; ++s) {        /* what is queued, 100 ms at a time (once the helper is ready: while it loads
+                                                           it reads nothing, and a write that blocks would hide that it is too slow) */
+            if (!Wanted(static_cast<StreamId>(s)) || (!ready && !stopping))
                 continue;
             message.stream = static_cast<StreamId>(s);
             while ((message.sampleCount = lanes_[s].audio->Read(message.audio, asr::kMaxAudioSamples,
@@ -377,7 +401,15 @@ void TranscriptionHost::ReadLoop(IAsrTransport *transport)
                     ok = took > 0;                      /* a full buffer without a whole message is corrupt */
                     break;
                 }
-                if (result == asr::MessageReader::Result::Invalid || !Handle(message) || StepRequested()) {
+                bool handled = result != asr::MessageReader::Result::Invalid;
+                if (handled) {
+                    try {
+                        handled = Handle(message);
+                    } catch (...) {                     /* (no memory, a transcript file that cannot be written): the helper is let go */
+                        handled = false;
+                    }
+                }
+                if (!handled || StepRequested()) {
                     ok = false;                         /* (or too slow: see Handle) */
                     break;
                 }

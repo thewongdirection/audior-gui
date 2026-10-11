@@ -1,3 +1,4 @@
+#include "../src/core/asr_languages.h"
 #include "../src/core/cli.h"
 #include "test_support.h"
 
@@ -209,6 +210,17 @@ TEST(Cli_TheGraphicsCardIsUsedUnlessTheProcessorIsAskedFor)
     CHECK(cpu.result.error.empty());
     CHECK(!cpu.settings.transcribeGpu);
     CHECK(HelpText().find(L"--transcribe-cpu") != std::wstring::npos);
+}
+
+TEST(Cli_EveryLanguageOfTheTableIsAccepted)
+{
+    for (std::size_t i = 0; i < kSpeechLanguageCount; ++i) {
+        const Parsed parsed = Parse({L"--transcribe-language", kSpeechLanguages[i].word});
+        CHECK(parsed.result.error.empty());
+        CHECK_EQ(static_cast<std::size_t>(parsed.settings.transcribeLanguage), i);
+    }
+    CHECK(Parse({L"--transcribe-language", L"ZH-Hant"}).settings.transcribeLanguage ==
+          static_cast<SpeechLanguage>(3));                          /* in any case */
 }
 
 TEST(Cli_AnUnknownTranscriptionModelOrLanguageIsRejected)

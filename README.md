@@ -142,7 +142,7 @@ It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
 
 1. **The helper**, `audior_asr.exe` with its DLLs and `audior_asr.sha256` (the
-   list of them with their SHA-256), next to `audior_gui.exe`. It must come from the
+   list of them with their SHA-256), next to `Audior-GUI.exe`. It must come from the
    same build as the program: one of another version refuses to start with *do not
    speak the same version*, so build it again whenever the program is. `build.bat x64 asr`
    builds it (it compiles whisper.cpp, so it needs the *C++ CMake tools for
@@ -330,8 +330,8 @@ down), so the settings you recorded with are the ones you find next time.
   against the PC: a microphone or playback device that is no longer plugged in is
   replaced by the system default, and a folder that cannot be made (the file came from
   another PC, or the drive has gone) by `Documents\Audior-GUI`. A speech model that is no
-  longer installed is reported when you press Start, naming it; pick another in the
-  *Transcript* section.
+  longer installed is forgotten (the first one found is used again; a
+  `--transcribe-model` that is not installed is reported when you press Start, naming it).
 - **The folder must be writable.** In a read-only place (Program Files, a locked
   drive) the program works as before but nothing is remembered; keep it somewhere you
   can write to. The file is replaced in one step, so it is never left half-written. A
@@ -360,7 +360,7 @@ mix=merge                    merge or separate
 mixMicrophone=65             0 to 100 (percent): the microphone's share of the merged mix
 transcribeMicrophone=off
 transcribeSystem=off
-transcribeModel=             one of the two model file names above; empty: the first one found
+transcribeModel=             one of the model file names above; empty: the first one found
 transcribeLanguage=auto      auto, en, zh, zh-hant, es, fr, de, ja, ko, pt, ru, it, nl, ar, hi, tr, vi, th, pl, uk or id
 transcribeGpu=on
 startHotkey=Ctrl+Alt+R

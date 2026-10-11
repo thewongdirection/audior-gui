@@ -25,10 +25,14 @@ ParakeetDecoder::~ParakeetDecoder()
         parakeet_free(context_);
 }
 
-bool ParakeetDecoder::Load(const std::string &path, bool gpu, const std::string &backendDir, std::string *error)
+bool ParakeetDecoder::Load(const std::string &path, bool gpu, const std::wstring &backendDir, std::string *error)
 {
     parakeet_log_set(Silent, nullptr);
     const BackendInfo backends = LoadBackends(backendDir, gpu);
+    if (!backends.usable) {
+        *error = "The processor backend of the engine could not be loaded.";
+        return false;
+    }
     device_ = backends.device;
     threads_ = backends.threads;
 

@@ -14,7 +14,7 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
   functionality. `tests/check_imports.ps1` fails the build if the exe imports a
   DLL that is not on its allowlist of in-box Windows DLLs.
   - *One exception, narrowly:* the optional live-transcription engine. The
-    recorder (`audior_gui.exe`) stays in-box only. Transcription runs in a
+    recorder (`Audior-GUI.exe`) stays in-box only. Transcription runs in a
     separate helper process (`audior_asr.exe`, built by `build.bat asr` from
     `src/asr`) that uses a third-party inference library (whisper.cpp, vendored
     in `third_party`) built as DLLs: ggml and whisper, a CPU backend and, if

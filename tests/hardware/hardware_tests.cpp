@@ -33,8 +33,9 @@
  * T13 memory, handles, threads and CPU over a recording, T14 the focus, T15 the live transcript
  * of a spoken sentence (the one test that runs the recording engine itself, in this process;
  * skipped unless the transcription helper and a model are in place), T16 a busy PC (the
- * transcript changes to a smaller model) and T17 the large model on the graphics card at the
- * pace of speech (both also need the large model, and no audio devices).
+ * transcript changes to a lighter model) and T17 the large model on the graphics card at the
+ * pace of speech (both also need the large model, and no audio devices), and T18 Parakeet at the
+ * pace of speech, on the processor and on the card (skipped without a Parakeet model).
  *
  * Not automatable (docs\FIRST-TEST.md): unplugging a device, a loud voice for the CLIP flag,
  * the communications-ducking opt-out, and how the window looks.

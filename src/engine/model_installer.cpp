@@ -15,13 +15,15 @@ namespace {
 
 constexpr std::uint64_t kSpareBytes = 64ull << 20;          /* free space to leave on the disk besides the model */
 constexpr std::uint64_t kFetcherMemoryBytes = 256ull << 20; /* what the download program may commit */
+constexpr int kMoveAttempts = 5;                            /* a scanner or a backup program may hold the new file for a moment: */
+constexpr DWORD kMoveRetryMs = 300;                         /* the move is tried again, rather than a 3 GB download thrown away */
 
 /* Creates `dir`, and the folders above it that are missing. */
 bool EnsureFolder(const std::wstring &dir)
 {
     if (CreateDirectoryW(dir.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS)
         return true;
-    const std::size_t slash = dir.find_last_of(L'\\');
+    const std::size_t slash = dir.find_last_of(L"\\/");     /* (AUDIOR_MODELS may use either) */
     if (GetLastError() != ERROR_PATH_NOT_FOUND || slash == std::wstring::npos || slash == 0 ||
         !EnsureFolder(dir.substr(0, slash)))
         return false;
@@ -73,12 +75,12 @@ bool ModelInstaller::Install(const AsrModel &model, const Progress &progress, co
     }
     if (!EnsureFolder(options_.modelsDir))
         return fail(L"The folder " + options_.modelsDir + L" could not be created.");
+    DeleteFileW(part.c_str());                              /* what an earlier try left (before the space is counted) */
     ULARGE_INTEGER available = {};
     if (GetDiskFreeSpaceExW(options_.modelsDir.c_str(), &available, nullptr, nullptr) &&
         available.QuadPart < model.bytes + kSpareBytes)
         return fail(L"There is not enough free disk space for " + name + L" (" + std::to_wstring((model.bytes + kSpareBytes) >> 20) +
                     L" MB needed in " + options_.modelsDir + L").");
-    DeleteFileW(part.c_str());                              /* what an earlier try left */
 
     /* The download program, which creates `part` and fills it. */
     const std::wstring arguments = (options_.fetcherArguments.empty() ? std::wstring() : options_.fetcherArguments + L" ") +
@@ -139,7 +141,16 @@ bool ModelInstaller::Install(const AsrModel &model, const Progress &progress, co
                                : L"The downloaded " + name + L" could not be read to check it.");
     if (hash != model.sha256)
         return fail(L"The downloaded " + name + L" is not the file that was published (its SHA-256 differs).");
-    if (!MoveFileExW(part.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
+    bool moved = false;
+    for (int attempt = 0; !moved && attempt < kMoveAttempts && !stopped(); ++attempt) {
+        if (attempt > 0)
+            Sleep(kMoveRetryMs);
+        moved = MoveFileExW(part.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+        const DWORD error = moved ? 0 : GetLastError();
+        if (!moved && error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED)
+            break;                                          /* not something that passes */
+    }
+    if (!moved)
         return fail(L"The downloaded " + name + L" could not be moved into " + options_.modelsDir + L".");
     return true;
 }

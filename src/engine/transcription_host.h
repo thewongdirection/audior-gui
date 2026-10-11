@@ -169,6 +169,7 @@ private:
     void SetStatus(StreamId stream, const TranscriptStatus &status);
     void Fail(StreamId stream, const std::wstring &problem);
     void FailAll(const std::wstring &problem);
+    bool AllFailed();                                   /* every stream that is transcribed has failed */
     void SetAllStarting();
     void SetAllOff();
     bool SleepUnlessStopped(int milliseconds);

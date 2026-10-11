@@ -1,6 +1,6 @@
 # Third-party code
 
-The recorder itself (`audior_gui.exe`) uses nothing but what ships with Windows.
+The recorder itself (`Audior-GUI.exe`) uses nothing but what ships with Windows.
 The optional transcription helper (`audior_asr.exe`, built from `src/asr`) is the
 one exception, and this folder is where its code lives. See `CLAUDE.md` for the
 rule and `THIRD-PARTY-NOTICES.md` for every licence.

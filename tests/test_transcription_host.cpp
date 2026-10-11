@@ -1058,8 +1058,9 @@ TEST(Host_ALagThatRecoversChangesNothing)
     options.fallbacks.push_back({L"C:\\Models\\smaller.bin", small.Factory()});
     helpers.behavior = [&](Instance &helper, int) {
         Send(helper, Ready());
-        for (int i = 0; i < 30; ++i) {                  /* behind for 60 ms, then fine, again and again */
-            const float lag = i % 12 < 6 ? 9.0f : 0.5f;
+        for (int i = 0; i < 30; ++i) {                  /* behind for one beat (10 ms, or what the timer gives: 16), then fine, again and again;
+                                                           a bad stretch is a tenth of the hold time, so a slow runner does not make it a fall */
+            const float lag = i % 2 == 0 ? 9.0f : 0.5f;
             if (!Send(helper, StatusFor(StreamId::Microphone, TranscriptState::Live, lag)))
                 return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));

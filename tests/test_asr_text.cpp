@@ -311,3 +311,14 @@ TEST(AsrText_TheMarksThatFollowAChineseCharacterAreFullWidth)
     const std::wstring english = L"Plain English, as before? Yes! Fine: ok; done.";
     CHECK_EQ(CleanTranscript(english), english);
 }
+
+TEST(AsrText_WordsThatAreOnlyMarksAreNeverTheSame)
+{
+    bool found = true;
+    const std::wstring dots = L"a ... ... ... ... ... ... b";
+    CHECK_EQ(Collapse(dots, &found), dots);                          /* six marks in a row are not a loop of one word */
+    CHECK(!found);
+    const std::wstring notes = L"♪ ♪ ♪ ♪ ♪ ♪ ♪ ♪ la";
+    CHECK_EQ(Collapse(notes, &found), notes);
+    CHECK(!found);
+}

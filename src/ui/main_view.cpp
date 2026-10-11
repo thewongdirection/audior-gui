@@ -92,7 +92,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         if (!host_)
             return;
         const std::wstring dir = host_->PickFolder(ctl_.Settings().outputDirectory);
-        if (!dir.empty()) {
+        if (!dir.empty() && !ctl_.SettingsLocked()) {
             ctl_.Settings().outputDirectory = dir;
             Refresh();
         }
@@ -458,7 +458,7 @@ void MainView::ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*id
             selected = static_cast<int>(i) + 1;
     }
     const int pick = host_ ? host_->Choose(items, selected, anchor.rect) : -1;
-    if (pick < 0 || static_cast<std::size_t>(pick) >= items.size())
+    if (pick < 0 || static_cast<std::size_t>(pick) >= items.size() || ctl_.SettingsLocked())
         return;
     ctl_.Settings().*idField = pick == 0 ? std::wstring() : devices[static_cast<std::size_t>(pick) - 1].id;
     Refresh();
@@ -474,7 +474,7 @@ void MainView::ChooseBitrate()
             selected = i;
     }
     const int pick = host_ ? host_->Choose(items, selected, bitrateField_.rect) : -1;
-    if (pick < 0 || pick >= kMp3BitrateCount)
+    if (pick < 0 || pick >= kMp3BitrateCount || ctl_.SettingsLocked())
         return;
     ctl_.Settings().mp3BitrateKbps = kMp3Bitrates[pick];
     Refresh();
@@ -486,7 +486,7 @@ void MainView::ChooseLanguage()
     for (const SpeechLanguageInfo &language : kSpeechLanguages)
         items.push_back(language.label);
     const int pick = host_ ? host_->Choose(items, static_cast<int>(ctl_.Settings().transcribeLanguage), languageField_.rect) : -1;
-    if (pick < 0 || !ValidSpeechLanguage(static_cast<std::size_t>(pick)))
+    if (pick < 0 || !ValidSpeechLanguage(static_cast<std::size_t>(pick)) || ctl_.SettingsLocked())
         return;
     ctl_.Settings().transcribeLanguage = static_cast<SpeechLanguage>(pick);
     Refresh();
@@ -514,7 +514,7 @@ void MainView::ChooseModel()
             selected = static_cast<int>(i);
     }
     const int pick = host_ ? host_->Choose(items, selected, modelField_.rect) : -1;
-    if (pick < 0 || static_cast<std::size_t>(pick) >= models.size())
+    if (pick < 0 || static_cast<std::size_t>(pick) >= models.size() || ctl_.SettingsLocked())
         return;
     ctl_.Settings().transcribeModel = models[static_cast<std::size_t>(pick)].file;
     Refresh();
