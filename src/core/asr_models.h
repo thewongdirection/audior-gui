@@ -44,6 +44,12 @@ inline constexpr std::size_t kAsrModelCount = sizeof(kAsrModels) / sizeof(kAsrMo
 /* The entry of kAsrModels with this file name (any case), or null. */
 const AsrModel *FindAsrModel(const std::wstring &file);
 
+/* The models of `table` that come before `chosen` and are in `installed`, the nearest first: the
+ * ones to change to if `chosen` is too slow.  With `keepLanguages` a multilingual `chosen` is
+ * only replaced by multilingual models, so that no language stops being understood. */
+std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
+                                            const std::vector<const AsrModel *> &installed, bool keepLanguages);
+
 /* A model as the GUI lists it. */
 inline TranscriptModel ModelChoice(const AsrModel &m) { return {m.file, m.label, m.multilingual}; }
 

@@ -9,7 +9,8 @@
  * a picture of the UI, and it is a quick way to look at a design change.
  *
  * Scenarios: idle, recording, mic-only, system-only, clipping, saved, error,
- * transcript (both live transcripts mid-sentence), model (the multilingual
+ * transcript (both live transcripts mid-sentence), catching-up (the same, but
+ * the transcription has fallen behind), model (the multilingual
  * model chosen, idle), named (settings changed),
  * typing (a long file name being edited).
  */

@@ -34,6 +34,7 @@
 #include "../core/asr_protocol.h"
 #include "../core/asr_text.h"
 #include "../core/decode_queue.h"
+#include "../core/lag_governor.h"
 #include "../core/utterance_tracker.h"
 #include "whisper_decoder.h"
 
@@ -226,11 +227,15 @@ private:
             job.isFinal = step.kind == UtteranceTracker::Step::Kind::Final;
             job.receivedAt = Now();
             job.audio.assign(step.audio, step.audio + step.count);
+            DecodeQueue::Lost lost;
+            bool dropped;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                queue_.Push(std::move(job));
+                dropped = queue_.Push(std::move(job), &lost);
             }
             wake_.notify_one();
+            if (dropped)                                /* too far behind to decode it: the gap is shown, not hidden */
+                events_.Text(lost.stream, lost.id, true, static_cast<double>(lost.startSample) / asr::kSampleRate, L"…");
         };
     }
 
@@ -262,7 +267,8 @@ private:
             if (job.isFinal || !text.empty())           /* an empty Final takes back a phrase that was nothing */
                 events_.Text(job.stream, job.id, job.isFinal, static_cast<double>(job.startSample) / asr::kSampleRate,
                              text);
-            events_.Status(job.stream, TranscriptState::Live, static_cast<float>(std::max(0.0, Now() - job.receivedAt)));
+            const float lag = static_cast<float>(std::max(0.0, Now() - job.receivedAt));
+            events_.Status(job.stream, governors_[s].Observe(lag), lag);
         }
     }
 
@@ -270,6 +276,7 @@ private:
     WhisperDecoder   &decoder_;
     const std::uint8_t streams_;
     UtteranceTracker trackers_[kStreamCount];           /* the protocol thread only */
+    LagGovernor      governors_[kStreamCount];          /* the worker only */
 
     std::mutex              mutex_;
     std::condition_variable wake_;

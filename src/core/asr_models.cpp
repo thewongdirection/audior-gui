@@ -1,5 +1,7 @@
 #include "asr_models.h"
 
+#include <algorithm>
+
 namespace audiorgui {
 
 namespace {
@@ -29,6 +31,18 @@ const AsrModel *FindAsrModel(const std::wstring &file)
             return &m;
     }
     return nullptr;
+}
+
+std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
+                                            const std::vector<const AsrModel *> &installed, bool keepLanguages)
+{
+    std::vector<const AsrModel *> smaller;
+    for (const AsrModel *m = chosen; m-- > table;) {
+        const bool present = std::find(installed.begin(), installed.end(), m) != installed.end();
+        if (present && (m->multilingual || !keepLanguages || !chosen->multilingual))
+            smaller.push_back(m);
+    }
+    return smaller;
 }
 
 namespace {

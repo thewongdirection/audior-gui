@@ -158,6 +158,9 @@ TEST(Asr_StatusRoundTrips)
     CHECK(r.stream == StreamId::System);
     CHECK(r.status.state == TranscriptState::Live);
     CHECK_NEAR(r.status.lagSeconds, 1.25, 1e-6);
+
+    m.status.state = TranscriptState::CatchingUp;
+    CHECK(ReadOne(Frame(m)).status.state == TranscriptState::CatchingUp);
 }
 
 TEST(Asr_EventRoundTrips)
@@ -349,7 +352,9 @@ TEST(Asr_ANonsensicalStatusIsRefused)
     m.status.lagSeconds = 0.5f;
     const std::vector<std::uint8_t> ok = Frame(m);
     CHECK(!IsInvalid(ok));
-    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 9)));                    /* a state that does not exist */
+    CHECK(!IsInvalid(With(ok, kFrameHeader + 1, 4)));                   /* the last state there is */
+    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 5)));                    /* one that does not exist */
+    CHECK(IsInvalid(With(ok, kFrameHeader + 1, 9)));
 
     m.status.lagSeconds = std::numeric_limits<float>::quiet_NaN();
     CHECK(IsInvalid(Frame(m)));

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "../src/core/asr_models.h"
+#include "../src/core/lag_governor.h"
 #include "../src/engine/simulated_engine.h"
 #include "test_support.h"
 
@@ -350,6 +351,27 @@ TEST(Sim_CanTranscribe)
 {
     Rig rig;
     CHECK(rig.engine.CanTranscribe());
+}
+
+TEST(Sim_CanFallBehindOnRequest)
+{
+    Rig rig;
+    rig.settings.transcribeMicrophone = true;
+    rig.engine.FallBehindAfter(5.0);
+    rig.Start();
+    rig.now = 3.0;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Live);
+    CHECK(!rig.engine.Transcription(StreamId::Microphone).smallerModel);
+    rig.now = 6.0;
+    const TranscriptStatus behind = rig.engine.Transcription(StreamId::Microphone);
+    CHECK(behind.state == TranscriptState::CatchingUp);
+    CHECK(behind.lagSeconds > LagGovernor::kCatchUpLag);
+    CHECK(behind.smallerModel);
+
+    rig.engine.Stop();                                  /* it applies to the one recording only */
+    rig.Start();
+    rig.now = 12.0;
+    CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Live);
 }
 
 TEST(Sim_OffersTheWholeTableOfModels)

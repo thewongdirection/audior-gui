@@ -4,21 +4,26 @@
 
 namespace audiorgui {
 
-void DecodeQueue::Push(DecodeJob &&job)
+bool DecodeQueue::Push(DecodeJob &&job, Lost *outLost)
 {
     const int s = StreamIndex(job.stream);
     Waiting waiting{std::move(job), arrivals_++};
     if (!waiting.job.isFinal) {
         partial_[s] = std::move(waiting);               /* newer than the one waiting, if any */
-        return;
+        return false;
     }
     if (partial_[s] && partial_[s]->job.id <= waiting.job.id)
         partial_[s].reset();                            /* the settled phrase overtakes its drafts */
     finals_.push_back(std::move(waiting));
-    if (finals_.size() > kMaxFinals) {
-        finals_.pop_front();
-        ++dropped_;
+    if (finals_.size() <= kMaxFinals)
+        return false;
+    if (outLost) {
+        const DecodeJob &gone = finals_.front().job;
+        *outLost = Lost{gone.stream, gone.id, gone.startSample};
     }
+    finals_.pop_front();
+    ++dropped_;
+    return true;
 }
 
 bool DecodeQueue::Pop(DecodeJob *job)

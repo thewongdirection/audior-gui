@@ -71,6 +71,13 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         TranscriptionHost::Options options;
         options.model = asr.modelPath;
         options.language = s.transcribeLanguage;
+        for (const AsrModel *smaller :                  /* what to change to if this model cannot keep up */
+             SmallerModels(kAsrModels, asr.model, InstalledModels(ModelsDirectory()),
+                           s.transcribeLanguage == SpeechLanguage::Auto)) {
+            AsrSetup fallback;
+            if (FindAsr(ProgramDirectory(), ModelsDirectory(), &fallback, kAsrModels, kAsrModelCount, smaller->file))
+                options.fallbacks.push_back({fallback.modelPath, MakeProcessFactory(fallback)});
+        }
         host_ = std::make_unique<TranscriptionHost>(MakeProcessFactory(asr), options);
         host_->Start(plan.speech);
     }

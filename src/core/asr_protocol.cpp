@@ -129,7 +129,7 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         const std::uint8_t stream = r.Get<std::uint8_t>();
         const std::uint8_t state = r.Get<std::uint8_t>();
         const float lag = r.Get<float>();
-        if (!r.done() || !ValidStream(stream) || state > static_cast<std::uint8_t>(TranscriptState::Failed) ||
+        if (!r.done() || !ValidStream(stream) || state > static_cast<std::uint8_t>(TranscriptState::CatchingUp) ||
             !std::isfinite(lag) || lag < 0.0f || lag > 1e6f)
             return false;
         m->stream = static_cast<StreamId>(stream);

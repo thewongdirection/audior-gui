@@ -158,6 +158,15 @@ With a model in place the settings panel gets a **Transcript** section: the mode
 tells it to expect English, which is a little faster and more exact for English
 speech. An English-only model always expects English.
 
+**If the PC cannot keep up** (a big model, two busy streams, a busy CPU) the pane
+says *Catching up* with how far behind the text is. Settled phrases always come
+before drafts of the phrase being spoken, so drafts are what gets skipped first. If
+a stream stays six seconds or more behind for ten seconds, a smaller installed
+model takes over by itself (*smaller model* shows in the pane) and the recording is
+not touched; with *Auto* chosen only another multilingual model may take over, so no
+language stops being understood. A phrase that was still not decoded in time is shown
+as `…` instead of being left out silently.
+
 The helper is a separate process, so a problem with it can never end or damage a
 recording: it is started at low priority inside a Windows Job object, restarted if
 it dies, given up on after a few quick crashes (the pane then says *Transcript
@@ -238,7 +247,7 @@ bin\x64\audior_gui.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `transcript`, `model`, `named`, `typing`.
+`error`, `transcript`, `catching-up`, `model`, `named`, `typing`.
 
 ## Architecture
 

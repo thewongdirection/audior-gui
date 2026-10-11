@@ -118,6 +118,24 @@ TEST(DecodeQueue_OnlyAFewFinalsWaitAndTheOldestIsLost)
     CHECK(!queue.Pop(&job));
 }
 
+TEST(DecodeQueue_SaysWhichPhraseWasLost)
+{
+    DecodeQueue queue;
+    DecodeQueue::Lost lost;
+    for (std::uint32_t id = 1; id <= DecodeQueue::kMaxFinals; ++id) {
+        DecodeJob job = Job(id % 2 ? kMic : kSys, id, true);
+        job.startSample = 1000 * id;
+        CHECK(!queue.Push(std::move(job), &lost));      /* there is still room */
+    }
+    CHECK(queue.Push(Job(kMic, 99, true), &lost));      /* now the oldest one goes */
+    CHECK_EQ(lost.id, std::uint32_t(1));
+    CHECK(lost.stream == kMic);
+    CHECK_EQ(lost.startSample, std::uint64_t(1000));
+
+    CHECK(!queue.Push(Job(kMic, 100, false)));          /* a partial never costs anyone their place */
+    CHECK(queue.Push(Job(kSys, 101, true)));            /* (and the answer is optional) */
+}
+
 TEST(DecodeQueue_AJobIsMovedNotCopied)
 {
     DecodeQueue queue;

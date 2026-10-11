@@ -20,6 +20,7 @@ constexpr double kWavBytesPerSecond = 48000.0 * 2 * 2;      /* 48 kHz, 16-bit, s
 
 constexpr double kStartupSeconds = 0.8;             /* the "model" loads: status Starting       */
 constexpr float  kLagSeconds     = 0.4f;
+constexpr float  kBehindLagSeconds = 4.8f;          /* when FallBehindAfter() has been told to */
 constexpr double kWordSeconds    = 0.26;            /* one word is spoken, and shown, per 0.26 s */
 constexpr double kFinalDelay     = 0.45;            /* from the last word to the final event     */
 constexpr double kScriptSeconds  = 42.0;            /* the conversation then starts over         */
@@ -149,6 +150,11 @@ void SimulatedEngine::FailTranscriptAfter(double seconds, std::wstring message)
     transcriptFailMessage_ = std::move(message);
 }
 
+void SimulatedEngine::FallBehindAfter(double seconds)
+{
+    behindAfter_ = seconds;
+}
+
 std::vector<DeviceInfo> SimulatedEngine::ListDevices(DeviceKind kind)
 {
     if (kind == DeviceKind::Microphone)
@@ -184,6 +190,8 @@ bool SimulatedEngine::Start(const RecordingSettings &settings, const std::wstrin
     transcriptNext_[0] = transcriptNext_[1] = 0;
     transcriptFailAt_ = transcriptFailAfter_;
     transcriptFailAfter_ = -1.0;
+    behindAt_ = behindAfter_;
+    behindAfter_ = -1.0;
     recording_ = true;
     return true;
 }
@@ -260,8 +268,10 @@ TranscriptStatus SimulatedEngine::Transcription(StreamId stream)
         status.state = TranscriptState::Failed;
     } else if (IsRecording()) {
         const bool loaded = Elapsed() >= kStartupSeconds;
-        status.state = loaded ? TranscriptState::Live : TranscriptState::Starting;
-        status.lagSeconds = loaded ? kLagSeconds : 0.0f;
+        const bool behind = behindAt_ >= 0.0 && Elapsed() >= behindAt_;
+        status.state = !loaded ? TranscriptState::Starting : behind ? TranscriptState::CatchingUp : TranscriptState::Live;
+        status.lagSeconds = !loaded ? 0.0f : behind ? kBehindLagSeconds : kLagSeconds;
+        status.smallerModel = behind;
     }
     return status;
 }
