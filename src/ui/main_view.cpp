@@ -39,7 +39,8 @@ std::wstring Tail(const std::wstring &path, std::size_t keep)
 /* Construction: widgets and what they do                                  */
 /* ====================================================================== */
 
-MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(controller), host_(host)
+MainView::MainView(RecorderController &controller, IViewHost *host)
+    : ctl_(controller), host_(host), fileNameBox_(IsFileNameChar, kMaxOutputPathChars)
 {
     micCheck_.accent = theme::kMic;
     micCheck_.onChange = [this](bool on) {
@@ -61,14 +62,8 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
         ChooseDevice(DeviceKind::Playback, &RecordingSettings::systemDeviceId, systemField_);
     };
 
-    gainSlider_.minimum = 0;
-    gainSlider_.maximum = kMaxAmplifyPercent;
-    gainSlider_.step = 5;
-    gainSlider_.accent = theme::kMic;
-    gainSlider_.onChange = [this](int v) {              /* only its own label: it fires on every drag step */
-        ctl_.Settings().micAmplifyPercent = v;
-        gainText_ = GainText(v);
-    };
+    ConfigureGain(StreamId::Microphone, &RecordingSettings::micAmplifyPercent, theme::kMic);
+    ConfigureGain(StreamId::System, &RecordingSettings::systemAmplifyPercent, theme::kSystem);
 
     folderField_.style = Button::Style::Field;
     folderField_.onClick = [this] {
@@ -79,6 +74,17 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
             ctl_.Settings().outputDirectory = dir;
             Refresh();
         }
+    };
+
+    fileNameBox_.placeholder = L"Automatic (date and time)";
+    fileNameBox_.onChange = [this](const std::wstring &name) {
+        ctl_.Settings().fileName = name;
+        Refresh();
+    };
+    fileNameBox_.clipboardGet = [this] { return host_ ? host_->ClipboardText() : std::wstring(); };
+    fileNameBox_.clipboardSet = [this](const std::wstring &text) {
+        if (host_)
+            host_->SetClipboardText(text);
     };
 
     formatSeg_.options = {L"MP3", L"WAV"};
@@ -130,11 +136,26 @@ MainView::MainView(RecorderController &controller, IViewHost *host) : ctl_(contr
     };
 
     Widget *const order[kWidgetCount] = {
-        &micCheck_, &micField_, &gainSlider_, &systemCheck_, &systemField_, &folderField_, &formatSeg_,
-        &bitrateField_, &mixSeg_, &shareSlider_, &startButton_, &stopButton_, &showButton_};
+        &micCheck_, &micField_, &gain_[0].slider, &systemCheck_, &systemField_, &gain_[1].slider, &folderField_,
+        &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &startButton_, &stopButton_,
+        &showButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     Refresh();
+}
+
+/* The gain slider of one stream, wired to the setting it edits. */
+void MainView::ConfigureGain(StreamId stream, int RecordingSettings::*percent, const D2D1_COLOR_F &accent)
+{
+    GainControl &gain = gain_[StreamIndex(stream)];
+    gain.slider.minimum = 0;
+    gain.slider.maximum = kMaxAmplifyPercent;
+    gain.slider.step = 5;
+    gain.slider.accent = accent;
+    gain.slider.onChange = [this, &gain, percent](int v) {  /* only its own label: it fires on every drag step */
+        ctl_.Settings().*percent = v;
+        gain.text = GainText(v);
+    };
 }
 
 /* ====================================================================== */
@@ -188,17 +209,36 @@ void MainView::Refresh()
     micCheck_.enabled = unlocked;
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
-    gainSlider_.value = s.micAmplifyPercent;
-    gainSlider_.enabled = micField_.enabled;
-    gainText_ = GainText(s.micAmplifyPercent);
+    gain_[0].slider.value = s.micAmplifyPercent;
+    gain_[0].slider.enabled = micField_.enabled;
+    gain_[0].text = GainText(s.micAmplifyPercent);
 
     systemCheck_.checked = s.includeSystemAudio;
     systemCheck_.enabled = unlocked;
     systemField_.text = DeviceFieldText(DeviceKind::Playback, s.systemDeviceId);
     systemField_.enabled = unlocked && s.includeSystemAudio;
+    gain_[1].slider.value = s.systemAmplifyPercent;
+    gain_[1].slider.enabled = systemField_.enabled;
+    gain_[1].text = GainText(s.systemAmplifyPercent);
 
     folderField_.text = s.outputDirectory.empty() ? L"Choose a folder…" : Tail(s.outputDirectory, 34);
     folderField_.enabled = unlocked;
+
+    fileNameBox_.SetText(s.fileName);
+    fileNameBox_.enabled = unlocked;
+    const std::wstring problem = FileNameProblem(s.fileName);
+    fileNameBox_.invalid = !problem.empty();
+    nameHintIsError_ = !problem.empty();
+    if (nameHintIsError_) {
+        nameHint_ = problem;
+    } else if (s.fileName.empty()) {
+        nameHint_ = L"Empty: named after the date and time";
+    } else {
+        nameHint_ = L"Saved as ";
+        const std::vector<std::wstring> names = PlannedOutputFiles(s, EnforceExtension(s.fileName, s.format));
+        for (std::size_t i = 0; i < names.size(); ++i)
+            nameHint_ += (i ? L" + " : L"") + names[i];
+    }
     formatSeg_.selected = s.format == Format::Mp3 ? 0 : 1;
     formatSeg_.enabled = unlocked;
     bitrateField_.text = std::to_wstring(s.mp3BitrateKbps) + L" kbps";
@@ -309,18 +349,26 @@ void MainView::Layout(float w, float h)
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
     LayoutPane(micCard_, micCheck_, micField_);
     LayoutPane(systemCard_, systemCheck_, systemField_);
-    gainRow_ = RectF(micField_.rect.right + 20, micCard_.top + 48, micCard_.right - 20, micCard_.top + 84);
-    gainSlider_.rect = RectF(gainRow_.left + 40, gainRow_.top + 6, gainRow_.right - 52, gainRow_.bottom - 6);
+    const Button *const fields[kStreamCount] = {&micField_, &systemField_};
+    const D2D1_RECT_F *const cards[kStreamCount] = {&micCard_, &systemCard_};
+    for (int i = 0; i < kStreamCount; ++i) {            /* the gain sits right of the device drop-down */
+        GainControl &gain = gain_[i];
+        gain.row = RectF(fields[i]->rect.right + 20, cards[i]->top + 48, cards[i]->right - 20, cards[i]->top + 84);
+        gain.slider.rect = RectF(gain.row.left + 40, gain.row.top + 6, gain.row.right - 52, gain.row.bottom - 6);
+    }
 
     /* The settings panel, top to bottom. */
     const float pad = 18.0f, x = panel_.left + pad, iw = kPanelW - 2 * pad;
     float y = panel_.top + pad;
     captions_[0] = {L"SAVE TO", RectXYWH(x, y, iw, 14)};            y += 18;
     folderField_.rect = RectXYWH(x, y, iw, 36);                     y += 36 + 16;
-    captions_[1] = {L"FORMAT", RectXYWH(x, y, iw, 14)};             y += 18;
+    captions_[1] = {L"FILE NAME", RectXYWH(x, y, iw, 14)};          y += 18;
+    fileNameBox_.rect = RectXYWH(x, y, iw, 36);                     y += 36 + 4;
+    nameHintRect_ = RectXYWH(x, y, iw, 18);                         y += 18 + 14;
+    captions_[2] = {L"FORMAT", RectXYWH(x, y, iw, 14)};             y += 18;
     formatSeg_.rect = RectXYWH(x, y, 140, 36);
     bitrateField_.rect = RectXYWH(x + 152, y, iw - 152, 36);        y += 36 + 16;
-    captions_[2] = {L"OUTPUT", RectXYWH(x, y, iw, 14)};             y += 18;
+    captions_[3] = {L"OUTPUT", RectXYWH(x, y, iw, 14)};             y += 18;
     mixSeg_.rect = RectXYWH(x, y, iw, 36);                          y += 36 + 6;
     mixHintRect_ = RectXYWH(x, y, iw, 18);                          y += 18 + 14;
     shareRow_ = RectXYWH(x, y, iw, 18);                             y += 18;
@@ -359,8 +407,9 @@ void MainView::Paint(Painter &p)
         st.hot = w == hot_ && (pressed_ == nullptr || pressed_ == w);
         st.pressed = w == pressed_ && w == hot_;        /* only while the pointer is still on it */
         st.focused = w == focus_ && focusVisible_;
+        st.active = w == focus_;
         w->Paint(p, st);
-        if (st.focused)
+        if (st.focused && !w->WantsText())          /* a text box shows its focus in its own outline */
             p.StrokeRound(Inflate(w->rect, 3.0f), theme::kControlRadius + 3.0f, theme::kFocusRing, 2.0f);
     }
 }
@@ -394,14 +443,17 @@ void MainView::PaintHeader(Painter &p)
     p.Text(label, RectF(pill.left + 32, pill.top, pill.right - 8, pill.bottom), Font::BodyStrong, kText);
 }
 
-/* The microphone gain's label and value (its slider is a widget). */
+/* Each stream's gain label and value (the slider is a widget). */
 void MainView::PaintPaneControls(Painter &p)
 {
-    const bool on = micField_.enabled;
-    p.Text(L"Gain", RectF(gainRow_.left, gainRow_.top, gainRow_.left + 36, gainRow_.bottom), Font::Body,
-           on ? theme::kTextMuted : theme::kTextFaint);
-    p.Text(gainText_, RectF(gainRow_.right - 50, gainRow_.top, gainRow_.right, gainRow_.bottom),
-           Font::BodyStrong, on ? theme::kText : theme::kTextFaint, Align::Right);
+    for (const GainControl &gain : gain_) {
+        const bool on = gain.slider.enabled;
+        const D2D1_RECT_F &row = gain.row;
+        p.Text(L"Gain", RectF(row.left, row.top, row.left + 36, row.bottom), Font::Body,
+               on ? theme::kTextMuted : theme::kTextFaint);
+        p.Text(gain.text, RectF(row.right - 50, row.top, row.right, row.bottom), Font::BodyStrong,
+               on ? theme::kText : theme::kTextFaint, Align::Right);
+    }
 }
 
 void MainView::PaintPanel(Painter &p)
@@ -413,6 +465,7 @@ void MainView::PaintPanel(Painter &p)
     for (const Caption &c : captions_)
         p.Text(c.text, c.rect, Font::Label, kTextFaint);
 
+    p.Text(nameHint_, nameHintRect_, Font::Small, nameHintIsError_ ? kError : kTextFaint);
     p.Text(mixHint_, mixHintRect_, Font::Small, kTextFaint);
     if (shareSlider_.visible) {
         p.Text(L"Share of the mix", shareRow_, Font::Body, kTextMuted);
@@ -455,9 +508,17 @@ void MainView::PaintTransport(Painter &p)
         p.Text(L"Nothing to record", line1, Font::BodyStrong, kWarn);
         p.Text(L"Tick the microphone or system audio.", line2, Font::Small, kTextMuted);
     } else if (o.kind == Outcome::Kind::Failed) {
-        p.Text(o.message, line1, Font::BodyStrong, kError);
-        p.Text(o.files.empty() ? L"Nothing was recorded." : L"The audio captured before the problem was kept.",
-               line2, Font::Small, kTextMuted);
+        /* "What: why (hr=...)": the what on the first line and the why on the second, so neither is cut short. */
+        const std::size_t colon = o.message.find(L": ");
+        if (colon == std::wstring::npos) {
+            p.Text(o.message, line1, Font::BodyStrong, kError);
+            p.Text(o.files.empty() ? L"Nothing was recorded." : L"The audio captured before the problem was kept.",
+                   line2, Font::Small, kTextMuted);
+        } else {
+            p.Text(o.message.c_str(), static_cast<UINT32>(colon), line1, Font::BodyStrong, kError);
+            p.Text(o.message.c_str() + colon + 2, static_cast<UINT32>(o.message.size() - colon - 2), line2,
+                   Font::Small, kTextMuted);
+        }
     } else if (o.kind == Outcome::Kind::Saved) {
         p.Text(L"Saved", line1, Font::BodyStrong, kOk);
         p.Text(savedName_, line2, Font::Small, kTextMuted);
@@ -531,6 +592,11 @@ void MainView::MoveFocus(int direction)
             return;
         }
     }
+}
+
+bool MainView::Char(wchar_t c)
+{
+    return focus_ && focus_->Interactive() && focus_->Char(c);
 }
 
 bool MainView::KeyDown(UINT vk, bool shift)

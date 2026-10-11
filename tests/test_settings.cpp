@@ -176,3 +176,104 @@ TEST(PlannedOutputFiles_SeparateTracksNeedBothStreams)
     s.includeSystemAudio = false;
     CHECK(!RecordsBoth(s));
 }
+
+/* ---- system audio gain and the output file name ---- */
+
+TEST(Settings_SystemGainAndFileNameDefaults)
+{
+    RecordingSettings s;
+    CHECK_EQ(s.systemAmplifyPercent, 0);
+    CHECK(s.fileName.empty());                          /* empty: a timestamped name */
+}
+
+TEST(Validate_SystemAmplifyBounds)
+{
+    RecordingSettings s = Valid();
+    s.systemAmplifyPercent = 300;
+    CHECK(Validate(s).empty());
+    s.systemAmplifyPercent = 301;
+    CHECK(!Validate(s).empty());
+    s.systemAmplifyPercent = -1;
+    CHECK(!Validate(s).empty());
+}
+
+TEST(EnforceExtension_AppendsReplacesAndKeeps)
+{
+    CHECK_EQ(EnforceExtension(L"meeting", Format::Mp3), std::wstring(L"meeting.mp3"));
+    CHECK_EQ(EnforceExtension(L"meeting", Format::Wav), std::wstring(L"meeting.wav"));
+    CHECK_EQ(EnforceExtension(L"clip.wav", Format::Mp3), std::wstring(L"clip.mp3"));
+    CHECK_EQ(EnforceExtension(L"clip.mp3", Format::Wav), std::wstring(L"clip.wav"));
+    CHECK_EQ(EnforceExtension(L"clip.mp3", Format::Mp3), std::wstring(L"clip.mp3"));
+    CHECK_EQ(EnforceExtension(L"Clip.MP3", Format::Mp3), std::wstring(L"Clip.MP3"));    /* case is kept */
+    CHECK_EQ(EnforceExtension(L"Clip.Wav", Format::Wav), std::wstring(L"Clip.Wav"));
+}
+
+TEST(EnforceExtension_OnlyTheLastDotIsAnExtension)
+{
+    CHECK_EQ(EnforceExtension(L"take.2", Format::Mp3), std::wstring(L"take.mp3"));      /* audior's rule */
+    CHECK_EQ(EnforceExtension(L"v1.2.mp3", Format::Mp3), std::wstring(L"v1.2.mp3"));
+    CHECK_EQ(EnforceExtension(L"v1.2.wav", Format::Mp3), std::wstring(L"v1.2.mp3"));
+    CHECK_EQ(EnforceExtension(L"meeting.", Format::Mp3), std::wstring(L"meeting.mp3"));
+    CHECK_EQ(EnforceExtension(L"", Format::Mp3), std::wstring(L".mp3"));
+}
+
+TEST(FileNameProblem_AcceptsOrdinaryNames)
+{
+    CHECK(FileNameProblem(L"").empty());                /* empty means a timestamped name */
+    CHECK(FileNameProblem(L"meeting").empty());
+    CHECK(FileNameProblem(L"Team call 2026-10-10 (final)").empty());
+    CHECK(FileNameProblem(L"clip.wav").empty());
+    CHECK(FileNameProblem(L"v1.2.mp3").empty());
+    CHECK(FileNameProblem(L"café 日本語").empty());                      /* non-ASCII is fine */
+    CHECK(FileNameProblem(L"console").empty());         /* merely starts with a reserved name */
+    CHECK(FileNameProblem(L"com10").empty());
+    CHECK(FileNameProblem(L"lpt0").empty());
+}
+
+TEST(FileNameProblem_RejectsWhatWindowsCannotStore)
+{
+    const wchar_t *const bad[] = {L"a:b", L"a/b", L"a\\b", L"a*b", L"a?b", L"a\"b", L"a<b", L"a>b", L"a|b",
+                                  L"tab\there", L"line\nbreak"};
+    for (const wchar_t *name : bad)
+        CHECK(!FileNameProblem(name).empty());
+}
+
+TEST(FileNameProblem_RejectsReservedDeviceNamesWithAnyExtension)
+{
+    const wchar_t *const reserved[] = {L"CON", L"con", L"Prn", L"AUX", L"nul", L"COM1", L"com9", L"LPT1", L"lpt9",
+                                       L"con.mp3", L"NUL.txt", L"aux.v2.wav", L"con ", L"COM1 .mp3"};
+    for (const wchar_t *name : reserved)
+        CHECK(!FileNameProblem(name).empty());
+}
+
+TEST(FileNameProblem_RejectsNamesWithNothingBeforeTheExtension)
+{
+    CHECK(!FileNameProblem(L".mp3").empty());
+    CHECK(!FileNameProblem(L"...").empty());
+    CHECK(!FileNameProblem(L" ").empty());
+    CHECK(!FileNameProblem(L". .").empty());
+    CHECK(FileNameProblem(L"a.mp3").empty());
+}
+
+TEST(IsFileNameChar_MatchesTheRules)
+{
+    CHECK(IsFileNameChar(L'a'));
+    CHECK(IsFileNameChar(L' '));
+    CHECK(IsFileNameChar(L'.'));
+    CHECK(IsFileNameChar(L'('));
+    CHECK(IsFileNameChar(0x00e9));
+    for (wchar_t c : std::wstring(L"<>:\"/\\|?*"))
+        CHECK(!IsFileNameChar(c));
+    CHECK(!IsFileNameChar(L'\0'));
+    CHECK(!IsFileNameChar(L'\t'));
+    CHECK(!IsFileNameChar(31));
+}
+
+TEST(Validate_ChecksTheFileName)
+{
+    RecordingSettings s = Valid();
+    s.fileName = L"meeting";
+    CHECK(Validate(s).empty());
+    s.fileName = L"a?b";
+    CHECK(!Validate(s).empty());
+}

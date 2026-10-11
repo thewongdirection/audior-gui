@@ -7,6 +7,10 @@
  *
  * The exit code is the number of failed tests.
  */
+#include <windows.h>
+
+#include <objbase.h>
+
 #include <cstdio>
 #include <cstring>
 
@@ -43,6 +47,9 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    /* Some tests use the audio device APIs, which need COM. */
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
     int run = 0, failed = 0;
     for (const Case &c : Registry()) {
         if (filter && !std::strstr(c.name, filter))
@@ -56,5 +63,7 @@ int main(int argc, char **argv)
         }
     }
     std::printf("%d tests, %d passed, %d failed\n", run, run - failed, failed);
+    if (SUCCEEDED(com))
+        CoUninitialize();
     return failed;
 }

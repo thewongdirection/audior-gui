@@ -36,6 +36,17 @@ HRESULT Gfx::MakeFormat(Font font, const wchar_t *family, float size, DWRITE_FON
     return S_OK;
 }
 
+ComPtr<IDWriteTextLayout> Gfx::Layout(Font font, const wchar_t *text, UINT32 length) const
+{
+    ComPtr<IDWriteTextLayout> layout;
+    const float kUnbounded = 100000.0f;
+    if (FAILED(dwrite_->CreateTextLayout(text, length, Format(font), kUnbounded, kUnbounded, &layout)))
+        layout.Reset();
+    else
+        layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);       /* positions count from the text's left edge */
+    return layout;
+}
+
 HRESULT Gfx::Init()
 {
     HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d_.GetAddressOf());

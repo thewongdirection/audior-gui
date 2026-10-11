@@ -6,6 +6,8 @@
 #include <shobjidl.h>
 
 #include <algorithm>
+#include <cstring>
+#include <cwchar>
 
 namespace audiorgui::ui {
 
@@ -63,6 +65,14 @@ bool AppWindow::Create(HINSTANCE instance, int showCommand)
     ShowWindow(hwnd_, showCommand);
     UpdateWindow(hwnd_);
     return true;
+}
+
+void AppWindow::StartRecording()
+{
+    ctl_.Start();
+    view_.Update();
+    Wake();
+    Invalidate();
 }
 
 int AppWindow::Run()
@@ -274,7 +284,8 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_SETCURSOR:
         if (LOWORD(lParam) == HTCLIENT) {
-            SetCursor(LoadCursorW(nullptr, view_.HandCursor() ? IDC_HAND : IDC_ARROW));
+            const wchar_t *cursor = view_.HandCursor() ? IDC_HAND : view_.TextCursor() ? IDC_IBEAM : IDC_ARROW;
+            SetCursor(LoadCursorW(nullptr, cursor));
             return TRUE;
         }
         break;
@@ -285,6 +296,13 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if ((lParam & 0x40000000) && (wParam == VK_SPACE || wParam == VK_RETURN))
             return 0;
         if (view_.KeyDown(static_cast<UINT>(wParam), GetKeyState(VK_SHIFT) < 0)) {
+            Invalidate();
+            return 0;
+        }
+        break;
+
+    case WM_CHAR:
+        if (view_.Char(static_cast<wchar_t>(wParam))) {
             Invalidate();
             return 0;
         }
@@ -360,6 +378,40 @@ int AppWindow::Choose(const std::vector<std::wstring> &items, int selected, cons
                                          where.x, where.y, hwnd_, nullptr);
     DestroyMenu(menu);
     return command > 0 ? command - 1 : -1;
+}
+
+std::wstring AppWindow::ClipboardText()
+{
+    constexpr std::size_t kMaxChars = 4096;             /* more than any file name needs */
+    std::wstring text;
+    if (!OpenClipboard(hwnd_))
+        return text;
+    if (HANDLE data = GetClipboardData(CF_UNICODETEXT)) {
+        if (const wchar_t *chars = static_cast<const wchar_t *>(GlobalLock(data))) {
+            text.assign(chars, wcsnlen_s(chars, kMaxChars));
+            GlobalUnlock(data);
+        }
+    }
+    CloseClipboard();
+    return text;
+}
+
+void AppWindow::SetClipboardText(const std::wstring &text)
+{
+    if (!OpenClipboard(hwnd_))
+        return;
+    EmptyClipboard();
+    const std::size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+        void *chars = GlobalLock(memory);
+        if (chars) {
+            std::memcpy(chars, text.c_str(), bytes);
+            GlobalUnlock(memory);
+        }
+        if (!chars || !SetClipboardData(CF_UNICODETEXT, memory))
+            GlobalFree(memory);                         /* the clipboard owns it only if it was accepted */
+    }
+    CloseClipboard();
 }
 
 void AppWindow::ShowInFolder(const std::wstring &file)

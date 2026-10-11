@@ -12,17 +12,20 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "../core/line_editor.h"
 #include "geometry.h"
 #include "painter.h"
 
 namespace audiorgui::ui {
 
 struct WidgetState {
-    bool hot     = false;       /* the pointer is over it         */
-    bool pressed = false;       /* the mouse button is held on it */
-    bool focused = false;       /* it has the keyboard focus      */
+    bool hot     = false;       /* the pointer is over it                         */
+    bool pressed = false;       /* the mouse button is held on it                 */
+    bool focused = false;       /* it has the keyboard focus, shown as a ring     */
+    bool active  = false;       /* it has the input focus (by mouse or keyboard)  */
 };
 
 class Widget {
@@ -45,6 +48,8 @@ public:
         (void)x; (void)y; (void)inside;
     }
     virtual bool Key(UINT virtualKey) { (void)virtualKey; return false; }   /* true if it used the key */
+    virtual bool Char(wchar_t c) { (void)c; return false; }                 /* a typed character       */
+    virtual bool WantsText() const { return false; }                        /* edits text: I-beam cursor */
 };
 
 /* A push button, or (Style::Field) a field that opens a choice when clicked. */
@@ -108,6 +113,43 @@ public:
 private:
     void SetValue(int v);
     void SetFromX(float x);
+};
+
+/* A single-line text field.  The editing rules live in LineEditor; this draws
+ * the text, caret and selection and turns the mouse and keyboard into edits.
+ * The text scrolls to keep the caret in view. */
+class TextBox : public Widget {
+public:
+    /* `accepts` filters typed and pasted characters (null: all are taken). */
+    explicit TextBox(LineEditor::Accepts accepts = nullptr, std::size_t maxChars = 120)
+        : editor(maxChars, std::move(accepts)) {}
+
+    LineEditor    editor;
+    std::wstring  placeholder;                  /* shown while the box is empty            */
+    bool          invalid = false;              /* outline the box as a problem            */
+    std::function<void(const std::wstring &)> onChange;     /* the user changed the text   */
+    std::function<std::wstring()>             clipboardGet;
+    std::function<void(const std::wstring &)> clipboardSet;
+
+    /* Sets the text without calling onChange (nothing happens if it is the same). */
+    void SetText(const std::wstring &text);
+
+    void Paint(Painter &painter, const WidgetState &state) const override;
+    void Press(float x, float y) override;
+    void Drag(float x, float y) override;
+    bool Key(UINT virtualKey) override;
+    bool Char(wchar_t c) override;
+    bool WantsText() const override { return true; }
+
+private:
+    void        Edited(bool changed);
+    void        EnsureLayout(Painter &painter) const;
+    float       XOf(std::size_t position) const;            /* from the text's left edge */
+    std::size_t PositionAt(float x) const;
+
+    mutable ComPtr<IDWriteTextLayout> layout_;      /* of layoutText_, rebuilt when the text changes */
+    mutable std::wstring              layoutText_;
+    mutable float                     scroll_ = 0.0f;       /* how far the text is scrolled left */
 };
 
 }  // namespace audiorgui::ui

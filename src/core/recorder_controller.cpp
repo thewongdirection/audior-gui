@@ -8,11 +8,12 @@ namespace {
 
 constexpr std::size_t kPullChunk     = 256;     /* bins per TakePeaks() call            */
 constexpr int         kMaxPullsPerTick = 64;    /* bounds a misbehaving engine's output */
+constexpr int         kMaxNumberedNames = 1000; /* " (2)" ... " (999)" before giving up   */
 
 }  // namespace
 
-RecorderController::RecorderController(IRecordingEngine &engine, Clock clock)
-    : engine_(engine), clock_(std::move(clock))
+RecorderController::RecorderController(IRecordingEngine &engine, Clock clock, FileExists fileExists)
+    : engine_(engine), clock_(std::move(clock)), fileExists_(std::move(fileExists))
 {
     RefreshDevices();
 }
@@ -39,20 +40,33 @@ bool RecorderController::StreamEnabled(StreamId stream) const
     return stream == StreamId::Microphone ? s.includeMicrophone : s.includeSystemAudio;
 }
 
-/* "audior-<time>.<ext>" in the output folder.  The time has one-second
- * resolution, so a recording restarted within the same second gets a "-2",
- * "-3" ... suffix rather than overwriting the one before. */
+bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
+{
+    for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
+        if (fileExists_(file))
+            return true;
+    }
+    return false;
+}
+
+/* The file to record to: the name the user typed (given the format's
+ * extension), else "audior-<time>", in the output folder.  A recording never
+ * replaces an existing file, so a taken name gets " (2)", " (3)" ... before
+ * its extension; with two tracks, a taken "_mic" or "_system" file counts. */
 std::wstring RecorderController::NextOutputPath()
 {
-    std::wstring base = DefaultBaseName(clock_());
-    if (base == lastBaseName_) {
-        ++repeatCount_;
-        base += L"-" + std::to_wstring(repeatCount_ + 1);
-    } else {
-        lastBaseName_ = base;
-        repeatCount_ = 0;
-    }
-    return JoinPath(settings_.outputDirectory, base + ExtensionFor(settings_.format));
+    const std::wstring name = settings_.fileName.empty()
+                                  ? DefaultBaseName(clock_()) + ExtensionFor(settings_.format)
+                                  : EnforceExtension(settings_.fileName, settings_.format);
+    std::wstring path = JoinPath(settings_.outputDirectory, name);
+    if (!fileExists_)
+        return path;
+
+    const std::size_t dot = name.rfind(L'.');           /* the extension is always there */
+    const std::wstring stem = name.substr(0, dot), extension = name.substr(dot);
+    for (int n = 2; n < kMaxNumberedNames && AnyPlannedFileExists(path); ++n)
+        path = JoinPath(settings_.outputDirectory, stem + L" (" + std::to_wstring(n) + L")" + extension);
+    return path;
 }
 
 bool RecorderController::Start()
@@ -68,8 +82,18 @@ bool RecorderController::Start()
         return false;
     }
 
+    const std::wstring path = NextOutputPath();
+    for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
+        if (file.size() > kMaxOutputPathChars) {
+            outcome_.kind = Outcome::Kind::Failed;
+            outcome_.message = L"The output path is too long (the limit is " + std::to_wstring(kMaxOutputPathChars) +
+                               L" characters). Choose a shorter folder or file name.";
+            return false;
+        }
+    }
+
     std::wstring error;
-    if (!engine_.Start(settings_, NextOutputPath(), &error)) {
+    if (!engine_.Start(settings_, path, &error)) {
         outcome_.kind = Outcome::Kind::Failed;
         outcome_.message = error.empty() ? L"The recording could not be started." : error;
         return false;

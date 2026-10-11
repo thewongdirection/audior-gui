@@ -39,6 +39,15 @@ bool Build(Scene &scene, const std::wstring &name)
     RecorderController &ctl = scene.ctl;
     if (name == L"idle")
         return true;
+    if (name == L"named" || name == L"typing") {         /* idle, with every setting changed from its default */
+        RecordingSettings &s = ctl.Settings();
+        s.includeSystemAudio = true;
+        s.mixMode = MixMode::Separate;
+        s.micAmplifyPercent = 25;
+        s.systemAmplifyPercent = 40;
+        s.fileName = name == L"named" ? L"team-call" : L"weekly sync with the design team notes";
+        return true;
+    }
 
     if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping") {
         ctl.Settings().includeSystemAudio = true;
@@ -122,6 +131,8 @@ int RunScreenshot(const Gfx &gfx, const ScreenshotOptions &options)
         return 1;
 
     MainView view(scene.ctl, nullptr);
+    if (options.scenario == L"typing")
+        view.FocusFileName();
     view.Layout(static_cast<float>(options.width), static_cast<float>(options.height));
     target->BeginDraw();
     view.Paint(painter);

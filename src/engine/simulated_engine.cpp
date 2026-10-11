@@ -144,6 +144,7 @@ PeakBin SimulatedEngine::Synthesize(StreamId stream, std::uint64_t bin) const
         /* A steady beat (two a second) over a quieter bed. */
         const double beat = std::exp(-5.0 * std::fmod(t * 2.0, 1.0));
         amp = 0.42 * (0.30 + 0.70 * beat) * (0.85 + 0.15 * Hash01(4, bin));
+        amp *= 1.0 + settings_.systemAmplifyPercent / 100.0;
     }
 
     PeakBin peak;

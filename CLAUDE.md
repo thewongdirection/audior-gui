@@ -15,7 +15,8 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
   DLL that is not on its allowlist of in-box Windows DLLs.
 - **audior is private; this repository is public.** Never copy audior's source
   (or its docs) here. The recording engine in this repo is its own WASAPI
-  implementation behind `IRecordingEngine`.
+  implementation behind `IRecordingEngine`. audior's *behaviour* (options,
+  limits, messages, `Local\AudiorStopEvent`) is matched on purpose.
 
 ## Engineering principles
 
@@ -38,13 +39,26 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 
 | Path | What |
 |------|------|
-| `src/core` | Logic with no Windows or UI headers: settings, formatting, waveform model, controller, the `IRecordingEngine` seam. |
-| `src/engine` | Engines behind that seam (the simulation; audior's `CRecorder` later). |
+| `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform model, controller, the `IRecordingEngine` seam. |
+| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks) and `SimulatedEngine` (`--demo`, tests). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. |
 | `src/ui` | Win32 + Direct2D window and widgets. |
-| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`). |
+| `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
+| `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
 
 `build.bat` builds x86 + x64 and runs the tests. Use `build.bat x64 tests` for
 the quick edit-test loop.
+
+**Parity with audior.** Every audior option has a control in the window and the
+same flag on the command line (see the table in `README.md`); the GUI adds a
+system-audio gain and per-stream on/off. A new audior option needs all three:
+a setting + validation (`src/core/settings`), a flag (`src/core/cli`) and a
+control (`src/ui/main_view`), with tests.
+
+**What CI cannot do.** The runners have no audio devices, so the WASAPI capture
+code itself (`wasapi_capture.cpp`, `devices.cpp`) is only exercised for its
+failure paths. Everything after the capture (conversion, mixing, threads, sinks,
+failure handling) is tested with fakes. Real-hardware checks are listed in
+`docs/FIRST-TEST.md`; keep it current.
 
 ## Before any commit, push or merge
 
