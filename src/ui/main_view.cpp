@@ -11,6 +11,7 @@ namespace audiorgui::ui {
 namespace {
 
 constexpr float kPi = 3.14159265358979f;
+constexpr float kTranscriptSectionHeight = 54.0f;   /* the Transcript caption and its row of controls */
 constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio only" at the small size */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
@@ -518,6 +519,8 @@ void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &tr
                                LaneView::kSwitchHeight);
     device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
+
+float MainView::ExtraMinHeight() const { return ctl_.CanTranscribe() ? kTranscriptSectionHeight : 0.0f; }
 
 void MainView::Layout(float w, float h)
 {

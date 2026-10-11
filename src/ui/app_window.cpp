@@ -77,8 +77,9 @@ bool AppWindow::Create(HINSTANCE instance, int showCommand)
 
     /* Size for the system DPI; WM_DPICHANGED corrects it on another monitor. */
     const UINT systemDpi = GetDpiForSystem();
+    const float startHeight = std::max(kStartHeight, kMinHeight + view_.ExtraMinHeight());
     RECT frame = {0, 0, MulDiv(static_cast<int>(kStartWidth), static_cast<int>(systemDpi), 96),
-                  MulDiv(static_cast<int>(kStartHeight), static_cast<int>(systemDpi), 96)};
+                  MulDiv(static_cast<int>(startHeight), static_cast<int>(systemDpi), 96)};
     AdjustWindowRectExForDpi(&frame, kStyle, FALSE, 0, systemDpi);
 
     hwnd_ = CreateWindowExW(0, kClassName, kTitle, kStyle, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -451,7 +452,7 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
     }
 
     case WM_GETMINMAXINFO: {
-        RECT frame = {0, 0, ToPixels(kMinWidth), ToPixels(kMinHeight)};
+        RECT frame = {0, 0, ToPixels(kMinWidth), ToPixels(kMinHeight + view_.ExtraMinHeight())};
         AdjustWindowRectExForDpi(&frame, kStyle, FALSE, 0, dpi_);
         MINMAXINFO *info = reinterpret_cast<MINMAXINFO *>(lParam);
         info->ptMinTrackSize.x = frame.right - frame.left;

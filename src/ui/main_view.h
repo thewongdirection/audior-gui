@@ -72,6 +72,10 @@ public:
 
     void Layout(float width, float height);
 
+    /* How much taller than the window's base minimum it must be for every control of the settings
+     * panel to fit: the Transcript section exists only when transcription is installed. */
+    float ExtraMinHeight() const;
+
     /* Call after each RecorderController::Tick(). */
     void Update();
 
