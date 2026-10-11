@@ -4,7 +4,7 @@
 
 namespace audiorgui {
 
-TranscriptionSetup::TranscriptionSetup(Environment environment) : env_(std::move(environment)) {}
+TranscriptionSetup::TranscriptionSetup(Environment environment) : env_(std::move(environment)), declined_(env_.declined) {}
 
 TranscriptionSetup::~TranscriptionSetup()
 {
@@ -29,6 +29,7 @@ void TranscriptionSetup::Launch(bool forced)
         std::lock_guard<std::mutex> lock(mutex_);      /* Scanning is said here, not by the thread: whoever polls next has something to see */
         reply_ = Reply::Pending;
         status_ = ScanningStatus();
+        status_.declined = declined_;
         ++version_;
     }
     cancel_ = false;
@@ -81,6 +82,7 @@ void TranscriptionSetup::Publish(SetupStatus status)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     status_ = std::move(status);
+    status_.declined = declined_;
     ++version_;
 }
 
@@ -121,7 +123,7 @@ void TranscriptionSetup::Run(bool forced)
         finish(UnavailableStatus(why), false);
         return;
     }
-    if (!forced && env_.declined()) {                   /* said no before: no notification, no question */
+    if (!forced && declined_) {                         /* said no before: no notification, no question (only this thread changes it) */
         finish(SetupStatus(), false);
         return;
     }
@@ -130,7 +132,10 @@ void TranscriptionSetup::Run(bool forced)
     Reply reply = Reply::Pending;
     if (!WaitForAnswer(&reply))
         return;
-    env_.rememberDecline(reply == Reply::No);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        declined_ = reply == Reply::No;                 /* a yes takes back an earlier no; a cancel later is not a no */
+    }
     if (reply == Reply::No) {
         finish(SkippedStatus(false), false);
         return;

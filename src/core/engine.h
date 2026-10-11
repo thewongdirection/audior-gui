@@ -116,6 +116,15 @@ public:
         (void)capacity;
         return 0;
     }
+
+    /* The text files the current or last recording saved its transcripts in, one for each transcribed stream
+     * that was spoken on (see PlannedTranscriptFile(); a simulated engine only names them), complete once
+     * Stop() has returned.  Empty if there were none. */
+    virtual std::vector<std::wstring> TranscriptFiles() { return {}; }
+
+    /* A sentence for the user if a transcript file could not be saved (the recording itself is not
+     * affected), else empty. */
+    virtual std::wstring TranscriptFileProblem() { return std::wstring(); }
 };
 
 }  // namespace audiorgui

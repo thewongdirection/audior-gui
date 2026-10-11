@@ -18,8 +18,8 @@
  *
  * So does the start-up set-up of transcription (see setup_status.h): the
  * controller polls it in Tick(), shows its notification until it is done or
- * dismissed, passes the user's answers on, and applies what it found out: no
- * usable graphics card turns the GPU setting off, and new models are looked for.
+ * dismissed, passes the user's answers on, and applies what it found out: with no
+ * usable graphics card a recording does not ask for one, and new models are looked for.
  */
 #pragma once
 
@@ -45,6 +45,8 @@ struct Outcome {
     Kind                      kind = Kind::None;
     std::wstring              message;      /* Failed: what went wrong          */
     std::vector<std::wstring> files;        /* what was written, even if Failed */
+    std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcribed stream that was spoken on */
+    std::wstring              transcriptProblem;    /* a transcript file that could not be saved, in a few words */
 };
 
 class RecorderController {
@@ -65,6 +67,10 @@ public:
 
     const std::vector<DeviceInfo> &Devices(DeviceKind kind) const;
     void RefreshDevices();
+
+    /* Chooses the system default for a microphone or playback device the settings name that is not there
+     * now (unplugged since the settings were saved).  Left alone, it would stop the recording from starting. */
+    void DropUnavailableDevices();
 
     /* ---- recording ---- */
     Phase GetPhase() const { return phase_; }
@@ -114,6 +120,15 @@ public:
     /* Looks again for models (after the set-up downloaded one) and takes up what it finds. */
     void RefreshTranscription();
 
+    /* What the start-up scan found out about the graphics card: when it found none to use, a recording
+     * does not use one, and the GPU switch is off and cannot be turned on.  The setting itself, which is
+     * the user's choice and is saved, is left as it is. */
+    bool GpuUnusable() const { return gpuUnusable_; }
+
+    /* The user's "not now" to the offer to download a speech model, for the settings file to keep. */
+    bool DownloadDeclined() const { return downloadDeclined_; }
+    void SetDownloadDeclined(bool declined) { downloadDeclined_ = declined; }
+
     /* ---- the start-up set-up of transcription ----
      * Nothing is attached (and HasSetup() is false) unless the transcription helper is installed.  The
      * source must outlive the controller. */
@@ -146,6 +161,9 @@ private:
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
+    /* The transcript files this recording will make: none where the engine cannot transcribe, however the
+     * (saved) switches stand: their boxes are hidden then, so they cannot be switched off. */
+    std::vector<std::wstring> PlannedTranscripts(const std::wstring &path) const;
 
     IRecordingEngine  &engine_;
     Clock              clock_;
@@ -168,8 +186,9 @@ private:
     bool          setupDismissed_ = false;
     double        setupShownSeconds_ = 0.0;     /* how long a finished set-up has been on show */
     double        setupAwaitSeconds_ = 0.0;     /* how much longer to keep polling for the answer to a request */
-    bool          gpuApplied_ = false;          /* this run's findings have been applied (reset by RetrySetup) */
-    bool          modelsApplied_ = false;
+    bool          gpuUnusable_ = false;
+    bool          downloadDeclined_ = false;
+    bool          modelsApplied_ = false;        /* this run's new models have been looked for (reset by RetrySetup) */
 };
 
 }  // namespace audiorgui

@@ -15,6 +15,12 @@ namespace audiorgui {
 /* The event's name; shared with audior so either program's --stop works. */
 inline constexpr wchar_t kStopEventName[] = L"Local\\AudiorStopEvent";
 
+/* The name in use: kStopEventName, except in the unit tests, which give themselves a name of their own
+ * so that they neither see nor stop a recording that is really running.  `name` must stay valid; set it
+ * before anything is recorded. */
+const wchar_t *StopEventName();
+void UseStopEventName(const wchar_t *name);
+
 class StopSignal {
 public:
     StopSignal() = default;

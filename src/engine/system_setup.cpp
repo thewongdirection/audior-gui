@@ -10,7 +10,7 @@
 namespace audiorgui {
 
 std::unique_ptr<TranscriptionSetup> MakeSystemSetup(const std::wstring &programDir, const std::wstring &modelsDir,
-                                                    const Preferences &preferences)
+                                                    bool declined)
 {
     if (!HelperInstalled(programDir))
         return nullptr;
@@ -25,7 +25,7 @@ std::unique_ptr<TranscriptionSetup> MakeSystemSetup(const std::wstring &programD
     env.scan = ScanHardware;
     env.backendPresent = GpuBackendInstalled(programDir);
     env.installedModels = [modelsDir] { return InstalledModels(modelsDir); };
-    env.voiceModelInstalled = [modelsDir] { return ModelInstalled(modelsDir, kVadModel); };
+    env.voiceModelInstalled = [modelsDir] { return ModelIsWhole(modelsDir, kVadModel); };
     env.downloadProblem = [programDir, modelsDir]() -> std::wstring {
         if (!FetcherInstalled(programDir))
             return std::wstring(L"The download program (") + kFetcherFile + L") is not next to this program. Put a model in " +
@@ -35,8 +35,7 @@ std::unique_ptr<TranscriptionSetup> MakeSystemSetup(const std::wstring &programD
     env.install = [installer](const AsrModel &model, const ModelInstaller::Progress &progress, const StopCheck &stopping,
                               std::wstring *problem) { return installer->Install(model, progress, stopping, problem); };
     env.cancelInstall = [installer] { installer->Cancel(); };
-    env.declined = [preferences] { return preferences.LoadDownloadDeclined(); };
-    env.rememberDecline = [preferences](bool declined) { preferences.SaveDownloadDeclined(declined); };
+    env.declined = declined;
     return std::make_unique<TranscriptionSetup>(std::move(env));
 }
 

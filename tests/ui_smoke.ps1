@@ -10,6 +10,10 @@
   3. The window with the real WASAPI engine, started by --output: if the machine has
      a microphone it records and --stop ends it; if not (a CI runner), the window
      must report the problem instead of crashing.
+  4. The settings file: a --demo or --defaults run leaves none, a normal run leaves its settings.
+
+  The program remembers its settings in Audior-GUI.ini beside the exe, so the script runs a
+  copy of the exe in a scratch folder: it neither uses nor changes the settings of your build.
 
   The window is custom-drawn, so it is checked by the colour of its status dot and
   by screenshots (PNG files in -Out).  Written for Windows PowerShell 5.1, which is
@@ -27,6 +31,11 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 $Work = Join-Path ([IO.Path]::GetTempPath()) ("audior-gui-smoke-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
+$Copy = Join-Path $Work 'program'
+New-Item -ItemType Directory -Force -Path $Copy | Out-Null
+Copy-Item $Exe (Join-Path $Copy 'Audior-GUI.exe')
+$Exe = Join-Path $Copy 'Audior-GUI.exe'
+$Ini = Join-Path $Copy 'Audior-GUI.ini'
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
@@ -195,6 +204,7 @@ try {
     $bmp = Shot $p 'demo-stopped'
     Check (IsGreen (Dot $bmp)) 'after Stop: the status dot is green again'
     Close-Window $p
+    Check (-not (Test-Path $Ini)) 'a --demo run remembers nothing'
 
     # ---- 3. the real engine ---------------------------------------------------------
     Write-Host '== window, real WASAPI engine (--output)'
@@ -217,6 +227,17 @@ try {
         Check (-not (Test-Path $file)) 'no empty file was left behind'
     }
     Close-Window $p
+
+    # ---- 4. the settings file ---------------------------------------------------------
+    Write-Host '== remembered settings'
+    Check (Test-Path $Ini) 'the run left its settings in Audior-GUI.ini beside the exe'
+    $saved = if (Test-Path $Ini) { [string](Get-Content $Ini -Raw -Encoding UTF8) } else { '' }
+    Check ($saved -match '(?m)^format=wav\r?$') 'the file holds the format of the run'
+    Check ($saved -match ('(?m)^folder=' + [regex]::Escape($Work))) 'the file holds the folder of the run'
+    Remove-Item $Ini -ErrorAction SilentlyContinue
+    $p = Start-Window @('--defaults', '--format', 'wav')
+    Close-Window $p
+    Check (-not (Test-Path $Ini)) 'a --defaults run remembers nothing'
 } finally {
     foreach ($p in $started) { if (-not $p.HasExited) { $p.Kill() } }
     Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue

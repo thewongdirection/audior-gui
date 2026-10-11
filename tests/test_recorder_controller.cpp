@@ -67,6 +67,26 @@ public:
 
 }  // namespace
 
+TEST(Controller_ADeviceThatIsGoneFallsBackToTheSystemDefault)
+{
+    Rig rig;
+    const std::wstring mic = rig.ctl.Devices(DeviceKind::Microphone).back().id;
+    const std::wstring speakers = rig.ctl.Devices(DeviceKind::Playback).back().id;
+
+    rig.ctl.Settings().microphoneId = mic;                                      /* both are plugged in: kept */
+    rig.ctl.Settings().systemDeviceId = speakers;
+    rig.ctl.DropUnavailableDevices();
+    CHECK_EQ(rig.ctl.Settings().microphoneId, mic);
+    CHECK_EQ(rig.ctl.Settings().systemDeviceId, speakers);
+
+    rig.ctl.Settings().microphoneId = L"{0.0.1.00000000}.{unplugged}";
+    rig.ctl.Settings().systemDeviceId = L"{0.0.0.00000000}.{unplugged}";
+    rig.ctl.DropUnavailableDevices();
+    CHECK(rig.ctl.Settings().microphoneId.empty());
+    CHECK(rig.ctl.Settings().systemDeviceId.empty());
+    CHECK(rig.ctl.Start());                                                     /* and recording works */
+}
+
 TEST(Controller_StartsIdleWithDevicesListed)
 {
     Rig rig;
@@ -323,6 +343,85 @@ TEST(Controller_AnOverlongPathIsRefused)
     CHECK(rig.ctl.Start());
 }
 
+TEST(Controller_ATranscriptFileThatWouldBeTooLongIsRefusedBeforeRecording)
+{
+    Rig rig;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    rig.ctl.Settings().fileName = std::wstring(8, L'n');        /* the recording fits: 256 */
+    rig.ctl.Settings().transcribeMicrophone = true;             /* but " - microphone.txt" makes 269 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(rig.ctl.LastOutcome().message.find(L"transcript") != std::wstring::npos);     /* and says it is the transcript */
+    CHECK(rig.ctl.LastOutcome().message.find(L"too long") != std::wstring::npos);
+
+    rig.ctl.Settings().transcribeMicrophone = false;            /* without the transcript there is nothing too long */
+    CHECK(rig.ctl.Start());
+}
+
+/* An engine without the helper or a model: the transcript switches are hidden, whatever the saved settings say. */
+class DeafEngine : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    bool CanTranscribe() const override { return false; }
+};
+
+TEST(Controller_AnEngineThatCannotTranscribeLeavesTheTranscriptSwitchesOutOfTheNames)
+{
+    std::set<std::wstring> existing;
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10;
+    DeafEngine engine([] { return 0.0; });
+    RecorderController ctl(engine, [&time] { return time; },
+                           [&existing](const std::wstring &path) { return existing.count(path) > 0; });
+    ctl.Settings().outputDirectory = L"C:\\" + std::wstring(240, L'd');
+    ctl.Settings().fileName = std::wstring(8, L'n');            /* with a transcript name this would be 269 */
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(ctl.Start());                                         /* not refused for a transcript it cannot make */
+    ctl.Stop();
+
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().fileName = L"a";
+    existing.insert(L"C:\\Rec\\a - microphone.txt");            /* a leftover transcript does not take a number */
+    CHECK(ctl.Start());
+    ctl.Stop();
+    CHECK_EQ(ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\a.mp3"));
+}
+
+TEST(Controller_TheSystemTranscriptsLongerNameCanBeTheOnlyOneOverTheLimit)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(233, L'd');
+    rig.ctl.Settings().fileName = std::wstring(5, L'n');        /* the recording is 246; " - microphone.txt" makes 259: just fits */
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+
+    rig.ctl.Settings().transcribeSystem = true;                 /* " - system audio.txt" is 2 longer: 261 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().message.find(L"transcript") != std::wstring::npos);
+}
+
+TEST(Controller_ARecordingAndItsTranscriptsAreNumberedAlike)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"meeting";
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.existing.insert(L"C:\\Rec\\meeting - microphone.txt");      /* an earlier transcript is there; its audio (a WAV, say) is not */
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    const Outcome &o = rig.ctl.LastOutcome();
+    CHECK_EQ(o.files[0], std::wstring(L"C:\\Rec\\meeting (2).mp3"));                        /* the recording takes the next number... */
+    CHECK_EQ(o.transcripts[0], std::wstring(L"C:\\Rec\\meeting (2) - microphone.txt"));      /* ...and its transcript has it too */
+
+    Rig without;                                                /* the same files, but no transcript: the name is free */
+    without.ctl.Settings().fileName = L"meeting";
+    without.existing.insert(L"C:\\Rec\\meeting - microphone.txt");
+    CHECK(without.ctl.Start());
+    without.ctl.Stop();
+    CHECK_EQ(without.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\meeting.mp3"));
+}
+
 TEST(Controller_TheLongestOfTheTwoTracksCountsTowardsTheLimit)
 {
     Rig rig;
@@ -472,6 +571,62 @@ TEST(Controller_ATranscriptFlowsIntoItsLane)
     CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
     CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Live);
     CHECK(rig.ctl.TranscriptionStatus(StreamId::System).state == TranscriptState::Off);
+}
+
+TEST(Controller_TheOutcomeNamesTheTranscriptFilesOfTheTranscribedStreams)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().transcribeMicrophone = rig.ctl.Settings().transcribeSystem = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(1.0);
+    rig.ctl.Stop();
+
+    const Outcome &o = rig.ctl.LastOutcome();
+    CHECK(o.kind == Outcome::Kind::Saved);
+    CHECK_EQ(o.transcripts.size(), std::size_t(2));
+    CHECK_EQ(o.transcripts[0], PlannedTranscriptFile(o.files[0], StreamId::Microphone));    /* beside the recording */
+    CHECK_EQ(o.transcripts[1], PlannedTranscriptFile(o.files[0], StreamId::System));
+    CHECK(o.transcriptProblem.empty());
+
+    Rig onlyOne;                                                    /* a pane without a transcript has no file */
+    onlyOne.ctl.Settings().includeSystemAudio = true;
+    onlyOne.ctl.Settings().transcribeSystem = true;
+    CHECK(onlyOne.ctl.Start());
+    onlyOne.Run(1.0);
+    onlyOne.ctl.Stop();
+    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts.size(), std::size_t(1));
+    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts[0], PlannedTranscriptFile(onlyOne.ctl.LastOutcome().files[0], StreamId::System));
+
+    Rig none;                                                       /* no transcript asked for: none saved */
+    none.Record();
+    CHECK(none.ctl.LastOutcome().transcripts.empty());
+}
+
+namespace {
+
+class UnsavedTranscript : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    std::wstring TranscriptFileProblem() override { return L"transcript not saved (Windows error 112)"; }
+};
+
+}  // namespace
+
+TEST(Controller_ATranscriptThatCouldNotBeSavedIsReportedWithoutFailingTheRecording)
+{
+    double now = 0.0;
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10; time.hour = 15; time.minute = 30; time.second = 45;
+    UnsavedTranscript engine([&] { return now; });
+    RecorderController ctl(engine, [&] { return time; }, [](const std::wstring &) { return false; });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(ctl.Start());
+    ctl.Stop();
+
+    CHECK(ctl.LastOutcome().kind == Outcome::Kind::Saved);          /* the audio is fine */
+    CHECK_EQ(ctl.LastOutcome().transcriptProblem, std::wstring(L"transcript not saved (Windows error 112)"));
 }
 
 TEST(Controller_ShowsATranscriptOnlyForAStreamSwitchedOnAndRecorded)
@@ -658,6 +813,12 @@ public:
 class LackingEngine : public SimulatedEngine {
 public:
     explicit LackingEngine(Clock now) : SimulatedEngine(std::move(now)) { LackModels(); }
+    bool Start(const RecordingSettings &settings, const std::wstring &path, std::wstring *error) override
+    {
+        started = settings;                             /* what the recording was really asked to do */
+        return SimulatedEngine::Start(settings, path, error);
+    }
+    RecordingSettings started;
     void RescanTranscription() override
     {
         ++rescans;
@@ -672,7 +833,11 @@ struct SetupRig {
     RecorderController ctl;
     FakeSetup       setup;
 
-    SetupRig() : engine([this] { return now; }), ctl(engine, [] { return LocalTime(); }) { ctl.AttachSetup(&setup); }
+    SetupRig() : engine([this] { return now; }), ctl(engine, [] { return LocalTime(); })
+    {
+        ctl.Settings().outputDirectory = L"C:\\Rec";
+        ctl.AttachSetup(&setup);
+    }
 
     void Run(double seconds)
     {
@@ -749,70 +914,108 @@ TEST(Setup_ControllerPassesTheUsersAnswersOn)
     CHECK_EQ(rig.setup.retries, 1);
 }
 
-TEST(Setup_NoUsableCardTurnsTheGpuSettingOffOncePerRun)
+TEST(Setup_NoUsableCardMeansNoCardForARecordingAndTheChoiceIsKept)
 {
     SetupRig rig;
     CHECK(rig.ctl.Settings().transcribeGpu);
-    SetupStatus asking = Status(SetupPhase::Asking);
-    asking.scanned = true;
-    asking.gpuUsable = false;
-    rig.setup.Say(asking);
+    CHECK(!rig.ctl.GpuUnusable());
+    SetupStatus found = Status(SetupPhase::Asking);
+    found.scanned = true;
+    found.gpuUsable = false;
+    rig.setup.Say(found);
     rig.ctl.Tick(0.016);
-    CHECK(!rig.ctl.Settings().transcribeGpu);
+    CHECK(rig.ctl.GpuUnusable());
+    CHECK(rig.ctl.Settings().transcribeGpu);                        /* the user's choice, which is saved, is not touched ... */
 
-    rig.ctl.Settings().transcribeGpu = true;                        /* the user insists */
-    SetupStatus downloading = asking;
-    downloading.phase = SetupPhase::Downloading;
-    rig.setup.Say(downloading);
-    rig.ctl.Tick(0.016);
-    CHECK(rig.ctl.Settings().transcribeGpu);                        /* and is not overruled by the next message of the same run */
-
-    rig.ctl.RetrySetup();                                           /* a new run scans afresh */
-    rig.setup.Say(asking);
-    rig.ctl.Tick(0.016);
-    CHECK(!rig.ctl.Settings().transcribeGpu);
+    CHECK(rig.ctl.Start());
+    CHECK(!rig.engine.started.transcribeGpu);                       /* ... but the recording does not ask for a card that is not there */
+    CHECK(!rig.ctl.Active().transcribeGpu);
+    rig.ctl.Stop();
+    CHECK(rig.ctl.Settings().transcribeGpu);
 }
 
-TEST(Setup_ANewRunFindsOutAfreshEvenIfItsFirstWordIsNeverSeen)
+TEST(Setup_ALaterScanThatFindsACardGivesItBack)
 {
     SetupRig rig;
-    rig.setup.scansAtOnce = false;                                  /* the controller never sees the new run say "Scanning" */
     SetupStatus found = Status(SetupPhase::Finished, SetupResult::Ready);
     found.scanned = true;
     found.gpuUsable = false;
-    found.modelsChanged = true;
     rig.setup.Say(found);
     rig.ctl.Tick(0.016);
-    CHECK(!rig.ctl.Settings().transcribeGpu);
-    CHECK_EQ(rig.engine.rescans, 1);
+    CHECK(rig.ctl.GpuUnusable());
 
-    rig.ctl.Settings().transcribeGpu = true;
-    rig.ctl.RetrySetup();
-    rig.setup.Say(found);                                           /* the set-up has run twice between two looks */
+    rig.ctl.RetrySetup();                                           /* a driver was installed, say */
+    found.gpuUsable = true;
+    rig.setup.Say(found);
     rig.ctl.Tick(0.016);
-    CHECK(!rig.ctl.Settings().transcribeGpu);                       /* the findings of the new run count */
-    CHECK_EQ(rig.engine.rescans, 2);
+    CHECK(!rig.ctl.GpuUnusable());
+    CHECK(rig.ctl.Start());
+    CHECK(rig.engine.started.transcribeGpu);                        /* the saved choice applies again */
+    rig.ctl.Stop();
 }
 
-TEST(Setup_AUsableCardOrNoScanYetLeavesTheGpuSettingAlone)
+TEST(Setup_AUsableCardOrNoScanYetLeavesTheGpuChoiceAlone)
 {
     SetupRig rig;
-    rig.setup.Say(Status(SetupPhase::Scanning));                    /* not scanned yet: gpuUsable means nothing */
+    SetupStatus early = Status(SetupPhase::Scanning);               /* not scanned yet: gpuUsable means nothing */
+    early.gpuUsable = false;
+    rig.setup.Say(early);
     rig.ctl.Tick(0.016);
-    CHECK(rig.ctl.Settings().transcribeGpu);
+    CHECK(!rig.ctl.GpuUnusable());
 
     SetupStatus found = Status(SetupPhase::Finished, SetupResult::Ready);
     found.scanned = true;
     found.gpuUsable = true;
     rig.setup.Say(found);
     rig.ctl.Tick(0.016);
-    CHECK(rig.ctl.Settings().transcribeGpu);
+    CHECK(!rig.ctl.GpuUnusable());
+    CHECK(rig.ctl.Start());
+    CHECK(rig.engine.started.transcribeGpu);
+    rig.ctl.Stop();
 
-    SetupRig cpuOnly;                                               /* --transcribe-cpu is never turned back on */
+    SetupRig cpuOnly;                                               /* --transcribe-cpu stays what it is */
     cpuOnly.ctl.Settings().transcribeGpu = false;
     cpuOnly.setup.Say(found);
     cpuOnly.ctl.Tick(0.016);
-    CHECK(!cpuOnly.ctl.Settings().transcribeGpu);
+    CHECK(cpuOnly.ctl.Start());
+    CHECK(!cpuOnly.engine.started.transcribeGpu);
+    cpuOnly.ctl.Stop();
+}
+
+TEST(Setup_ANewRunLooksForModelsAfreshEvenIfItsFirstWordIsNeverSeen)
+{
+    SetupRig rig;
+    rig.setup.scansAtOnce = false;                                  /* the controller never sees the new run say "Scanning" */
+    SetupStatus found = Status(SetupPhase::Finished, SetupResult::Ready);
+    found.scanned = true;
+    found.modelsChanged = true;
+    rig.setup.Say(found);
+    rig.ctl.Tick(0.016);
+    CHECK_EQ(rig.engine.rescans, 1);
+
+    rig.ctl.RetrySetup();
+    rig.setup.Say(found);                                           /* the set-up has run twice between two looks */
+    rig.ctl.Tick(0.016);
+    CHECK_EQ(rig.engine.rescans, 2);                                /* what the new run brought counts */
+}
+
+TEST(Setup_TheUsersNoIsKeptForTheSettingsFileAndFollowsTheSetup)
+{
+    SetupRig rig;
+    CHECK(!rig.ctl.DownloadDeclined());
+    rig.ctl.SetDownloadDeclined(true);                              /* what the settings file said at start-up */
+    CHECK(rig.ctl.DownloadDeclined());
+
+    SetupStatus said = Status(SetupPhase::Finished, SetupResult::Skipped);
+    said.declined = true;
+    rig.setup.Say(said);
+    rig.ctl.Tick(0.016);
+    CHECK(rig.ctl.DownloadDeclined());
+
+    said.declined = false;                                          /* a yes to a later offer takes it back */
+    rig.setup.Say(said);
+    rig.ctl.Tick(0.016);
+    CHECK(!rig.ctl.DownloadDeclined());
 }
 
 TEST(Setup_NewModelsAreTakenUpOncePerRun)

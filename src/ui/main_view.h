@@ -68,6 +68,9 @@ public:
      * the next run.  False, with the old shortcut still in force, if another
      * program already owns it. */
     virtual bool SetHotkey(HotkeyAction action, const Hotkey &hotkey) = 0;
+
+    /* A recording has begun with the settings now in force: keep them for the next run. */
+    virtual void RememberSettings() = 0;
 };
 
 class MainView {

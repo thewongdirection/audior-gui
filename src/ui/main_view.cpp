@@ -326,8 +326,8 @@ void MainView::Refresh()
     const bool english = model && !model->multilingual;
     languageSeg_.visible = modelField_.visible = canTranscribe && model;
     gpuSwitch_.visible = canTranscribe && ctl_.CanTranscribeOnGpu();
-    gpuSwitch_.checked = s.transcribeGpu;
-    gpuSwitch_.enabled = unlocked;
+    gpuSwitch_.checked = s.transcribeGpu && !ctl_.GpuUnusable();            /* the scan found no card to use: off, and it stays off */
+    gpuSwitch_.enabled = unlocked && !ctl_.GpuUnusable();
     languageSeg_.selected = english || s.transcribeLanguage == SpeechLanguage::English ? 1 : 0;
     languageSeg_.enabled = unlocked && !english;
     modelField_.text = model ? model->label : std::wstring();
@@ -345,6 +345,10 @@ void MainView::Refresh()
         savedName_ = FileName(o.files[0]);
         if (o.files.size() > 1)
             savedName_ += L"  +" + std::to_wstring(o.files.size() - 1) + L" more";
+        if (!o.transcriptProblem.empty())                   /* the audio is saved; what happened to the text, in a few words */
+            savedName_ += L"  ·  " + o.transcriptProblem;
+        else if (!o.transcripts.empty())                    /* beside the recording, one for each transcribed pane */
+            savedName_ += L"  ·  " + std::to_wstring(o.transcripts.size()) + (o.transcripts.size() == 1 ? L" transcript" : L" transcripts");
     }
 
     summary_ = Summarize(ctl_.Active());
@@ -510,8 +514,11 @@ void MainView::StartRecording()
     if (!CanStart())
         return;
     ctl_.Start();
-    if (host_)
+    if (host_) {
         host_->Wake();
+        if (ctl_.GetPhase() == Phase::Recording)
+            host_->RememberSettings();
+    }
     Refresh();
 }
 

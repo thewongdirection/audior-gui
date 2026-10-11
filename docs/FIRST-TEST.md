@@ -41,10 +41,17 @@ Either build it (`build.bat x64`), or download **audior-gui-windows** from the
 If Windows SmartScreen warns about an unknown publisher (the file is not code
 signed), choose *More info*, then *Run anyway*.
 
+Each run leaves its settings in `Audior-GUI.ini` for the next (section 5), so a row that
+says "type a file name" or "switch the format" is still in force in the rows after it.
+Start a section from the defaults when it matters: delete the file, or start the program
+with `--defaults` (which neither reads nor writes it).
+
 ## 1. The window
 
 1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
    *Default · name* at the top.
+   The window opens wholly on screen: its bottom edge, with **Start recording**, is above the
+   taskbar even on a big monitor (Windows alone would cascade it too low there).
 2. While idle the waveforms rest; they move only while recording.
 
    ![The idle window: green Ready status, both device drop-downs, resting waveforms, and the Start recording button](screenshots/idle.png)
@@ -66,7 +73,7 @@ signed), choose *More info*, then *Run anyway*.
 | Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
 | System audio gain 150% | The system waveform is taller and the file louder. |
 | Untick **Microphone**, keep **System audio** | Only the system file/lane. |
-| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes. |
+| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Transcript** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
 | Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
 | Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
@@ -91,8 +98,8 @@ These are done by hand: the build machines have no desktop shell to check them o
 | Run a second copy | Its hotkey boxes are outlined in red: the first copy owns the shortcuts. |
 | Start with a shortcut set to *Run: Minimized* | The window never shows; the icon is in the tray. |
 
-The saved shortcuts are two text values in `HKEY_CURRENT_USER\Software\Audior-GUI`
-(`StartHotkey`, `StopHotkey`); delete the key to go back to Ctrl+Alt+R and Ctrl+Alt+S.
+The saved shortcuts are the `startHotkey` and `stopHotkey` lines of `Audior-GUI.ini`
+beside the exe (section 5); delete the file to go back to Ctrl+Alt+R and Ctrl+Alt+S.
 
 ## 4. From a command prompt
 
@@ -119,6 +126,7 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | Try | Expect |
 |---|---|
 | Switch the microphone's transcript on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
+| Record a minute with a transcript switched on, speak or play speech (another language too, with a multilingual model and *Auto*), stop | Beside the recording a text file appears for each pane that was spoken on: `<name> - microphone.txt` / `<name> - system audio.txt`. It opens in Notepad with right letters and accents, one `[0:06] words` line per phrase in order; the status after Stop says *1 transcript* (*2 transcripts*). A pane nobody spoke in leaves no file. Recording again with the same name never overwrites it (` (2)`). |
 | Both streams on, play a video with speech while you speak | Each pane shows its own stream's words. The computer stays usable; recording and the waveforms do not stutter. |
 | A long stretch of talking (a minute or more) | Old lines scroll away upwards; the program's memory does not keep growing (Task Manager). |
 | Switch the transcript off before recording | `audior_asr.exe` does not appear in Task Manager at all. |
@@ -132,13 +140,34 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | Start with `--transcribe-model ggml-large-v3-turbo-q5_0.bin` while that file is not in the models folder | Recording does not start and the message names the missing model. |
 | Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--english] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
 
-## 5. The start-up set-up of transcription (only with the helper)
+## 5. Remembered settings
+
+The settings of the last run live in `Audior-GUI.ini`, in the folder of `Audior-GUI.exe`.
+The unit tests cover reading and writing it; these are the parts that need the real window
+and Windows itself.
+
+| Try | Expect |
+|---|---|
+| Change the folder, the file name, the format and bitrate, both gains, tick **System audio**, pick other devices, switch on a transcript; close the window; start the program again | Every setting is as you left it. `Audior-GUI.ini` is next to the exe and reads as plain text. |
+| Change the bitrate, press **Start** and **Stop**, then change the file name; end `Audior-GUI.exe` in Task Manager (not the X) and start it again | The bitrate you recorded with is back, the file name you typed after pressing Stop is not: the file is written when a recording starts and when the program closes. |
+| Start the program, change a setting, sign out of Windows (or restart) with the window open or in the tray | After signing in the setting is kept. |
+| `Audior-GUI -b 192` | The window shows 192 kbps and everything else as remembered. Close it and start without options: 192 is now what is remembered. |
+| `Audior-GUI --defaults`, change things, close; then start without options | The first window shows audior's defaults (MP3 128 kbps, microphone only, `Documents\Audior-GUI`); the second shows what was remembered before, unchanged. |
+| `Audior-GUI --demo`, change things, close; start normally | Unchanged: a demo does not write the file. |
+| Choose a USB microphone, close, unplug it, start the program | The microphone box says *Default* and the system default microphone; Start works. Plug the USB one back in and choose it again from the drop-down. |
+| Copy `Audior-GUI.exe` and `Audior-GUI.ini` to a PC (or user account) that has no such folder as the saved one | The folder shows `Documents\Audior-GUI` of that user and a recording goes there; the rest of the settings came along. |
+| Keep a transcript model chosen in the *Transcript* section, close, move the model file out of the models folder, start and press Start | The message names the missing model; choosing another one in the *Transcript* section lets the recording start. |
+| Copy `Audior-GUI.exe` to a folder you cannot write to (a locked drive, or a folder you have set to read-only for yourself), change settings, close, start again | No error anywhere and recording works; the settings are the defaults again. |
+| Open the file in Notepad, set `format=wav`, `bitrate=100`, `folder=Recordings` and add a line `colour=blue`; save; start the program | WAV is selected, the bitrate is still 128 and the folder is still the one before: the lines that are not valid are skipped, the rest is used. |
+| Delete the file | The next start shows the defaults and the file is back after the next recording. |
+
+## 6. The start-up set-up of transcription (only with the helper)
 
 Needs `audior_asr.exe` with its list next to `Audior-GUI.exe`, and `audior_fetch.exe` with
 `audior_fetch.sha256` (`build.bat` makes the second pair; `build.bat x64 asr` the first). The
 downloads are 181 MiB (and 547 MiB, only on a PC whose card has 4 GiB or more of its own
 memory) and need a connection. To start over between rows: delete the files of the models
-folder, and the registry value `DownloadDeclined` under `HKEY_CURRENT_USER\Software\Audior-GUI`.
+folder, and the line `modelDownload=declined` of `Audior-GUI.ini` (set it to `ask`, or delete the file).
 
 | Try | Expect |
 |---|---|
@@ -147,7 +176,7 @@ folder, and the registry value `DownloadDeclined` under `HKEY_CURRENT_USER\Softw
 | Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Transcript** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
 | Record with a transcript on straight afterwards | Works as in section 4. |
 | Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |
-| Delete the models, start, press **Not now** | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |
+| Delete the models, start, press **Not now**, close the window (the answer is saved with the other settings when the program ends) | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |
 | Press **Download**, then **Cancel** while it runs | *Download cancelled*; no `.part` file is left; the next start asks again (a cancel is not a "not now"). |
 | Press **Download** and unplug the network (or block `huggingface.co`) | *Download failed* with the reason, and **Try again**. The next start asks again. |
 | Press **Download**, then minimize the window to the tray | The tray tooltip shows the percentage; a balloon says when it finished or failed. At the next start with the window minimized, a balloon says that a model is needed and waits for you to open the window. |

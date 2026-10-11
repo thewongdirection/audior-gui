@@ -10,16 +10,7 @@ using namespace audiorgui;
 
 namespace {
 
-void Write(const std::wstring &path, const std::string &content)
-{
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    CHECK(h != INVALID_HANDLE_VALUE);
-    if (h == INVALID_HANDLE_VALUE)
-        return;
-    DWORD written = 0;
-    WriteFile(h, content.data(), static_cast<DWORD>(content.size()), &written, nullptr);
-    CloseHandle(h);
-}
+void Write(const std::wstring &path, const std::string &content) { CHECK(WriteFileBytes(path, content)); }
 
 /* A stand-in model: a few bytes with their real hash. */
 struct StandIn {
@@ -160,6 +151,22 @@ TEST(Asr_InstalledModelsAreTheWholeOnesInTheTablesOrder)
     Write(models.Path(L"a.bin"), "12");                 /* not whole: a download in progress */
     found = InstalledModels(models.Dir(), table, 2);
     CHECK(found.size() == 1 && found[0] == &table[1]);
+}
+
+TEST(Asr_ModelInstalledNeedsTheNamedModelWhole)
+{
+    const AsrModel table[2] = {{L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"},
+                               {L"b.bin", "x", 4, L"B", L"MIT", L"https://example.test"}};
+    TempDir models;
+    CHECK(!ModelInstalled(models.Dir(), L"a.bin", table, 2));
+    Write(models.Path(L"a.bin"), "123");
+    Write(models.Path(L"b.bin"), "12");                 /* not whole */
+    CHECK(ModelInstalled(models.Dir(), L"a.bin", table, 2));
+    CHECK(ModelInstalled(models.Dir(), L"A.BIN", table, 2));
+    CHECK(!ModelInstalled(models.Dir(), L"b.bin", table, 2));
+    CHECK(!ModelInstalled(models.Dir(), L"c.bin", table, 2));       /* not in the table */
+    CHECK(!ModelInstalled(models.Dir(), std::wstring(), table, 2));
+    CHECK(!ModelInstalled(std::wstring(), L"a.bin", table, 2));
 }
 
 TEST(Asr_TheModelAskedForIsTheOneFound)
@@ -371,12 +378,12 @@ TEST(Asr_AModelAndTheGraphicsBackendAreNoticedByTheirFiles)
 {
     TempDir programs, models;
     const AsrModel model = {L"a.bin", "x", 3, L"A", L"MIT", L"https://example.test"};
-    CHECK(!ModelInstalled(models.Dir(), model));
-    CHECK(!ModelInstalled(std::wstring(), model));
+    CHECK(!ModelIsWhole(models.Dir(), model));
+    CHECK(!ModelIsWhole(std::wstring(), model));
     Write(models.Path(L"a.bin"), "12");
-    CHECK(!ModelInstalled(models.Dir(), model));        /* not whole */
+    CHECK(!ModelIsWhole(models.Dir(), model));          /* not whole */
     Write(models.Path(L"a.bin"), "123");
-    CHECK(ModelInstalled(models.Dir(), model));
+    CHECK(ModelIsWhole(models.Dir(), model));
 
     CHECK(!GpuBackendInstalled(programs.Dir()));
     CHECK(!GpuBackendInstalled(std::wstring()));

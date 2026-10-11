@@ -34,6 +34,21 @@ void RecorderController::RefreshDevices()
     devices_[1] = engine_.ListDevices(DeviceKind::Playback);
 }
 
+void RecorderController::DropUnavailableDevices()
+{
+    const auto listed = [](const std::vector<DeviceInfo> &devices, const std::wstring &id) {
+        for (const DeviceInfo &d : devices) {
+            if (d.id == id)
+                return true;
+        }
+        return false;
+    };
+    if (!listed(Devices(DeviceKind::Microphone), settings_.microphoneId))
+        settings_.microphoneId.clear();
+    if (!listed(Devices(DeviceKind::Playback), settings_.systemDeviceId))
+        settings_.systemDeviceId.clear();
+}
+
 const RecordingSettings &RecorderController::Active() const
 {
     return phase_ == Phase::Recording ? active_ : settings_;
@@ -45,9 +60,18 @@ bool RecorderController::StreamEnabled(StreamId stream) const
     return stream == StreamId::Microphone ? s.includeMicrophone : s.includeSystemAudio;
 }
 
+std::vector<std::wstring> RecorderController::PlannedTranscripts(const std::wstring &path) const
+{
+    return engine_.CanTranscribe() ? PlannedTranscriptFiles(settings_, path) : std::vector<std::wstring>();
+}
+
 bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
 {
     for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
+        if (fileExists_(file))
+            return true;
+    }
+    for (const std::wstring &file : PlannedTranscripts(path)) {                      /* a transcript keeps its recording's name */
         if (fileExists_(file))
             return true;
     }
@@ -57,7 +81,8 @@ bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
 /* The file to record to: the name the user typed (given the format's
  * extension), else "Audior-GUI-<time>", in the output folder.  A recording never
  * replaces an existing file, so a taken name gets " (2)", " (3)" ... before
- * its extension; with two tracks, a taken "_mic" or "_system" file counts. */
+ * its extension; with two tracks, a taken "_mic" or "_system" file counts, and
+ * so does a taken transcript file, so that a recording and its transcripts are numbered alike. */
 std::wstring RecorderController::NextOutputPath()
 {
     const std::wstring name = settings_.fileName.empty()
@@ -88,23 +113,35 @@ bool RecorderController::Start()
     }
 
     const std::wstring path = NextOutputPath();
+    const std::wstring limit = std::to_wstring(kMaxOutputPathChars);
     for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
         if (file.size() > kMaxOutputPathChars) {
             outcome_.kind = Outcome::Kind::Failed;
-            outcome_.message = L"The output path is too long (the limit is " + std::to_wstring(kMaxOutputPathChars) +
+            outcome_.message = L"The output path is too long (the limit is " + limit +
                                L" characters). Choose a shorter folder or file name.";
             return false;
         }
     }
+    for (const std::wstring &file : PlannedTranscripts(path)) {                     /* their names are the longer ones */
+        if (file.size() > kMaxOutputPathChars) {
+            outcome_.kind = Outcome::Kind::Failed;
+            outcome_.message = L"The transcript's path would be too long (the limit is " + limit +
+                               L" characters). Choose a shorter folder or file name, or switch the Transcript off.";
+            return false;
+        }
+    }
 
+    RecordingSettings run = settings_;
+    if (gpuUnusable_)                                   /* what the scan found out about this PC, not the user's choice */
+        run.transcribeGpu = false;
     std::wstring error;
-    if (!engine_.Start(settings_, path, &error)) {
+    if (!engine_.Start(run, path, &error)) {
         outcome_.kind = Outcome::Kind::Failed;
         outcome_.message = error.empty() ? L"The recording could not be started." : error;
         return false;
     }
 
-    active_ = settings_;
+    active_ = run;
     stats_ = RecordingStats();
     for (WaveformLane &lane : lanes_)
         lane.Reset();
@@ -179,6 +216,8 @@ void RecorderController::Finish()
     outcome_.kind = failure.empty() ? Outcome::Kind::Saved : Outcome::Kind::Failed;
     outcome_.message = failure;
     outcome_.files = engine_.OutputFiles();
+    outcome_.transcripts = engine_.TranscriptFiles();
+    outcome_.transcriptProblem = engine_.TranscriptFileProblem();
     phase_ = Phase::Idle;
 }
 
@@ -238,7 +277,7 @@ void RecorderController::RetrySetup()
 {
     if (!setupSource_)
         return;
-    gpuApplied_ = modelsApplied_ = false;               /* a new run finds out afresh */
+    modelsApplied_ = false;                             /* a new run finds out afresh */
     setupSource_->Retry();
     setupAwaitSeconds_ = kSetupAwaitSeconds;
     TakeSetup();                                        /* it says Scanning at once: no look at the old notification */
@@ -259,11 +298,9 @@ bool RecorderController::TakeSetup()
     setupDismissed_ = false;
     setupShownSeconds_ = 0.0;
     setupAwaitSeconds_ = 0.0;
-    if (setup_.scanned && !gpuApplied_) {
-        gpuApplied_ = true;
-        if (!setup_.gpuUsable)                          /* only ever turned off: a user's --transcribe-cpu stays */
-            settings_.transcribeGpu = false;
-    }
+    downloadDeclined_ = setup_.declined;
+    if (setup_.scanned)
+        gpuUnusable_ = !setup_.gpuUsable;
     if (setup_.modelsChanged && !modelsApplied_) {
         modelsApplied_ = true;
         RefreshTranscription();

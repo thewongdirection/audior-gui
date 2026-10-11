@@ -165,7 +165,7 @@ int Download(const std::wstring &url, const std::wstring &path, unsigned long lo
     std::wstring host, resource;
     if (!ParseAddress(url, &host, &resource))
         return Fail("only https addresses on huggingface.co are accepted");
-    if (!audiorgui::IsAbsolutePath(path) || !EndsWith(path, kPartSuffix))
+    if (!audiorgui::IsFullPath(path) || !EndsWith(path, kPartSuffix))
         return Fail("the file must be given by a full path and end in .part");
     if (expected == 0 || expected > kMaxBytes)
         return Fail("the size is not one a model can have");

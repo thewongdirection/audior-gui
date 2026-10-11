@@ -4,12 +4,14 @@
  *     Audior-GUI.exe                      the window, recording with WASAPI
  *     Audior-GUI.exe --demo               the window with simulated audio (nothing is written)
  *     Audior-GUI.exe -o talk.mp3 -i ...   audior's options preset the window; --output also starts recording
+ *     Audior-GUI.exe --defaults ...       the same from the built-in defaults, leaving the saved settings alone
  *     Audior-GUI.exe --list-devices       list the audio devices
  *     Audior-GUI.exe --stop               stop the recording in progress
  *     Audior-GUI.exe --help               the options
  *     Audior-GUI.exe --screenshot out.png [--scenario recording] [--size 1120x720]
  *
- * See core/cli.h for the options.
+ * The window starts from the settings of the last run, kept in Audior-GUI.ini beside the exe
+ * (see preferences.h), and the options override them.  See core/cli.h for the options.
  */
 #include <windows.h>
 
@@ -123,8 +125,8 @@ bool ChooseDevice(const RecorderController &controller, DeviceKind kind, const s
     return false;
 }
 
-int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const RecordingSettings &settings,
-              ui::Gfx &gfx)
+int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const SavedSettings &start,
+              const Preferences &prefs, ui::Gfx &gfx)
 {
     std::unique_ptr<IRecordingEngine> engine;
     if (cli.demo)
@@ -136,12 +138,14 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
      * speech model if there is none (see engine/transcription_setup.h).  Not for the demo, which has its own. */
     std::unique_ptr<TranscriptionSetup> setup;
     if (!cli.demo)
-        setup = MakeSystemSetup(ProgramDirectory(), ModelsDirectory(), Preferences());
+        setup = MakeSystemSetup(ProgramDirectory(), ModelsDirectory(), start.downloadDeclined);
 
     RecorderController controller(*engine, LocalNow, FileExists);
-    controller.Settings() = settings;
+    controller.Settings() = start.recording;
+    controller.SetDownloadDeclined(start.downloadDeclined);
     controller.AttachSetup(setup.get());
-    if (!controller.CanTranscribe() && (settings.transcribeMicrophone || settings.transcribeSystem))
+    controller.DropUnavailableDevices();                /* before --mic and --output-device, which are checked below */
+    if (!controller.CanTranscribe() && (start.recording.transcribeMicrophone || start.recording.transcribeSystem))
         WriteError(setup ? L"Warning: no speech model is installed in " + ModelsDirectory() +
                                L" yet: live transcription starts once the window has downloaded one (see the README).\n"
                          : L"Warning: live transcription needs the helper audior_asr.exe next to this program and a model in " +
@@ -150,7 +154,8 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
         !ChooseDevice(controller, DeviceKind::Playback, cli.outputDevice, &controller.Settings().systemDeviceId))
         return 1;
 
-    ui::AppWindow window(gfx, controller);
+    /* A demo or a --defaults run does not touch the saved settings. */
+    ui::AppWindow window(gfx, controller, start.hotkeys, cli.demo || cli.defaults ? nullptr : &prefs);
     if (!window.Create(instance, showCommand)) {
         WriteError(L"The window could not be created.\n");
         return 1;
@@ -166,9 +171,19 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
 
 int Run(HINSTANCE instance, int showCommand)
 {
-    RecordingSettings settings;
-    settings.outputDirectory = DefaultOutputDirectory();
-    const CliResult cli = ParseCommandLine(Arguments(), CurrentDirectory(), &settings);
+    SavedSettings builtIn;                              /* what a first run starts from */
+    builtIn.recording.outputDirectory = DefaultOutputDirectory();
+    SavedSettings saved = builtIn;                      /* what the last run left, over that */
+    const Preferences prefs;
+    prefs.Load(&saved);
+    /* A model the last run chose that is gone now would stop every recording that transcribes, while the window
+     * shows the first one installed in its place: forget it (a --transcribe-model given now is kept, and checked). */
+    if (!saved.recording.transcribeModel.empty() &&
+        !ModelInstalled(ModelsDirectory(), saved.recording.transcribeModel))
+        saved.recording.transcribeModel.clear();
+
+    SavedSettings start;
+    const CliResult cli = ParseOverSavedSettings(Arguments(), CurrentDirectory(), saved, builtIn, &start);
     if (!cli.error.empty()) {
         WriteError(L"Error: " + cli.error + L"\nRun Audior-GUI --help to see the options.\n");
         return 1;
@@ -195,7 +210,7 @@ int Run(HINSTANCE instance, int showCommand)
         }
         return ui::RunScreenshot(gfx, options);
     }
-    return RunWindow(instance, showCommand, cli, settings, gfx);
+    return RunWindow(instance, showCommand, cli, start, prefs, gfx);
 }
 
 }  // namespace

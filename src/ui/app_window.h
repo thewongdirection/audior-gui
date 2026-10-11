@@ -10,6 +10,9 @@
  * and Stop hotkeys are registered with the system for as long as the program
  * runs, so they work whichever program has the focus, the tray included.
  *
+ * The settings are written to the settings file (see preferences.h) when a
+ * recording starts, when a hotkey changes and when the program ends.
+ *
  * Frames are driven by a timer that runs only while something is moving (a
  * recording, or a waveform still settling); an idle window uses no CPU, and a
  * window hidden in the tray, which draws nothing, ticks a few times a second.  While
@@ -35,7 +38,10 @@ namespace audiorgui::ui {
 
 class AppWindow : public IViewHost {
 public:
-    AppWindow(Gfx &gfx, RecorderController &controller);
+    /* `hotkeys` are the Start and Stop shortcuts to begin with.  `prefs` is where the settings are
+     * written, or null when this run is not to change them (--demo, --defaults). */
+    AppWindow(Gfx &gfx, RecorderController &controller, const Hotkey (&hotkeys)[kHotkeyActionCount],
+              const Preferences *prefs);
     ~AppWindow();
 
     bool Create(HINSTANCE instance, int showCommand);
@@ -52,6 +58,7 @@ public:
     void SetClipboardText(const std::wstring &text) override;
     void Wake() override;
     bool SetHotkey(HotkeyAction action, const Hotkey &hotkey) override;
+    void RememberSettings() override;
 
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -70,7 +77,7 @@ private:
     void    RearmTimer();
 
     bool    RegisterHotkey(int index, const Hotkey &hotkey);
-    void    RegisterSavedHotkeys();
+    void    RegisterStartingHotkeys();
     void    OnHotkey(HotkeyAction action);
 
     void    HideToTray();
@@ -86,7 +93,7 @@ private:
     RecorderController &ctl_;
     Painter             painter_;
     MainView            view_;
-    Preferences         prefs_;
+    const Preferences  *prefs_;
     TrayIcon            tray_;
 
     HWND   hwnd_ = nullptr;

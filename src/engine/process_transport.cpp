@@ -46,7 +46,7 @@ std::wstring Failed(const wchar_t *what)
 std::unique_ptr<ProcessTransport> ProcessTransport::Launch(const std::wstring &exePath, const std::wstring &arguments,
                                                            const Limits &limits, std::wstring *problem)
 {
-    if (!IsAbsolutePath(exePath)) {
+    if (!IsFullPath(exePath)) {
         *problem = L"The transcription engine's location is not a full path.";
         return nullptr;
     }

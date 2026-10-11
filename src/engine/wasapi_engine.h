@@ -15,6 +15,7 @@
 #include "asr_helper.h"
 #include "recording_session.h"
 #include "stop_signal.h"
+#include "transcript_file.h"
 #include "transcription_host.h"
 
 namespace audiorgui {
@@ -52,12 +53,15 @@ public:
     {
         return host_ ? host_->TakeEvents(stream, out, capacity) : 0;
     }
+    std::vector<std::wstring> TranscriptFiles() override;
+    std::wstring TranscriptFileProblem() override;
 
 private:
     AsrSetup                         asr_;              /* the helper, with the first model */
     bool                             transcribes_ = false;
     std::vector<TranscriptModel>     models_;           /* the installed ones, the first one first */
     StopSignal                       stopSignal_;       /* exists only while recording */
+    std::unique_ptr<TranscriptFile>  transcriptFiles_[kStreamCount];    /* of the streams transcribed; before host_, which writes to them */
     std::unique_ptr<TranscriptionHost> host_;           /* the current or last recording's transcriber, if it had one */
     std::unique_ptr<RecordingSession> session_;         /* the current or last recording */
 };

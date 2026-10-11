@@ -94,7 +94,7 @@ if not exist "bin\x64\Audior-GUI.exe" (
     exit /b 1
 )
 if not exist "docs\screenshots" mkdir "docs\screenshots"
-for %%s in (recording idle saved error clipping hotkeys bluetooth-mic setup-ask setup-download setup-declined) do (
+for %%s in (recording idle saved error clipping hotkeys bluetooth-mic transcript-saved setup-ask setup-download setup-declined) do (
     start "" /wait "bin\x64\Audior-GUI.exe" --screenshot "docs\screenshots\%%s.png" --scenario %%s
     if errorlevel 1 (
         echo Scenario %%s failed.
@@ -118,7 +118,7 @@ echo Building audior-gui (%ARCH%)...
 set "CFLAGS=/nologo /W4 /O1 /Gy /MT /std:c++17 /Zc:__cplusplus /permissive- /utf-8 /EHsc /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX"
 set "LFLAGS=/OPT:REF /OPT:ICF /NODEFAULTLIB:libucrt.lib ucrt.lib"
 set "GUILIBS=user32.lib gdi32.lib shell32.lib dwmapi.lib d2d1.lib dwrite.lib windowscodecs.lib"
-REM The recording engine: COM, the registry (saved hotkeys), WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
+REM The recording engine: COM, WASAPI scheduling (avrt) and Media Foundation.  Media Foundation is
 REM delay-loaded so the program also starts on Windows N editions that lack it.
 REM  DXGI (in Windows) is asked for the graphics cards.
 set "ENGLIBS=ole32.lib uuid.lib advapi32.lib avrt.lib mfplat.lib mfreadwrite.lib mfuuid.lib dxgi.lib delayimp.lib /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll"
@@ -165,8 +165,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT
 if not "%WANT_HW%"=="1" goto :builddone
 set "HW_SRC="
 for %%f in (tests\hardware\*.cpp) do set "HW_SRC=!HW_SRC! %%f"
-cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\hardware_tests.exe" !HW_SRC! ^
-    /link %LFLAGS% /SUBSYSTEM:CONSOLE user32.lib ole32.lib mfplat.lib mfreadwrite.lib mfuuid.lib winmm.lib || goto :buildfail
+REM Most of it drives the real program from outside; T15 uses the recording engine in the test process.
+cl.exe %CFLAGS% /Fo"%OBJ%\\" /Fe"%OUT%\hardware_tests.exe" !HW_SRC! !CORE_OBJ! ^
+    /link %LFLAGS% /SUBSYSTEM:CONSOLE user32.lib winmm.lib %ENGLIBS% || goto :buildfail
 
 :builddone
 endlocal & exit /b 0

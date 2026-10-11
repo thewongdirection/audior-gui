@@ -55,7 +55,7 @@ bool ModelInstaller::Install(const AsrModel &model, const Progress &progress, co
         *problem = L"There is no folder to keep the speech models in.";
         return false;
     }
-    if (!IsAbsolutePath(options_.modelsDir) || options_.modelsDir.find(L'"') != std::wstring::npos) {
+    if (!IsFullPath(options_.modelsDir) || options_.modelsDir.find(L'"') != std::wstring::npos) {
         *problem = L"The folder for the speech models (" + options_.modelsDir + L") is not a full path.";    /* or its quote would break the arguments */
         return false;
     }

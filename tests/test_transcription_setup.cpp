@@ -33,7 +33,6 @@ struct World {
     bool                          declined = false;
 
     std::vector<std::wstring> downloads;                                /* the files asked for, in order */
-    std::atomic<int>          declinedWrites{0};
     std::wstring              failWith;                                 /* a download of this file fails ... */
     std::wstring              failReason;
     std::wstring              blockFile;                                /* ... and one of this file waits until it is cancelled */
@@ -90,11 +89,7 @@ struct World {
             return true;
         };
         env.cancelInstall = [this] { cancelCalled = true; };
-        env.declined = [this] { return declined; };
-        env.rememberDecline = [this](bool d) {
-            declined = d;
-            ++declinedWrites;
-        };
+        env.declined = declined;
         env.models = kTable;
         env.modelCount = 2;
         env.voice = &kVoice;
@@ -171,7 +166,7 @@ TEST(Setup_NothingIsDownloadedUntilTheUserSaysYes)
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     CHECK(world.downloads.empty());
     CHECK(!setup.Poll(&s));                                             /* and it just waits: nothing changes */
-    CHECK_EQ(world.declinedWrites.load(), 0);
+    CHECK(!s.declined);
 }
 
 TEST(Setup_AYesDownloadsEveryFileInOrderAndSaysSo)
@@ -191,7 +186,7 @@ TEST(Setup_AYesDownloadsEveryFileInOrderAndSaysSo)
     CHECK(s.result == SetupResult::Ready && s.modelsChanged && !s.canRetry);
     CHECK(Has(s.title, L"installed") && Has(s.detail, L"Model: Small."));
     CHECK(s.scanned && s.gpuUsable);
-    CHECK(!world.declined);                                             /* a yes clears an earlier no */
+    CHECK(!s.declined);                                                 /* a yes clears an earlier no */
 }
 
 TEST(Setup_AYesIsShownAsProgressThatNeverGoesBack)
@@ -230,7 +225,7 @@ TEST(Setup_ANoIsRememberedAndNothingIsDownloaded)
     CHECK(s.result == SetupResult::Skipped);
     CHECK(Has(s.title, L"skipped"));
     CHECK(s.canRetry && !s.modelsChanged);
-    CHECK(world.declined);
+    CHECK(s.declined);                                                  /* the answer, for the program to keep */
     CHECK(world.downloads.empty());
 }
 
@@ -244,6 +239,7 @@ TEST(Setup_ARememberedNoMeansNoNotificationAndNoQuestion)
     CHECK(WaitFor(setup, &s, Finished));
     CHECK(s.phase == SetupPhase::Idle);                                 /* nothing to show ... */
     CHECK(s.scanned && s.canRetry);                                     /* ... but the Transcript section can offer it again */
+    CHECK(s.declined);                                                  /* and the program is told the answer still stands */
     CHECK(world.downloads.empty());
 }
 
@@ -261,7 +257,7 @@ TEST(Setup_RetryAsksAgainEvenAfterANo)
     setup.Answer(true);
     CHECK(WaitFor(setup, &s, [](const SetupStatus &x) { return x.phase == SetupPhase::Finished; }));
     CHECK(s.result == SetupResult::Ready && s.modelsChanged);
-    CHECK(!world.declined);
+    CHECK(!s.declined);
     CHECK_EQ(world.downloads.size(), std::size_t(3));
 }
 
@@ -279,7 +275,7 @@ TEST(Setup_AFailureSaysWhyAndIsNotRememberedAsANo)
     CHECK(s.result == SetupResult::Failed);
     CHECK_EQ(s.detail, std::wstring(L"No connection."));
     CHECK(s.canRetry && !s.modelsChanged);
-    CHECK(!world.declined);                                             /* it will be asked again at the next start */
+    CHECK(!s.declined);                                                 /* it will be asked again at the next start */
     CHECK_EQ(world.downloads.size(), std::size_t(1));                   /* and the rest is not tried */
 
     world.failWith.clear();                                             /* the network is back */
@@ -327,7 +323,7 @@ TEST(Setup_CancelEndsTheDownloadAndKeepsWhatIsWhole)
     CHECK(s.result == SetupResult::Skipped && Has(s.title, L"cancelled"));
     CHECK(s.modelsChanged);                                             /* the small one is whole: the recorder looks again */
     CHECK(!s.canRetry);
-    CHECK(!world.declined);                                             /* a yes, then second thoughts: not a "no" for good */
+    CHECK(!s.declined);                                                 /* a yes, then second thoughts: not a "no" for good */
     CHECK_EQ(world.downloads.size(), std::size_t(2));                   /* and the third file is not started */
 }
 
@@ -361,7 +357,7 @@ TEST(Setup_AnAnswerThatIsNotAnswerToAQuestionIsIgnored)
     setup.Cancel();
     CHECK(!setup.Poll(&s));                                             /* neither did anything */
     CHECK(world.downloads.empty());
-    CHECK_EQ(world.declinedWrites.load(), 0);
+    CHECK(!s.declined);
 }
 
 TEST(Setup_RetryWithNothingMissingJustChecksAgain)
@@ -395,7 +391,7 @@ TEST(Setup_AMissingDownloadProgramMeansNoQuestionAndSaysWhatToDo)
     CHECK(Has(s.title, L"No speech model") && s.detail == world.cannotDownload);
     CHECK(s.canRetry && s.scanned);
     CHECK(world.downloads.empty());
-    CHECK_EQ(world.declinedWrites.load(), 0);
+    CHECK(!s.declined);
 }
 
 TEST(Setup_APcWithAWeakCardIsOnlyOfferedTheSmallModel)

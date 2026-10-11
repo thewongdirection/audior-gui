@@ -37,9 +37,10 @@ struct SetupStatus {
 
     /* What the program does about it (see RecorderController): */
     bool scanned       = false;             /* the hardware scan is done ...                                    */
-    bool gpuUsable     = true;              /* ... and found no card to use: the GPU switch goes off            */
+    bool gpuUsable     = true;              /* ... and found no card to use: the GPU is not used (the saved choice stays) */
     bool modelsChanged = false;             /* new files are in the models folder: look again                   */
     bool canRetry      = false;             /* no model is installed: offer the download again                  */
+    bool declined      = false;             /* the user's "not now" stands (every status says, so the program can keep it) */
 };
 
 /* The set-up as seen from the window.  The set-up runs on its own thread; these are called on the UI thread. */

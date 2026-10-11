@@ -428,6 +428,8 @@ bool TranscriptionHost::Handle(const asr::Message &m)
             event.utterance += lane.base;
             lane.next = std::max(lane.next, event.utterance + 1);
             lane.events->Push(event);
+            if (options_.onEvent)
+                options_.onEvent(m.stream, event);
         }
         return true;
     case asr::Type::Problem:

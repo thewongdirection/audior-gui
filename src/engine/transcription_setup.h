@@ -11,7 +11,8 @@
  *   download, check, move into place ............ the notification shows how far it is; Cancel()
  *   done ........................................ the notification says so; the recorder looks again for models
  *
- * Nothing is downloaded without the user's yes.  A "no" is remembered, so the
+ * Nothing is downloaded without the user's yes.  A "no" is remembered (Environment::declined
+ * says what it was at start; every status says what it is now, for the program to keep), so the
  * question is not asked at every start (Retry asks again).  If the user declines
  * or anything fails, transcription simply makes do with what is installed.
  *
@@ -49,8 +50,7 @@ public:
         std::function<bool(const AsrModel &, const ModelInstaller::Progress &, const StopCheck &, std::wstring *)> install;
         std::function<void()> cancelInstall;            /* from any thread: ends an install that is waiting */
 
-        std::function<bool()>     declined;             /* the user said no before, and that was remembered */
-        std::function<void(bool)> rememberDecline;
+        bool declined = false;                          /* the user said no before, and that was kept */
 
         const AsrModel *models     = kAsrModels;        /* the table (the tests give it a small one) */
         std::size_t     modelCount = kAsrModelCount;
@@ -88,6 +88,7 @@ private:
     SetupStatus             status_;
     std::uint32_t           version_ = 0, polled_ = 0;
     Reply                   reply_ = Reply::Pending;
+    bool                    declined_ = false;          /* the answer that stands (guarded by mutex_) */
 
     std::atomic<bool> stop_{false};                     /* the program is closing */
     std::atomic<bool> cancel_{false};                   /* the user ended the download */

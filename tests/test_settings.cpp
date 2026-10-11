@@ -49,6 +49,40 @@ TEST(Settings_SystemAudioOnlyTurnsTheMicrophoneOffAndTheSystemOn)
     CHECK(!both.includeMicrophone && both.includeSystemAudio);
 }
 
+TEST(Settings_SystemAudioOnlyCarriesTheMicrophonesTranscriptOver)
+{
+    RecordingSettings s = Valid();
+    s.transcribeMicrophone = true;                       /* the transcript was asked for on the microphone... */
+    UseSystemAudioOnly(&s);
+    CHECK(s.transcribeSystem);                           /* ...so the system audio gets one */
+    CHECK(s.transcribeMicrophone);                       /* and the microphone's own choice is left as it was */
+    CHECK(Transcribes(s, StreamId::System));
+    CHECK(!Transcribes(s, StreamId::Microphone));        /* (it is not recorded now) */
+
+    RecordingSettings none = Valid();                    /* no transcript anywhere: none appears */
+    UseSystemAudioOnly(&none);
+    CHECK(!none.transcribeSystem && !none.transcribeMicrophone);
+
+    RecordingSettings kept = Valid();                    /* a system transcript that is on is never switched off */
+    kept.includeSystemAudio = kept.transcribeSystem = true;
+    UseSystemAudioOnly(&kept);
+    CHECK(kept.transcribeSystem);
+    UseSystemAudioOnly(&kept);
+    CHECK(kept.transcribeSystem && !kept.transcribeMicrophone);
+}
+
+TEST(Settings_ATranscriptIsSavedBesideTheRecordingUnderItsOwnName)
+{
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::Microphone),
+             std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - microphone.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::System),
+             std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - system audio.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\meeting.wav", StreamId::System), std::wstring(L"C:\\Rec\\meeting - system audio.txt"));
+    CHECK_EQ(PlannedTranscriptFile(L"C:\\My.Calls\\meeting", StreamId::Microphone),
+             std::wstring(L"C:\\My.Calls\\meeting - microphone.txt"));            /* a dot in a folder is not an extension */
+    CHECK_EQ(PlannedTranscriptFile(L"meeting (2).mp3", StreamId::Microphone), std::wstring(L"meeting (2) - microphone.txt"));
+}
+
 TEST(Settings_Mp3BitrateList)
 {
     const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};
@@ -348,16 +382,24 @@ TEST(Validate_ChecksTheFileName)
     CHECK(!Validate(s).empty());
 }
 
-TEST(Settings_AFullPathHasADriveOrAShare)
+TEST(IsAbsolutePath_NeedsADriveOrARoot)
 {
-    CHECK(IsAbsolutePath(L"C:\\models"));
-    CHECK(IsAbsolutePath(L"d:/models"));
-    CHECK(IsAbsolutePath(L"\\\\server\\share\\models"));
-    CHECK(!IsAbsolutePath(L""));
-    CHECK(!IsAbsolutePath(L"models"));
-    CHECK(!IsAbsolutePath(L"..\\models"));
-    CHECK(!IsAbsolutePath(L"\\models"));                    /* the root of the current drive: not a full path */
-    CHECK(!IsAbsolutePath(L"C:models"));                    /* relative to the current folder of drive C */
-    CHECK(!IsAbsolutePath(L"C:"));
-    CHECK(!IsAbsolutePath(L"\\\\"));
+    for (const wchar_t *path : {L"C:\\Rec", L"C:", L"\\Rec", L"/Rec", L"\\\\server\\share\\Rec"})
+        CHECK(IsAbsolutePath(path));
+    for (const wchar_t *path : {L"", L"Rec", L"Rec\\sub", L".\\Rec", L"..\\Rec", L"R"})
+        CHECK(!IsAbsolutePath(path));
+}
+
+TEST(IsFullPath_NeedsADriveAndASeparatorOrAShare)
+{
+    CHECK(IsFullPath(L"C:\\models"));
+    CHECK(IsFullPath(L"d:/models"));
+    CHECK(IsFullPath(L"\\\\server\\share\\models"));
+    CHECK(!IsFullPath(L""));
+    CHECK(!IsFullPath(L"models"));
+    CHECK(!IsFullPath(L"..\\models"));
+    CHECK(!IsFullPath(L"\\models"));                    /* the root of the current drive: not a full path */
+    CHECK(!IsFullPath(L"C:models"));                    /* relative to the current folder of drive C */
+    CHECK(!IsFullPath(L"C:"));
+    CHECK(!IsFullPath(L"\\\\"));
 }

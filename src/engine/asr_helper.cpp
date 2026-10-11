@@ -65,7 +65,7 @@ bool FetcherInstalled(const std::wstring &programDir)
            FileSize(Join(programDir, kFetcherManifest), &bytes);
 }
 
-bool ModelInstalled(const std::wstring &modelsDir, const AsrModel &model)
+bool ModelIsWhole(const std::wstring &modelsDir, const AsrModel &model)
 {
     std::uint64_t bytes = 0;
     return !modelsDir.empty() && FileSize(Join(modelsDir, model.file), &bytes) && bytes == model.bytes;
@@ -82,10 +82,20 @@ std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, con
 {
     std::vector<const AsrModel *> found;
     for (std::size_t i = 0; i < modelCount; ++i) {
-        if (ModelInstalled(modelsDir, models[i]))
+        if (ModelIsWhole(modelsDir, models[i]))
             found.push_back(&models[i]);
     }
     return found;
+}
+
+bool ModelInstalled(const std::wstring &modelsDir, const std::wstring &file, const AsrModel *models,
+                    std::size_t modelCount)
+{
+    for (const AsrModel *model : InstalledModels(modelsDir, models, modelCount)) {
+        if (_wcsicmp(file.c_str(), model->file) == 0)
+            return true;
+    }
+    return false;
 }
 
 bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrSetup *setup, const AsrModel *models,
@@ -104,7 +114,7 @@ bool FindAsr(const std::wstring &programDir, const std::wstring &modelsDir, AsrS
             setup->gpu = GpuBackendInstalled(programDir);
             setup->vad = nullptr;
             setup->vadPath.clear();
-            if (vad && ModelInstalled(modelsDir, *vad)) {
+            if (vad && ModelIsWhole(modelsDir, *vad)) {
                 setup->vad = vad;
                 setup->vadPath = Join(modelsDir, vad->file);
             }

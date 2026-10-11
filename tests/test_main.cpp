@@ -13,7 +13,9 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 
+#include "../src/engine/stop_signal.h"
 #include "fake_asr_helper.h"
 #include "fake_fetch.h"
 #include "test_support.h"
@@ -60,6 +62,13 @@ int main(int argc, char **argv)
             std::printf("%s\n", c.name);
         return 0;
     }
+
+    /* The recorder's stop event has a machine-wide name.  The tests use one of their own, so that they can
+     * neither see nor stop a recording (of anyone's) that is really running, nor one another's run. */
+    static wchar_t stopEvent[64];
+    std::swprintf(stopEvent, sizeof(stopEvent) / sizeof(stopEvent[0]), L"Local\\AudiorStopEvent.test.%lu",
+                  GetCurrentProcessId());
+    audiorgui::UseStopEventName(stopEvent);
 
     /* Some tests use the audio device APIs, which need COM. */
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);

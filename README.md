@@ -127,8 +127,9 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "-
 | `-h, --help` | | `-h` |
 
 Beyond audior: a **gain for system audio** (`--system-amplify <0-300>`), a
-checkbox to leave the **microphone** out (system audio alone), `--demo`, and live
-waveforms with a peak level and a clipping flag for every stream.
+checkbox to leave the **microphone** out (system audio alone), `--demo`, `--defaults`
+(see [Settings are remembered](#settings-are-remembered)), and live waveforms with a
+peak level and a clipping flag for every stream.
 
 **Live transcripts.** Each pane has a **Transcript** switch (`--transcribe-mic`,
 `--transcribe-system`) that shows the stream's speech as text under its waveform
@@ -140,7 +141,9 @@ It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
 
 1. **The helper**, `audior_asr.exe` with its DLLs and `audior_asr.sha256` (the
-   list of them with their SHA-256), next to `audior_gui.exe`. `build.bat x64 asr`
+   list of them with their SHA-256), next to `audior_gui.exe`. It must come from the
+   same build as the program: one of another version refuses to start with *do not
+   speak the same version*, so build it again whenever the program is. `build.bat x64 asr`
    builds it (it compiles whisper.cpp, so it needs the *C++ CMake tools for
    Windows* of Visual Studio, and takes a few minutes the first time).
    `build.bat x64 vulkan` builds it with the Vulkan backend (`ggml-vulkan.dll`), so
@@ -179,9 +182,11 @@ a notification above the two panes says what it is doing and what it found:
 1. **Scanning.** It asks Windows (DXGI) for the graphics cards and checks that the
    graphics driver has installed Vulkan. If there is a card, a Vulkan driver and a
    helper built with `build.bat vulkan`, transcription uses the card (the **GPU**
-   switch stays on); otherwise the **GPU** setting is turned off, so that the helper
-   does not lose time trying, and the notification says why. (`--transcribe-cpu` is
-   never overruled.)
+   switch works as you set it); otherwise recordings do not ask for a card, so that the
+   helper does not lose time trying, the switch is off and cannot be turned on, and
+   the notification says why. Your saved choice is not changed, so it applies again on
+   a PC (or after a driver) where the card can be used. (`--transcribe-cpu` is always
+   respected.)
 2. **A model is installed:** the notification says *Live transcripts are ready*, names
    the card and the model, and goes away by itself. Nothing is downloaded.
 3. **No model is installed:** the notification asks, naming the files, their size and
@@ -200,9 +205,11 @@ a notification above the two panes says what it is doing and what it found:
 
    ![The notification while downloading: Downloading Large v3 turbo, 2 of 3, 400.3 MB of 729.6 MB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
 
-If you press **Not now** the program takes that for an answer and does not ask again;
-instead the **Transcript** section of the panel says *No speech model is installed*
-and has a **Download…** link, which asks again whenever you want.
+If you press **Not now** the program takes that for an answer and does not ask again
+(it is kept with the other [remembered settings](#settings-are-remembered), as the line
+`modelDownload=declined` of `Audior-GUI.ini`; change it to `ask` to be asked at every
+start); instead the **Transcript** section of the panel says *No speech model is
+installed* and has a **Download…** link, which asks again whenever you want.
 
 ![The Transcript section of the panel without a speech model: No speech model is installed, and a Download… link](docs/screenshots/setup-declined.png)
 
@@ -223,6 +230,23 @@ not touched; with *Auto* chosen only another multilingual model may take over, s
 language stops being understood. A phrase that was still not decoded in time is shown
 as `…` instead of being left out silently.
 
+**Saved transcripts.** Each pane's text is also saved, phrase by phrase as it settles, in a
+text file beside the recording: `<recording> - microphone.txt` and
+`<recording> - system audio.txt`. A line is a time and a phrase, `[0:06] The weather today is
+cold.`, and the file is UTF-8 with a byte-order mark, so any language (and Notepad) reads right.
+It is written while recording, not at the end, so it is as long as the recording, however far
+behind the window falls, and a recording that ends badly keeps what was said. It holds what the
+pane shows: a phrase still being spoken when the recording stops (or when the helper dies or is
+changed to a smaller model) is written as it stood. What the helper has not decoded by about three
+seconds after Stop is lost, in the pane too. A pane nobody spoke in leaves no file. A recording
+and its transcripts take the next free number together (`meeting (2).mp3`,
+`meeting (2) - microphone.txt`), so a transcript is never overwritten. After Stop the status says
+*1 transcript* or *2 transcripts*. A phrase is at most 511 characters (15 s of fast speech is about
+300). If a file cannot be written the status says so and the recording is not affected.
+
+![The window after a recording with both transcripts on: the status says Saved, with the file name and 2 transcripts](docs/screenshots/transcript-saved.png)
+
+
 The helper is a separate process, so a problem with it can never end or damage a
 recording: it is started at low priority inside a Windows Job object, restarted if
 it dies, given up on after a few quick crashes (the pane then says *Transcript
@@ -235,11 +259,74 @@ The command-line options only preset the window, so a shortcut such as
 Audior-GUI.exe -o "%USERPROFILE%\Music\standup" -f wav -i --separate -a 50
 ```
 
-opens the window already recording, with everything still adjustable.
+opens the window already recording, with everything still adjustable. The options
+change the [remembered settings](#settings-are-remembered) of the last run, so a
+shortcut that must behave exactly like `audior` adds `--defaults`.
 `Audior-GUI --help` lists the options; `Audior-GUI --list-devices` prints the
 devices as `audior --list-devices` does. Output goes to the console that started
 the program, or to the file or pipe it was redirected to
 (`Audior-GUI --list-devices | more`).
+
+## Settings are remembered
+
+The window starts from **the settings of the last run**. They are kept in a small text
+file, **`Audior-GUI.ini`, in the same folder as `Audior-GUI.exe`**, so a copy of the
+program carries its settings with it. The file holds every setting in the panel and
+the two hotkeys. It is read when the program starts and written when a recording
+starts, when you change a hotkey and when the program ends (also when Windows shuts
+down), so the settings you recorded with are the ones you find next time.
+
+- **The command line changes them.** `Audior-GUI -b 192` starts from the remembered
+  settings with the bitrate changed, and the next run remembers that. An option that
+  switches something on (`-i`, `--transcribe-mic`, `--transcribe-system`,
+  `--transcribe-cpu`) cannot switch it off again, so a shortcut that must not inherit
+  those uses `--defaults`.
+- **`--defaults`** starts from the built-in defaults instead and neither reads nor
+  changes the file: use it in a script or shortcut that must behave exactly like
+  `audior`. **`--demo`** reads the file but never writes it.
+- **A bad file does no harm.** A missing, damaged or hand-edited file is read line by
+  line: a line that is not valid (an unknown key, a number out of range, a folder that
+  is not a full path, a model that this program does not know) is skipped and that
+  setting keeps its default. Delete the file to start afresh. Two things are checked
+  against the PC: a microphone or playback device that is no longer plugged in is
+  replaced by the system default, and a folder that cannot be made (the file came from
+  another PC, or the drive has gone) by `Documents\Audior-GUI`. A speech model that is no
+  longer installed is reported when you press Start, naming it; pick another in the
+  *Transcript* section.
+- **The folder must be writable.** In a read-only place (Program Files, a locked
+  drive) the program works as before but nothing is remembered; keep it somewhere you
+  can write to. The file is replaced in one step, so it is never left half-written. A
+  copy of the program that is moved to another PC brings its settings along.
+- The hotkeys used to be kept in the registry (`HKEY_CURRENT_USER\Software\Audior-GUI`);
+  that is no longer read, so a pair you had set is Ctrl+Alt+R and Ctrl+Alt+S again
+  until you change it.
+
+The file is UTF-8 text, one `key=value` per line; lines starting with `#` are notes.
+You may edit it while the program is closed (UTF-16 with a byte order mark, as
+PowerShell 5's `>` writes it, and ANSI are read too; the program saves it as UTF-8).
+The comments here are not in the file:
+
+```ini
+folder=C:\Users\you\Documents\Audior-GUI
+fileName=                    empty: a name made from the date and time
+format=mp3                   mp3 or wav
+bitrate=128                  96 112 128 160 192 224 256 320
+microphone=on                on or off; at least one of the two streams stays on
+microphoneDevice=            a device ID from --list-devices; empty: the system default
+microphoneGain=0             0 to 300 (percent)
+systemAudio=off
+systemDevice=
+systemGain=0                 0 to 300 (percent)
+mix=merge                    merge or separate
+mixMicrophone=65             0 to 100 (percent): the microphone's share of the merged mix
+transcribeMicrophone=off
+transcribeSystem=off
+transcribeModel=             one of the two model file names above; empty: the first one found
+transcribeLanguage=auto      auto or en
+transcribeGpu=on
+startHotkey=Ctrl+Alt+R
+stopHotkey=Ctrl+Alt+S
+```
 
 ## How a recording behaves
 
@@ -276,7 +363,8 @@ the program, or to the file or pipe it was redirected to
   thinner. That is the headset and Windows, not this program, and it cannot be avoided
   while the microphone is open, so the microphone pane says so when the chosen
   microphone is Bluetooth, with a **Record system audio only** link that unticks the
-  microphone and ticks system audio in one click. System audio only does not trigger
+  microphone and ticks system audio in one click (a **Transcript** switched on for the
+  microphone is switched on for the system audio too). System audio only does not trigger
   the switch, nor does a microphone that is not Bluetooth. Measurements in
   [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
 
@@ -306,7 +394,7 @@ the program, or to the file or pipe it was redirected to
   F24), Space or a navigation key, with Ctrl and/or Alt (and Shift if you like);
   a function key may stand alone. Start and Stop must differ, and a shortcut that
   another program already owns is refused. The pair is remembered for the next run
-  (`HKEY_CURRENT_USER\Software\Audior-GUI`); if a remembered shortcut cannot be
+  (in `Audior-GUI.ini`, see [Settings are remembered](#settings-are-remembered)); if a remembered shortcut cannot be
   taken at start-up, for instance because a second copy of the program is running,
   its box is outlined in red and it stays off.
 - **A global shortcut is taken from every other program** while Audior-GUI runs.
@@ -351,7 +439,7 @@ bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
-headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `catching-up` (the transcription has fallen behind), `model` (the
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `transcript-saved`, `catching-up` (the transcription has fallen behind), `model` (the
 multilingual model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
 program owns), and the start-up notification of transcription: `setup-scan`,
@@ -378,12 +466,12 @@ If a change adds a picture to the docs, add its scenario to the `:shots` list in
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says). |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the text of the settings file (`saved_settings`), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says). |
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`; and for its start-up set-up `hardware_scan` (DXGI), `TranscriptionSetup` (the conversation: scan, ask, download, finish), `ModelInstaller` (runs the download program, checks what it brings, moves it into place) and `system_setup` (wires them to this PC). |
 | `src/fetch` | The download program `audior_fetch.exe`: one HTTPS download from `huggingface.co` with WinHTTP into a new `.part` file. The only code of the project that uses the network (see *What works offline*). |
 | `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
-| `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the saved hotkeys (registry). |
+| `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the settings file `Audior-GUI.ini` beside the exe (read at start-up, written when a recording starts and when the program ends). |
 | `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. `tests/hardware`: the native hardware tests (`hardware_tests.exe`), which record on real devices. |
 
 ### The recording engine
@@ -407,7 +495,8 @@ in-memory files. The GUI sees audio only as peak bins through
 
 - **Unit tests** (`run_tests.exe`, run by `build.bat`): settings and file-name
   rules, the command line, the hotkey rules (which combinations are allowed, their
-  text form) and their saving, the text-box model, formatting, peak history and
+  text form), the settings file (every setting round-trips; damaged, hand-edited and
+  oversized files; a folder that cannot be written to), the text-box model, formatting, peak history and
   meter, waveform alignment, the controller state machine, the simulated engine,
   sample-format conversion and resampling, ring buffers, the mixer, the WAV and
   MP3 sinks, the recording session (merge, separate, device and disk failures,
@@ -423,7 +512,9 @@ in-memory files. The GUI sees audio only as peak bins through
   only for `audior_fetch.exe`.
 - **UI smoke test** (`tests\ui_smoke.ps1`): launches the real executable, drives
   the command line, clicks Start and Stop in the simulated and the real engine,
-  checks the status light and saves screenshots.
+  checks the status light, that a run leaves its settings in `Audior-GUI.ini` (a
+  `--demo` run does not), and saves screenshots. It runs a copy of the exe in a scratch
+  folder, so it neither uses nor changes your own saved settings.
 - **Hardware tests** (`hardware_tests.exe`, built by `build.bat hardware`, run by hand on a
   PC with a microphone and a playback device): about 100 checks over 14 scenarios, with
   recordings of at least 30 s each, on the real devices. Native C++ like the rest of the
@@ -444,7 +535,8 @@ in-memory files. The GUI sees audio only as peak bins through
   other devices, sample rates and wired microphones are untested.
 - Drop-down lists use the system pop-up menu, which stays light on the dark UI.
 - The UI is custom-drawn, so it does not yet expose UI Automation (screen readers).
-- The recording settings are not remembered between runs (only the two hotkeys are).
+- The settings are remembered in a file beside the exe, so nothing is remembered where
+  that folder cannot be written to (see [Settings are remembered](#settings-are-remembered)).
 - The tray and the hotkeys are exercised by hand (see
   [docs/FIRST-TEST.md](docs/FIRST-TEST.md)); `ui_smoke.ps1` does not cover them.
 - Shared mode only: a device another program holds exclusively cannot be recorded.

@@ -58,7 +58,7 @@ bool HelperInstalled(const std::wstring &programDir);
 bool FetcherInstalled(const std::wstring &programDir);
 
 /* Is `model` whole in `modelsDir`?  A cheap look: only the size of the file is checked. */
-bool ModelInstalled(const std::wstring &modelsDir, const AsrModel &model);
+bool ModelIsWhole(const std::wstring &modelsDir, const AsrModel &model);
 
 /* Does the helper in `programDir` have the backend for the graphics card next to it (kGpuBackendFile)? */
 bool GpuBackendInstalled(const std::wstring &programDir);
@@ -67,6 +67,10 @@ bool GpuBackendInstalled(const std::wstring &programDir);
  * nothing is read, only file sizes.  (`models` is the table; the tests give it a small one.) */
 std::vector<const AsrModel *> InstalledModels(const std::wstring &modelsDir, const AsrModel *models = kAsrModels,
                                               std::size_t modelCount = kAsrModelCount);
+
+/* Is the model of the table named `file` (any case) whole in `modelsDir`? */
+bool ModelInstalled(const std::wstring &modelsDir, const std::wstring &file, const AsrModel *models = kAsrModels,
+                    std::size_t modelCount = kAsrModelCount);
 
 /* Is the helper with its manifest in `programDir`, and a whole model in `modelsDir`: the file
  * named `preferred` (any case), or if that is empty the first one of the table that is there?

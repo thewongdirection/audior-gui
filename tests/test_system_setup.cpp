@@ -8,7 +8,6 @@
 #include "../src/engine/asr_helper.h"
 #include "../src/engine/system_setup.h"
 #include "temp_dir.h"
-#include "test_registry_key.h"
 #include "test_support.h"
 
 using namespace audiorgui;
@@ -58,17 +57,15 @@ bool Done(const SetupStatus &s) { return s.phase == SetupPhase::Finished || (s.s
 TEST(SystemSetup_ThereIsNothingToSetUpWithoutTheHelper)
 {
     TempDir programs, models;
-    TestKey key;
-    CHECK(MakeSystemSetup(programs.Dir(), models.Dir(), Preferences(key.Name())) == nullptr);
-    CHECK(MakeSystemSetup(std::wstring(), models.Dir(), Preferences(key.Name())) == nullptr);
+    CHECK(MakeSystemSetup(programs.Dir(), models.Dir(), false) == nullptr);
+    CHECK(MakeSystemSetup(std::wstring(), models.Dir(), false) == nullptr);
 }
 
 TEST(SystemSetup_WithoutADownloadProgramAMissingModelIsExplained)
 {
     TempDir programs, models;
-    TestKey key;
     Install(programs, false);
-    const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), Preferences(key.Name()));
+    const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), false);
     CHECK(setup != nullptr);
     if (!setup)
         return;
@@ -79,16 +76,15 @@ TEST(SystemSetup_WithoutADownloadProgramAMissingModelIsExplained)
     CHECK(s.detail.find(kFetcherFile) != std::wstring::npos);
     CHECK(s.detail.find(models.Dir()) != std::wstring::npos);                       /* where to put a model by hand */
     CHECK(s.canRetry && s.scanned);
-    CHECK(!Preferences(key.Name()).LoadDownloadDeclined());                         /* and that is not the user's "no" */
+    CHECK(!s.declined);                                                             /* and that is not the user's "no" */
 }
 
 TEST(SystemSetup_ADownloadProgramThatIsNotTheListedOneIsNotOffered)
 {
     TempDir programs, models;
-    TestKey key;
     Install(programs, true);
     Write(programs.Path(kFetcherFile), "MZ a planted program");
-    const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), Preferences(key.Name()));
+    const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), false);
     CHECK(setup != nullptr);
     if (!setup)
         return;
@@ -99,35 +95,35 @@ TEST(SystemSetup_ADownloadProgramThatIsNotTheListedOneIsNotOffered)
     CHECK(s.detail.find(L"audior_fetch.exe") != std::wstring::npos);
 }
 
-TEST(SystemSetup_ANoIsRememberedAcrossRuns)
+TEST(SystemSetup_ANoIsHandedBackForTheProgramToKeep)
 {
     TempDir programs, models;
-    TestKey key;
     Install(programs, true);
     SetupStatus s;
     {
-        const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), Preferences(key.Name()));
+        const std::unique_ptr<TranscriptionSetup> setup = MakeSystemSetup(programs.Dir(), models.Dir(), false);
         CHECK(setup != nullptr);
         if (!setup)
             return;
         setup->Start();
         CHECK(WaitFor(*setup, &s, [](const SetupStatus &x) { return x.phase == SetupPhase::Asking; }));
         CHECK(s.detail.find(L"huggingface.co") != std::wstring::npos);
+        CHECK(!s.declined);
         setup->Answer(false);
         CHECK(WaitFor(*setup, &s, Done));
         CHECK(s.result == SetupResult::Skipped && s.canRetry);
+        CHECK(s.declined);                                              /* what the settings file keeps (SavedSettings::downloadDeclined) */
     }
-    CHECK(Preferences(key.Name()).LoadDownloadDeclined());
 
     {
-        const std::unique_ptr<TranscriptionSetup> later = MakeSystemSetup(programs.Dir(), models.Dir(), Preferences(key.Name()));
+        const std::unique_ptr<TranscriptionSetup> later = MakeSystemSetup(programs.Dir(), models.Dir(), s.declined);
         CHECK(later != nullptr);
         if (!later)
             return;
         later->Start();                                                 /* the next start of the program */
         SetupStatus t;
         CHECK(WaitFor(*later, &t, Done));
-        CHECK(t.phase == SetupPhase::Idle && t.canRetry);               /* no question this time ... */
+        CHECK(t.phase == SetupPhase::Idle && t.canRetry && t.declined); /* no question this time ... */
 
         later->Retry();                                                 /* ... until the user asks for it */
         CHECK(WaitFor(*later, &t, [](const SetupStatus &x) { return x.phase == SetupPhase::Asking; }));

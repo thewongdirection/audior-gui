@@ -45,6 +45,20 @@ bool DecodeQueue::Pop(DecodeJob *job)
     return true;
 }
 
+double DecodeQueue::OldestReceivedAt(StreamId stream) const
+{
+    double oldest = -1.0;
+    auto consider = [&](const Waiting &w) {
+        if (w.job.stream == stream && (oldest < 0.0 || w.job.receivedAt < oldest))
+            oldest = w.job.receivedAt;
+    };
+    for (const Waiting &w : finals_)
+        consider(w);
+    if (partial_[StreamIndex(stream)])
+        consider(*partial_[StreamIndex(stream)]);
+    return oldest;
+}
+
 bool DecodeQueue::Empty() const
 {
     return finals_.empty() && !partial_[0] && !partial_[1];

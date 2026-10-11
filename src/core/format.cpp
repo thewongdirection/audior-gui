@@ -34,6 +34,20 @@ std::wstring FormatClock(double seconds)
     return buf;
 }
 
+std::wstring FormatTranscriptLine(double startSeconds, const wchar_t *text)
+{
+    std::wstring words(text);
+    bool anyText = false;
+    for (wchar_t &c : words) {
+        if (c == L'\r' || c == L'\n' || c == L'\t')
+            c = L' ';                                   /* one phrase, one line */
+        anyText = anyText || c != L' ';
+    }
+    if (!anyText)
+        return std::wstring();
+    return L"[" + FormatClock(startSeconds) + L"] " + words;
+}
+
 std::wstring FormatLag(float seconds)
 {
     if (!(seconds > 0.0f))
@@ -78,6 +92,20 @@ std::wstring FormatDb(float db)
     wchar_t buf[40];    /* rounded as an integer, so -0.3 reads "0 dB", not "-0 dB" */
     std::swprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%ld dB", std::lround(db));
     return buf;
+}
+
+bool ParseWholeNumber(const std::wstring &text, int *value)
+{
+    if (text.empty() || text.size() > 9)
+        return false;
+    int v = 0;
+    for (wchar_t c : text) {
+        if (c < L'0' || c > L'9')
+            return false;
+        v = v * 10 + (c - L'0');
+    }
+    *value = v;
+    return true;
 }
 
 }  // namespace audiorgui

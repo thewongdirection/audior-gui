@@ -53,6 +53,7 @@ inline constexpr std::size_t kMaxOutputPathChars = 259;
 
 bool IsValidMp3Bitrate(int kbps);
 
+/* Every field is also remembered between runs: a new one needs a line in saved_settings.cpp. */
 struct RecordingSettings {
     std::wstring outputDirectory;
     std::wstring fileName;                              /* "" = a timestamped name */
@@ -84,11 +85,13 @@ inline bool Transcribes(const RecordingSettings &s, StreamId stream)
                                           : s.includeSystemAudio && s.transcribeSystem;
 }
 
-/* Record only what the PC plays: the microphone off, the system audio on. */
+/* Record only what the PC plays: the microphone off, the system audio on.  A live transcript asked for
+ * on the microphone carries over to the system audio (one that is already on stays on). */
 inline void UseSystemAudioOnly(RecordingSettings *s)
 {
     s->includeMicrophone = false;
     s->includeSystemAudio = true;
+    s->transcribeSystem = s->transcribeSystem || s->transcribeMicrophone;
 }
 
 /* An empty string when the settings are valid, else a message for the user. */
@@ -122,8 +125,14 @@ std::wstring DefaultBaseName(const LocalTime &t);
 
 const wchar_t *ExtensionFor(Format format);                 /* L".mp3" / L".wav" */
 
-/* A full path: a drive and a separator ("C:\x", "C:/x") or a network share ("\\server\share"). */
-inline bool IsAbsolutePath(const std::wstring &path)
+/* Whether `path` starts at a drive ("C:\...") or the root of one ("\\server\share", "\...") rather than at
+ * the current folder. */
+bool IsAbsolutePath(const std::wstring &path);
+
+/* A full path: a drive and a separator ("C:\x", "C:/x") or a network share ("\\server\share").  Stricter than
+ * IsAbsolutePath, which also takes "\x" and "C:x": for the places that make a file from the path, as the download
+ * program does, and need to know exactly where it goes. */
+inline bool IsFullPath(const std::wstring &path)
 {
     return (path.size() > 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/')) ||
            (path.size() > 2 && path[0] == L'\\' && path[1] == L'\\');
@@ -140,5 +149,13 @@ std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix);
  * "_system" pair when the two streams are kept separate. */
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &settings,
                                              const std::wstring &outputPath);
+
+/* Where a stream's live transcript is saved: beside the recording, named like it, one text file for each
+ * stream that has one: ("a\rec.mp3", Microphone) -> "a\rec - microphone.txt", and "a\rec - system audio.txt". */
+std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream);
+
+/* The transcript files of a recording to `outputPath`: one for each stream whose transcript is on, the
+ * microphone's first. */
+std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &settings, const std::wstring &outputPath);
 
 }  // namespace audiorgui

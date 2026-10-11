@@ -30,7 +30,9 @@
  * mic + system audio, T6 separate tracks and the padding that keeps them in step, T7 system
  * gain, T8 microphone gain, T9 choosing devices by id, name and index, T10 bad devices and a
  * stray --stop, T11 closing the window while recording, T12 the other architecture's build,
- * T13 memory, handles, threads and CPU over a recording, T14 the focus.
+ * T13 memory, handles, threads and CPU over a recording, T14 the focus, T15 the live transcript
+ * of a spoken sentence (the one test that runs the recording engine itself, in this process;
+ * skipped unless the transcription helper and a model are in place).
  *
  * Not automatable (docs\FIRST-TEST.md): unplugging a device, a loud voice for the CLIP flag,
  * the communications-ducking opt-out, and how the window looks.
@@ -39,16 +41,23 @@
 
 #include <mfapi.h>
 #include <mmsystem.h>
+#include <sapi.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cwctype>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "../../src/engine/wasapi_engine.h"
 #include "../temp_dir.h"
 #include "app_process.h"
 #include "audio_probe.h"
@@ -273,14 +282,16 @@ void NoteStrangers(DWORD own)
 }
 
 /* Starts the program, plays the tones, stops it with --stop after the minimum recording time (or
- * `seconds`, if longer) or, with `closeInstead`, by closing its window, and closes the window. */
+ * `seconds`, if longer) or, with `closeInstead`, by closing its window, and closes the window.  It runs
+ * with --defaults: audior's defaults are what a take starts from, whatever the last real run saved, and
+ * the settings of whoever runs the tests are left as they were. */
 Take Record(const std::wstring &exe, const std::wstring &args, const std::vector<Tone> &tones = {}, bool closeInstead = false,
             bool sampleUsage = false, double seconds = 0.0)
 {
     const double length = seconds > g_options.minSeconds ? seconds : g_options.minSeconds;
     Take take;
     AppProcess app;
-    if (!app.Start(exe, args, !g_options.foreground) || !app.HasWindow())
+    if (!app.Start(exe, L"--defaults " + args, !g_options.foreground) || !app.HasWindow())
         return take;
     take.started = true;
 
@@ -511,10 +522,10 @@ void T10()
 {
     Section("T10 bad devices and a stray --stop");
     const std::wstring base = Path(L"t10");
-    CliResult r = RunCli(g_exe, L"-o " + Quote(base) + L" -f wav -m 99");
+    CliResult r = RunCli(g_exe, L"--defaults -o " + Quote(base) + L" -f wav -m 99");
     Check("an unknown microphone is rejected with a message", r.exitCode == 1 && r.output.find("no microphone matches") != std::string::npos,
           Fmt("code %d: %s", r.exitCode, r.output.c_str()));
-    r = RunCli(g_exe, L"-o " + Quote(base) + L" -f wav -i -d 99");
+    r = RunCli(g_exe, L"--defaults -o " + Quote(base) + L" -f wav -i -d 99");
     Check("an unknown playback device is rejected with a message", r.exitCode == 1 && r.output.find("99") != std::string::npos,
           Fmt("code %d: %s", r.exitCode, r.output.c_str()));
     r = RunCli(g_exe, L"--stop");
@@ -603,6 +614,377 @@ void T14()
                  static_cast<int>(g_strangers.size())));
 }
 
+/* ---- T15: the live transcript of what the PC plays ------------------------- */
+
+/* What one run of the engine, listening to the system audio while a voice speaks, came out with. */
+struct Heard {
+    bool         live = false;                          /* the helper became ready */
+    double       readySeconds = 0.0;
+    double       firstTextAfter = -1.0;                 /* seconds after the voice began; < 0: no text at all */
+    double       voiceSeconds = 0.0;                    /* how long the voice spoke */
+    float        maxLag = 0.0f;
+    bool         failed = false;
+    bool         cutShort = false;                      /* the recording ended before the test stopped it */
+    std::wstring finals, problem, failure;
+};
+
+double SecondsSince(std::chrono::steady_clock::time_point t) { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count(); }
+
+/* The default playback device says `text` (Windows' own speech synthesis), quietly; false if it cannot. */
+bool StartSpeaking(ISpVoice **voice, const wchar_t *text)
+{
+    if (FAILED(CoCreateInstance(__uuidof(SpVoice), nullptr, CLSCTX_ALL, __uuidof(ISpVoice), reinterpret_cast<void **>(voice))))
+        return false;
+    (*voice)->SetVolume(60);
+    return SUCCEEDED((*voice)->Speak(text, static_cast<DWORD>(SPF_ASYNC | SPF_IS_NOT_XML), nullptr));
+}
+
+/* Records the system audio with the real engine and a live transcript, with a voice speaking meanwhile. */
+bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
+{
+    audiorgui::WasapiEngine engine;
+    audiorgui::RecordingSettings s;
+    s.outputDirectory = g_dir->Dir();
+    s.fileName = gpu ? L"voice-gpu" : L"voice-cpu";
+    s.format = audiorgui::Format::Wav;
+    s.includeMicrophone = false;
+    s.includeSystemAudio = s.transcribeSystem = true;
+    s.transcribeLanguage = audiorgui::SpeechLanguage::English;
+    s.transcribeGpu = gpu;
+    std::wstring error;
+    if (!engine.Start(s, audiorgui::JoinPath(s.outputDirectory, audiorgui::EnforceExtension(s.fileName, s.format)), &error)) {
+        heard->problem = L"the recording did not start: " + error;
+        return false;
+    }
+
+    constexpr audiorgui::StreamId kSystem = audiorgui::StreamId::System;
+    audiorgui::PeakBin peaks[256];
+    audiorgui::TranscriptEvent events[8];
+    auto drain = [&](double sinceVoice) {
+        while (engine.TakePeaks(kSystem, peaks, 256) > 0) {}      /* the window's job; the queue is bounded, but be tidy */
+        for (std::size_t n; (n = engine.TakeTranscript(kSystem, events, 8)) > 0;) {
+            for (std::size_t i = 0; i < n; ++i) {
+                if (heard->firstTextAfter < 0.0 && events[i].text[0] != L'\0')
+                    heard->firstTextAfter = sinceVoice;
+                if (events[i].isFinal)
+                    heard->finals += std::wstring(events[i].text) + L" ";
+            }
+        }
+        const audiorgui::TranscriptStatus status = engine.Transcription(kSystem);
+        heard->maxLag = status.lagSeconds > heard->maxLag ? status.lagSeconds : heard->maxLag;
+        if (status.state == audiorgui::TranscriptState::Failed) {
+            heard->failed = true;
+            heard->problem = engine.TranscriptionProblem(kSystem);
+        }
+    };
+
+    const auto began = std::chrono::steady_clock::now();
+    while (SecondsSince(began) < 120.0 && !heard->failed) {       /* the helper checks its files and loads the model first */
+        drain(-1.0);
+        if (engine.Transcription(kSystem).state == audiorgui::TranscriptState::Live) {
+            heard->live = true;
+            break;
+        }
+        Sleep(50);
+    }
+    heard->readySeconds = SecondsSince(began);
+
+    ISpVoice *voice = nullptr;
+    if (heard->live && StartSpeaking(&voice, sentence)) {
+        const auto voiceBegan = std::chrono::steady_clock::now();
+        SPVOICESTATUS state = {};
+        while (SecondsSince(voiceBegan) < 40.0 && !heard->failed) {
+            voice->GetStatus(&state, nullptr);
+            if (state.dwRunningState & SPRS_DONE) {
+                if (heard->voiceSeconds == 0.0)
+                    heard->voiceSeconds = SecondsSince(voiceBegan);
+                if (SecondsSince(voiceBegan) > heard->voiceSeconds + 4.0)      /* a few seconds for the last words */
+                    break;
+            }
+            drain(SecondsSince(voiceBegan));
+            Sleep(50);
+        }
+    }
+    if (voice)
+        voice->Release();
+
+    heard->cutShort = !engine.IsRecording();                      /* e.g. another program's --stop: they share one signal */
+    engine.Stop();                                                /* the helper says its last words */
+    drain(heard->voiceSeconds);
+    heard->failure = engine.Failure();
+    return heard->live;
+}
+
+void T15()
+{
+    Section("T15 live transcript of the system audio");
+    audiorgui::WasapiEngine probe;                              /* only looks at files: no device is opened */
+    if (!probe.CanTranscribe()) {
+        Info("skipped: the transcription helper (build.bat asr) and a model are not in place (see the README)");
+        return;
+    }
+    const bool gpuToo = probe.CanTranscribeOnGpu();
+    static const wchar_t kSentence[] = L"Testing, one, two, three. The quick brown fox jumps over the lazy dog. Please write this down.";
+    static const wchar_t *const kWords[] = {L"quick", L"brown", L"fox", L"lazy", L"dog"};
+
+    for (const bool gpu : {false, true}) {
+        if (gpu && !gpuToo)
+            continue;
+        const char *label = gpu ? "graphics card" : "processor";
+        const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+        Heard heard;
+        ListenToAVoice(gpu, kSentence, &heard);
+
+        Check(Fmt("%s: the recording starts and the helper becomes ready", label), heard.live,
+              heard.live ? Fmt("ready after %.1f s", heard.readySeconds) : Narrow(heard.problem));
+        if (!heard.live)
+            continue;
+        Check(Fmt("%s: the recording is not cut short by anything else", label), !heard.cutShort,
+              heard.cutShort ? "another program sent the stop signal, which every copy of the program shares: run the test again" : "");
+        Check(Fmt("%s: the transcript does not fail", label), !heard.failed && heard.failure.empty(),
+              Narrow(heard.problem + heard.failure));
+        Check(Fmt("%s: text appears while the voice is still speaking", label),
+              heard.firstTextAfter >= 0.0 && heard.firstTextAfter < heard.voiceSeconds,
+              heard.firstTextAfter < 0.0 ? "no text at all" : Fmt("first text %.1f s in, the voice spoke for %.1f s", heard.firstTextAfter, heard.voiceSeconds));
+        std::wstring lowered = heard.finals;
+        for (wchar_t &c : lowered)
+            c = static_cast<wchar_t>(std::towlower(c));
+        int found = 0;
+        for (const wchar_t *word : kWords)
+            found += lowered.find(word) != std::wstring::npos ? 1 : 0;
+        Check(Fmt("%s: the words that were said are in the text", label), found >= 4,
+              Fmt("%d of %d key words; heard: \"%s\"", found, static_cast<int>(sizeof(kWords) / sizeof(kWords[0])), Narrow(heard.finals).c_str()));
+        Check(Fmt("%s: the text is never far behind", label), heard.maxLag < 3.0f, Fmt("at most %.1f s behind", heard.maxLag));
+
+        std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();      /* it should be gone a moment after Stop() */
+        for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+            Sleep(100);
+            helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        }
+        Check(Fmt("%s: no helper is left running", label), helpersAfter <= helpersBefore, Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+    }
+    if (!gpuToo)
+        Info("the helper has no graphics card backend (build.bat vulkan), so only the processor was tried");
+}
+
+/* ---- T16: a busy PC makes the transcript change to a smaller model ---------- */
+
+/* Every core kept busy at normal priority: the helper runs below normal, so it gets what is left. */
+class CpuLoad {
+public:
+    void Start()
+    {
+        const unsigned cores = std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 4;
+        for (unsigned i = 0; i < cores; ++i) {
+            threads_.emplace_back([this] {
+                std::uint32_t x = 1;
+                while (!stop_.load(std::memory_order_relaxed)) {
+                    for (int k = 0; k < 100000; ++k)
+                        x = x * 1664525u + 1013904223u;
+                    sink_.store(x, std::memory_order_relaxed);          /* so that the loop is not optimised away */
+                }
+            });
+        }
+    }
+    void Stop()
+    {
+        stop_ = true;
+        for (std::thread &t : threads_)
+            t.join();
+        threads_.clear();
+    }
+    bool Running() const { return !threads_.empty(); }
+    ~CpuLoad() { Stop(); }
+
+private:
+    std::atomic<bool>          stop_{false};
+    std::atomic<std::uint32_t> sink_{0};
+    std::vector<std::thread>   threads_;
+};
+
+/* Reads the samples of a 16 kHz mono 16-bit WAV file. */
+bool ReadSamples(const std::wstring &path, std::vector<std::int16_t> *samples)
+{
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+    LARGE_INTEGER size = {};
+    std::vector<std::uint8_t> bytes;
+    if (GetFileSizeEx(file, &size) && size.QuadPart > 44 && size.QuadPart < (16 << 20)) {
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        DWORD got = 0;
+        if (!ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &got, nullptr) || got != bytes.size())
+            bytes.clear();
+    }
+    CloseHandle(file);
+    for (std::size_t at = 12; bytes.size() > 44 && at + 8 <= bytes.size();) {
+        std::uint32_t length;
+        std::memcpy(&length, bytes.data() + at + 4, 4);
+        if (std::memcmp(bytes.data() + at, "data", 4) == 0) {
+            const std::size_t count = std::min<std::size_t>(length, bytes.size() - at - 8) / 2;
+            samples->resize(count);
+            std::memcpy(samples->data(), bytes.data() + at + 8, count * 2);
+            return count > 0;
+        }
+        at += 8 + length + (length & 1);
+    }
+    return false;
+}
+
+/* Windows' own speech voice says `text` into a file, silently, as 16 kHz mono 16-bit samples. */
+bool SpeechSamples(const wchar_t *text, std::vector<std::int16_t> *samples)
+{
+    static const GUID kWaveFormatEx = {0xC31ADBAE, 0x527F, 0x4ff5, {0xA2, 0x30, 0xF6, 0x2B, 0xB6, 0x1F, 0xF7, 0x0C}};
+    const std::wstring path = Path(L"speech.wav");
+    ISpVoice *voice = nullptr;
+    ISpStream *stream = nullptr;
+    bool ok = SUCCEEDED(CoCreateInstance(__uuidof(SpVoice), nullptr, CLSCTX_ALL, __uuidof(ISpVoice), reinterpret_cast<void **>(&voice))) &&
+              SUCCEEDED(CoCreateInstance(__uuidof(SpStream), nullptr, CLSCTX_ALL, __uuidof(ISpStream), reinterpret_cast<void **>(&stream)));
+    if (ok) {
+        WAVEFORMATEX format = {WAVE_FORMAT_PCM, 1, 16000, 32000, 2, 16, 0};
+        ok = SUCCEEDED(stream->BindToFile(path.c_str(), SPFM_CREATE_ALWAYS, &kWaveFormatEx, &format, 0)) &&
+             SUCCEEDED(voice->SetOutput(stream, TRUE)) &&
+             SUCCEEDED(voice->Speak(text, static_cast<DWORD>(SPF_IS_NOT_XML), nullptr));    /* returns when it is all in the file */
+        stream->Close();
+    }
+    if (stream)
+        stream->Release();
+    if (voice)
+        voice->Release();
+    return ok && ReadSamples(path, samples);
+}
+
+void T16()
+{
+    Section("T16 a busy PC: the transcript changes to a smaller model");
+    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-small.en-q5_1.bin");
+    audiorgui::AsrSetup setup, fallback;
+    const std::wstring programs = audiorgui::ProgramDirectory(), models = audiorgui::ModelsDirectory();
+    if (!big || !lesser || !audiorgui::FindAsr(programs, models, &setup, audiorgui::kAsrModels, audiorgui::kAsrModelCount, big->file) ||
+        !audiorgui::FindAsr(programs, models, &fallback, audiorgui::kAsrModels, audiorgui::kAsrModelCount, lesser->file)) {
+        Info("skipped: it needs the helper (build.bat asr) and both the large (turbo) and the small English model");
+        return;
+    }
+
+    static const wchar_t kSpeech[] =
+        L"Good morning. Today the weather is mild, the river is calm, and the mountain road is open. "
+        L"We meet at the station at nine, and then we walk to the old market together. "
+        L"The first stall sells bread and honey, the second one sells wool and tea. "
+        L"My neighbour says that the best coffee in town is made behind the church, "
+        L"although nobody agrees about it, and everybody has a different favourite place. "
+        L"After lunch we climb the hill, take a few photographs, and watch the boats on the lake. "
+        L"In the evening the streets fill with music, children laugh, and the lamps are lit one by one. "
+        L"Please remember the schedule for tomorrow: breakfast at seven, a short meeting at eight, "
+        L"and the long drive to the coast after that. "
+        L"And finally, at the very end, a purple banana sat quietly beside the open window.";
+    static const wchar_t *const kLateWords[] = {L"purple", L"banana", L"window", L"coast", L"schedule"};
+    std::vector<std::int16_t> speech;
+    if (!SpeechSamples(kSpeech, &speech)) {
+        Check("a voice could be synthesized into a file", false);
+        return;
+    }
+    Info(Fmt("%.0f s of speech, large model on the processor, language fixed to English; every core is kept busy once it is ready",
+             static_cast<double>(speech.size()) / 16000.0));
+
+    audiorgui::TranscriptionHost::Options options;
+    options.model = setup.modelPath;
+    options.vadModel = setup.vadPath;
+    options.language = audiorgui::SpeechLanguage::English;
+    options.gpu = false;
+    options.fallbacks.push_back({fallback.modelPath, audiorgui::MakeProcessFactory(fallback)});
+    audiorgui::TranscriptionHost host(audiorgui::MakeProcessFactory(setup), options);
+    constexpr audiorgui::StreamId kStream = audiorgui::StreamId::Microphone;
+    const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+    host.Start(static_cast<std::uint8_t>(1u << audiorgui::StreamIndex(kStream)));
+
+    bool sawCatchingUp = false, smaller = false, recovered = false;
+    double catchingAt = -1.0, smallerAt = -1.0, maxLag = 0.0, nextReport = 0.0;
+    std::wstring finals;
+    audiorgui::TranscriptEvent events[8];
+    CpuLoad load;
+    auto observe = [&](double now) {
+        const audiorgui::TranscriptStatus status = host.Status(kStream);
+        maxLag = status.lagSeconds > maxLag ? status.lagSeconds : maxLag;
+        if (status.state == audiorgui::TranscriptState::CatchingUp && !sawCatchingUp) {
+            sawCatchingUp = true;
+            catchingAt = now;
+        }
+        if (status.smallerModel && !smaller) {
+            smaller = true;
+            smallerAt = now;
+        }
+        if (smaller && load.Running() == false && status.state == audiorgui::TranscriptState::Live)
+            recovered = true;
+        for (std::size_t n; (n = host.TakeEvents(kStream, events, 8)) > 0;) {
+            for (std::size_t i = 0; i < n; ++i) {
+                if (events[i].isFinal)
+                    finals += std::wstring(events[i].text) + L" ";
+            }
+        }
+        if (now >= nextReport) {
+            nextReport = now + 10.0;
+            Info(Fmt("t=%5.1f s  state %d, %.1f s behind%s%s", now, static_cast<int>(status.state), status.lagSeconds,
+                     status.smallerModel ? ", smaller model" : "", load.Running() ? ", PC busy" : ""));
+        }
+    };
+
+    const auto began = std::chrono::steady_clock::now();
+    auto now = [&] { return SecondsSince(began); };
+    while (now() < 120.0 && host.Status(kStream).state != audiorgui::TranscriptState::Live)       /* the model is read without the load */
+        Sleep(100);
+    const bool ready = host.Status(kStream).state == audiorgui::TranscriptState::Live;
+    Check("the large model becomes ready", ready, Fmt("after %.1f s", now()));
+    if (ready) {
+        load.Start();
+        const double started = now();
+        std::size_t at = 0;
+        while (at < speech.size()) {                                    /* the speech, at the pace of speech */
+            const std::size_t chunk = std::min<std::size_t>(1600, speech.size() - at);
+            host.Push(kStream, speech.data() + at, chunk);
+            at += chunk;
+            observe(now());
+            if (smaller && load.Running() && now() > smallerAt + 5.0)    /* the busy time is over a few seconds after the change */
+                load.Stop();
+            const double due = started + static_cast<double>(at) / 16000.0;
+            while (now() < due)
+                Sleep(10);
+        }
+        if (load.Running() && !smaller)
+            Info("the speech is over and the model never changed");
+        const double waitUntil = now() + 60.0;
+        while (now() < waitUntil && !(smaller && recovered && host.Status(kStream).lagSeconds < 1.0)) {
+            if (smaller && load.Running() && now() > smallerAt + 5.0)
+                load.Stop();
+            observe(now());
+            Sleep(100);
+        }
+        load.Stop();
+    }
+    host.Stop();
+    observe(now());
+
+    Check("the text fell behind while the PC was busy (it said it was catching up)", sawCatchingUp,
+          sawCatchingUp ? Fmt("at %.1f s, at most %.1f s behind", catchingAt, maxLag) : Fmt("at most %.1f s behind", maxLag));
+    Check("it changed to the smaller model", smaller, smaller ? Fmt("at %.1f s", smallerAt) : "never");
+    std::wstring lowered = finals;
+    for (wchar_t &c : lowered)
+        c = static_cast<wchar_t>(std::towlower(c));
+    int found = 0;
+    for (const wchar_t *word : kLateWords)
+        found += lowered.find(word) != std::wstring::npos ? 1 : 0;
+    Check("the last sentences, said after the change, are in the text", found >= 3,
+          Fmt("%d of %d key words; the end of the text: \"%s\"", found, static_cast<int>(sizeof(kLateWords) / sizeof(kLateWords[0])),
+              Narrow(finals.size() > 200 ? finals.substr(finals.size() - 200) : finals).c_str()));
+    Check("it is live again once the PC is quiet", recovered);
+    std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
+    for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+        Sleep(100);
+        helpersAfter = FindProcesses(L"audior_asr.exe").size();
+    }
+    Check("no helper is left running", helpersAfter <= helpersBefore, Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+}
+
 struct TestEntry {
     const char *id;
     void      (*run)();
@@ -612,7 +994,7 @@ struct TestEntry {
 const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
-    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false},
+    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false},
 };
 
 /* ---- start-up ------------------------------------------------------------- */

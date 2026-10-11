@@ -54,6 +54,9 @@ public:
     /* Takes the next job to do; false if there is none. */
     bool Pop(DecodeJob *job);
 
+    /* When the audio of the oldest job of `stream` that waits here arrived (its receivedAt); < 0 if none waits. */
+    double OldestReceivedAt(StreamId stream) const;
+
     bool        Empty() const;
     std::size_t Dropped() const { return dropped_; }    /* Finals lost to a decoder that fell too far behind */
 
