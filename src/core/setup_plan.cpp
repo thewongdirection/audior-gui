@@ -1,5 +1,7 @@
 #include "setup_plan.h"
 
+#include <algorithm>
+
 #include "format.h"
 
 namespace audiorgui {
@@ -7,6 +9,7 @@ namespace audiorgui {
 namespace {
 
 constexpr std::uint64_t kOwnMemoryBytes = 1ull << 30;       /* a card with less than this shares the PC's memory */
+constexpr std::uint64_t kReportsLessBytes = 512ull << 20;   /* a card of 8 GB reports a little under 8 GiB: that is still the card */
 
 }  // namespace
 
@@ -53,9 +56,11 @@ SetupPlan PlanSetup(const HardwareProfile &hw, bool backendPresent, const std::v
 
     for (std::size_t i = 0; i < modelCount; ++i) {
         const AsrModel &m = models[i];
-        if (m.offered && (m.gpuMemoryBytes == 0 || (plan.gpu.use == GpuUse::Usable && plan.gpu.cardBytes >= m.gpuMemoryBytes)))
+        if (m.offered && (m.gpuMemoryBytes == 0 || (plan.gpu.use == GpuUse::Usable && plan.gpu.cardBytes + kReportsLessBytes >= m.gpuMemoryBytes)))
             plan.download.push_back(&m);
     }
+    std::stable_sort(plan.download.begin(), plan.download.end(),       /* the lightest first: a download cut short leaves what can be used */
+                     [](const AsrModel *a, const AsrModel *b) { return a->bytes < b->bytes; });
     if (!plan.download.empty() && vad && !vadInstalled)
         plan.download.push_back(vad);
     for (const AsrModel *m : plan.download)

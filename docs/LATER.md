@@ -36,8 +36,8 @@ blocks using it; each item is worth doing when it starts to matter.
   from Whisper large-v3 to Parakeet, which is lighter, is not made (a step down goes to the
   models before it in the table, of the same engine only).
 - Parakeet understands 25 European languages. It was only tried with English speech (this PC
-  has English voices only); a recording in another language is worth trying, and the Auto /
-  English switch is greyed out for it by design.
+  has English voices only); a recording in another language is worth trying, and the language
+  choice is greyed out for it by design.
 - There is no way yet to download one more model from the window once a model is installed
   (the start-up offer only comes when none is); a "More models" choice would do it.
 - The first use of the card takes about eight seconds (the driver builds its shader
@@ -129,13 +129,14 @@ No blocker; each is worth doing when it starts to matter.
   they can stall the recording's writer (its ring is 8 s). The free-space check (64 MiB spare) looks
   at the models folder's drive, not at what the recording needs. Background I/O priority for the
   fetcher and the hash, or holding the install while a recording runs, would cover it.
-- **A partial install.** The first model of the offer is fetched first: cancelling or failing during a later
-  one leaves it installed, but the notification still says "Live transcripts stay off", "Try again"
-  finds nothing missing and says "ready", and the README's "leaves nothing behind" is not true of
-  the finished files. A crash or End Task during a download leaves its `.part` (up to about
-  550 MiB) until the next install of that file; sweep `*.part` of the table at start.
-- **The graphics card.** The 4 GiB rule is an exact `>=` (a "4 GB" card often reports a little
-  less) and a 32-bit program is only told "4 GiB less a byte" at most; the Vulkan judgement is
+- **A partial install.** The lightest file of the offer is fetched first, so a download cut short leaves a model
+  that works, and the notification says so. What is not done: a "Try again" for the files that were left
+  (once a model is installed the offer does not come back, and the Transcript section has no "more models"
+  choice), and the README's "leaves nothing behind" is true of the failed file only. A crash or End Task
+  during a download leaves its `.part` (up to about 3 GiB) until the next install of that file; sweep the
+  table's `*.part` at start.
+- **The graphics card.** A 32-bit program is only told "4 GiB less a byte" at most of a card's memory (a card that reports a
+  little under its size is allowed for, 512 MiB); the Vulkan judgement is
   "the loader is in System32" (a loader next to the helper is not seen, one for an old card is),
   and virtual adapters other than Microsoft's (VMware, VirtualBox) count as cards. The "ready"
   text names the card even when `--transcribe-cpu` or the GPU switch says otherwise, and a PC
@@ -202,3 +203,45 @@ No blocker; each is worth doing when it starts to matter.
 - **Languages of the drop-down:** the twenty of the table (`core/asr_languages.h`); the others Whisper knows
   (about eighty) can only be had through *Auto*. Cantonese (`yue`) has no entry because its prompt has not
   been tried.
+
+## Found in the review of Whisper large-v3, Parakeet and the kept state
+
+No crash, leak or data race was found in the kept whisper state or the Parakeet state. These are about
+the defaults and about running out of room; they are not fixed yet.
+
+- **Auto language costs a second encode.** With the language on Auto, whisper.cpp first runs language
+  detection, which always encodes the full 30 s window (the shortened window is only set afterwards).
+  On the processor that cancels the saving of the shortened window; on a card it doubles the encoder work
+  of every partial. Every hardware test names English, so the lag figures in this file do not describe
+  Auto. Detect once per utterance (or per stream) and pass the result on, and add an Auto run to T17 and T18.
+- **No fallback when the card runs out of room.** The kept state is created at the first decode, after
+  the helper said it was ready; a failed allocation (a browser or a game holding the card's memory, a
+  3.1 GB model plus its state on an 8 GB card) ends that stream for the session, or makes the helper exit
+  and be restarted three times, and all library logging is muted, so nobody sees why. Ask the backend for the
+  free memory before loading, create the state in `Load`, and retry on the processor with the reason in the
+  message.
+- **The device used is the first Vulkan one,** while the offer judges the card with the most memory. On a
+  PC with an integrated and a discrete card (the integrated one first) Large v3 runs on the integrated one.
+  Both engines' parameters take a `gpu_device`: pick the device with the most memory.
+- **The model is hashed at the first recording of a run** (now only once per run and file: see
+  `ModelVerifiedBefore`), then loaded, and the first use of the card takes about eight seconds more; the
+  recorder keeps only 5 s of audio for a helper that is not ready, so the first 10 to 30 s of speech of a
+  run with Large v3 are not transcribed. Starting the helper when the window opens would hide it.
+- **`audior_asr.exe` needs `parakeet.dll`** to start, also for Whisper users, and the manifest check only
+  requires the helper and the Vulkan backend: a stale manifest lets a missing or unlisted `parakeet.dll`
+  through. Load it only when Parakeet is chosen (delay-load), or require every DLL in the manifest.
+- **Parakeet on the card:** it rebuilds its encoder buffers whenever the audio length changes, which is
+  almost every partial; its cost on the card was not measured (T18 only checks the lag), and the comment
+  in `parakeet_decoder.h` says the opposite.
+- **The repetition guard** cuts a sentence of five or more words said twice in a row (nine Chinese
+  characters) to one copy, for every engine, silently; it was written for the loop of Whisper large on a
+  shortened window. Restrict it to that case. A prompt echoed back for silence (Chinese) is not filtered.
+- **The small English model is gone from the table.** A PC that has only it counts as having no model
+  (the offer comes, unless "not now" was saved before, then transcription silently stays off), the file
+  stays on the disk, and `--transcribe-model` with its name is an error. Say so in the README, or keep it
+  as a model that is used if present.
+- **The helper has no exception guard** (a device loss in the Vulkan backend ends it; the host restarts it
+  and the recording is untouched); a failure in `Load` gives no message. T17 still runs the turbo model,
+  not Large v3, and `SetText` keeps surrogate pairs whole but not combining marks. The hashes of Large v3
+  and Parakeet in the table could not be checked offline: the first download tests them.
+

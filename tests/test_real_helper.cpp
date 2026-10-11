@@ -179,6 +179,7 @@ TEST(RealHelper_TranscribesARecordingThroughTheRecordersOwnPath)
 
     TranscriptionHost::Options options;
     options.model = setup.modelPath;
+    options.engine = setup.model->engine;               /* as the recorder does: the model found may be a Parakeet one */
     TranscriptionHost host(MakeProcessFactory(setup), options);
     host.Start(1);
 

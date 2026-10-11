@@ -70,7 +70,7 @@ SetupStatus CheckingStatus(const SetupPlan &plan, std::size_t file);
 
 /* Finished.  `model` names the model that will be used (the first one installed). */
 SetupStatus ReadyStatus(const GpuVerdict &gpu, const std::wstring &model, bool downloaded);
-SetupStatus SkippedStatus(bool cancelled);
+SetupStatus SkippedStatus(bool cancelled, bool modelInstalled = false);
 SetupStatus UnavailableStatus(const std::wstring &why);          /* a model is missing, and cannot be downloaded */
 SetupStatus FailedStatus(const std::wstring &title, const std::wstring &problem);
 

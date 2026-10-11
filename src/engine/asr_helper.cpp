@@ -2,8 +2,8 @@
 
 #include <windows.h>
 
-#include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "../core/sha256.h"
@@ -17,7 +17,58 @@ constexpr DWORD kMaxManifestBytes = 64 * 1024;
 
 std::wstring Join(const std::wstring &dir, const std::wstring &name) { return dir + L"\\" + name; }
 
+/* A file as it was when its model was checked. */
+struct Seen {
+    std::wstring path;
+    std::uint64_t bytes = 0;
+    FILETIME written = {};
+};
+
+std::mutex g_seenMutex;
+std::vector<Seen> g_seen;                    /* one entry for each model verified: at most the few of the table */
+
+bool Look(const std::wstring &path, Seen *now)
+{
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) ||
+        (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        return false;
+    now->path = path;
+    now->bytes = (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+    now->written = data.ftLastWriteTime;
+    return true;
+}
+
 }  // namespace
+
+bool ModelVerifiedBefore(const std::wstring &path)
+{
+    Seen now;
+    if (!Look(path, &now))
+        return false;
+    std::lock_guard<std::mutex> lock(g_seenMutex);
+    for (const Seen &s : g_seen) {
+        if (s.path == now.path)
+            return s.bytes == now.bytes && s.written.dwLowDateTime == now.written.dwLowDateTime &&
+                   s.written.dwHighDateTime == now.written.dwHighDateTime;
+    }
+    return false;
+}
+
+void NoteModelVerified(const std::wstring &path)
+{
+    Seen now;
+    if (!Look(path, &now))
+        return;
+    std::lock_guard<std::mutex> lock(g_seenMutex);
+    for (Seen &s : g_seen) {
+        if (s.path == now.path) {
+            s = now;
+            return;
+        }
+    }
+    g_seen.push_back(now);
+}
 
 bool FileSize(const std::wstring &path, std::uint64_t *bytes)
 {
@@ -239,14 +290,15 @@ std::wstring VerifyFetcher(const std::wstring &programDir, const StopCheck &stop
 
 TransportFactory MakeProcessFactory(const AsrSetup &setup)
 {
-    auto modelChecked = std::make_shared<std::atomic<bool>>(false);
-    return [setup, modelChecked](std::wstring *problem, const StopCheck &stopping) -> std::unique_ptr<IAsrTransport> {
-        const std::wstring why = VerifyAsr(setup, !*modelChecked, stopping);
+    return [setup](std::wstring *problem, const StopCheck &stopping) -> std::unique_ptr<IAsrTransport> {
+        const bool checkModel = !ModelVerifiedBefore(setup.modelPath);
+        const std::wstring why = VerifyAsr(setup, checkModel, stopping);
         if (!why.empty()) {
             *problem = why;
             return nullptr;
         }
-        *modelChecked = true;
+        if (checkModel)
+            NoteModelVerified(setup.modelPath);
         return ProcessTransport::Launch(setup.helper, std::wstring(), ProcessTransport::Limits(), problem);
     };
 }

@@ -1,6 +1,7 @@
 #include <set>
 #include <string>
 
+#include "../src/core/asr_languages.h"
 #include "../src/core/asr_models.h"
 #include "test_support.h"
 
@@ -73,7 +74,28 @@ TEST(Models_NoneIsEnglishOnly)
 {
     for (const AsrModel &m : kAsrModels)                /* whisper.cpp's own naming: ".en" is English only, and a person who speaks
                                                            another language gets nothing from such a model */
-        CHECK(std::wstring(m.file).find(L".en.") == std::wstring::npos);
+    {
+        const std::wstring file = m.file;
+        CHECK(file.find(L".en.") == std::wstring::npos && file.find(L".en-") == std::wstring::npos);    /* also the quantised ones */
+    }
+}
+
+TEST(Languages_TheTableIsAsTheEnumsPromiseItIs)
+{
+    CHECK_EQ(static_cast<std::size_t>(SpeechLanguage::Auto), std::size_t(0));
+    CHECK_EQ(static_cast<std::size_t>(SpeechLanguage::English), std::size_t(1));
+    CHECK(std::wstring(kSpeechLanguages[0].word) == L"auto" && std::wstring(kSpeechLanguages[1].word) == L"en");
+    std::set<std::wstring> words;
+    for (std::size_t i = 0; i < kSpeechLanguageCount; ++i) {
+        const std::wstring word = kSpeechLanguages[i].word;
+        CHECK(!word.empty());
+        for (wchar_t c : word)
+            CHECK((c >= L'a' && c <= L'z') || c == L'-');                       /* lower case: how the settings file and the command line say it */
+        CHECK(words.insert(word).second);                                       /* no word twice */
+        CHECK(kSpeechLanguages[i].label != nullptr && kSpeechLanguages[i].code != nullptr);
+        SpeechLanguage found = SpeechLanguage::Auto;
+        CHECK(FindSpeechLanguage(word, &found) && static_cast<std::size_t>(found) == i);
+    }
 }
 
 TEST(Models_AreFoundByFileNameInAnyCase)

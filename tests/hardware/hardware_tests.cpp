@@ -1160,7 +1160,7 @@ void T18()
     audiorgui::AsrSetup setup;
     if (!parakeet || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
                                          audiorgui::kAsrModelCount, parakeet->file)) {
-        Info("skipped: it needs the helper (build.bat asr) and the Parakeet model in the models folder (it is not offered for download)");
+        Info("skipped: it needs the helper (build.bat asr) and the Parakeet model in the models folder (it is offered for download only on a PC without a model)");
         return;
     }
     std::vector<std::int16_t> speech;

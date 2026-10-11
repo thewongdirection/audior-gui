@@ -93,8 +93,14 @@ std::wstring VerifyAsr(const AsrSetup &setup, bool checkModel, const StopCheck &
  * string if all is well, else why not. */
 std::wstring VerifyFetcher(const std::wstring &programDir, const StopCheck &stopping = nullptr);
 
+/* A model that was hashed and found whole stays so while its file is the one that was checked (the same size
+ * and time of last write), for every recording of this run: hashing 3 GB at the start of each one costs the
+ * first seconds of its transcript.  False for a path that is empty, gone or changed since. */
+bool ModelVerifiedBefore(const std::wstring &path);
+void NoteModelVerified(const std::wstring &path);
+
 /* What a TranscriptionHost needs to start the helper: each call verifies the
- * helper's files (the model only the first time) and launches the process. */
+ * helper's files (the model only if it has not been verified before) and launches the process. */
 TransportFactory MakeProcessFactory(const AsrSetup &setup);
 
 }  // namespace audiorgui

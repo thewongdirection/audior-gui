@@ -11,7 +11,7 @@ part of this repository.
 
 | Component | Used in | Licence | Source |
 |---|---|---|---|
-| whisper.cpp v1.9.5 | `whisper.dll` next to `audior_asr.exe`, in `third_party/whisper.cpp` | MIT | https://github.com/ggml-org/whisper.cpp |
+| whisper.cpp v1.9.5 | `whisper.dll` and `parakeet.dll` next to `audior_asr.exe`, in `third_party/whisper.cpp` | MIT | https://github.com/ggml-org/whisper.cpp |
 | ggml (part of whisper.cpp), with its CPU and Vulkan backends | `ggml*.dll`, the same | MIT | https://github.com/ggml-org/ggml |
 
 The MIT licence text, with the copyright notice of the authors, is in
