@@ -15,6 +15,11 @@
  * Transcription rides along without being able to hurt the recording: its
  * text and status are pulled in Tick() beside the audio, and the recording's
  * own failure path (Outcome) never hears about transcription problems.
+ *
+ * So does the start-up set-up of transcription (see setup_status.h): the
+ * controller polls it in Tick(), shows its notification until it is done or
+ * dismissed, passes the user's answers on, and applies what it found out: with no
+ * usable graphics card a recording does not ask for one, and new models are looked for.
  */
 #pragma once
 
@@ -24,6 +29,7 @@
 
 #include "engine.h"
 #include "settings.h"
+#include "setup_status.h"
 #include "transcript_lane.h"
 #include "types.h"
 #include "waveform_lane.h"
@@ -111,10 +117,47 @@ public:
     TranscriptStatus      TranscriptionStatus(StreamId stream) const { return transcriptStatus_[StreamIndex(stream)]; }
     const std::wstring   &TranscriptionProblem(StreamId stream) const { return transcriptProblem_[StreamIndex(stream)]; }
 
+    /* Looks again for models (after the set-up downloaded one) and takes up what it finds. */
+    void RefreshTranscription();
+
+    /* What the start-up scan found out about the graphics card: when it found none to use, a recording
+     * does not use one, and the GPU switch is off and cannot be turned on.  The setting itself, which is
+     * the user's choice and is saved, is left as it is. */
+    bool GpuUnusable() const { return gpuUnusable_; }
+
+    /* The user's "not now" to the offer to download a speech model, for the settings file to keep. */
+    bool DownloadDeclined() const { return downloadDeclined_; }
+    void SetDownloadDeclined(bool declined) { downloadDeclined_ = declined; }
+
+    /* ---- the start-up set-up of transcription ----
+     * Nothing is attached (and HasSetup() is false) unless the transcription helper is installed.  The
+     * source must outlive the controller. */
+    void AttachSetup(ISetupSource *source) { setupSource_ = source; }
+    bool HasSetup() const { return setupSource_ != nullptr; }
+
+    const SetupStatus &Setup() const { return setup_; }
+
+    /* Whether the notification is on show: the set-up has something to say and the user has not dismissed it. */
+    bool SetupVisible() const { return setup_.phase != SetupPhase::Idle && !setupDismissed_; }
+
+    /* Whether Tick() has to keep running for the set-up: it is working, or its answer is awaited, or the
+     * notification is about to go away by itself. */
+    bool SetupBusy() const;
+
+    /* Changes whenever Setup() or SetupVisible() does, so that the view rebuilds its text only then. */
+    std::uint32_t SetupVersion() const { return setupVersion_; }
+
+    void AnswerSetup(bool download);        /* the answer to the question of the Asking phase */
+    void CancelSetup();                     /* ends the download */
+    void RetrySetup();                      /* asks again, after a "not now" or a failure */
+    void DismissSetup();                    /* the notification goes away (it also goes by itself, a few seconds after a success) */
+
 private:
     std::wstring NextOutputPath();
     void DrainPeaks();
     void DrainTranscripts();
+    void PollSetup(double dtSeconds);
+    bool TakeSetup();
     void Finish();
 
     bool AnyPlannedFileExists(const std::wstring &path) const;
@@ -136,6 +179,16 @@ private:
     Outcome            outcome_;
     std::vector<DeviceInfo> devices_[2];
     std::vector<TranscriptModel> transcriptModels_;
+
+    ISetupSource *setupSource_ = nullptr;
+    SetupStatus   setup_;
+    std::uint32_t setupVersion_ = 0;
+    bool          setupDismissed_ = false;
+    double        setupShownSeconds_ = 0.0;     /* how long a finished set-up has been on show */
+    double        setupAwaitSeconds_ = 0.0;     /* how much longer to keep polling for the answer to a request */
+    bool          gpuUnusable_ = false;
+    bool          downloadDeclined_ = false;
+    bool          modelsApplied_ = false;        /* this run's new models have been looked for (reset by RetrySetup) */
 };
 
 }  // namespace audiorgui

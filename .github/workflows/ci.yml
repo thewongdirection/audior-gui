@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path shots | Out-Null
-          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'transcript-saved', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken') {
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'transcript-saved', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken', 'setup-scan', 'setup-ask', 'setup-download', 'setup-done', 'setup-failed', 'setup-declined') {
             $run = Start-Process -FilePath bin\x64\Audior-GUI.exe -Wait -PassThru `
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }
@@ -64,5 +64,9 @@ jobs:
           name: audior-gui-windows
           path: |
             bin/x64/Audior-GUI.exe
+            bin/x64/audior_fetch.exe
+            bin/x64/audior_fetch.sha256
             bin/x86/Audior-GUI.exe
+            bin/x86/audior_fetch.exe
+            bin/x86/audior_fetch.sha256
           retention-days: 14

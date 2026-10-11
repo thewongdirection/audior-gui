@@ -233,3 +233,22 @@ TEST(SavedSettings_TheSameKeysForBothHotkeysAreGivenUp)
     CHECK(s.hotkeys[HotkeyIndex(HotkeyAction::Stop)] == (Hotkey{kModCtrl | kModAlt, 'N'}));
 }
 
+
+TEST(SavedSettings_ANotNowToTheModelDownloadIsKeptAndAnythingElseMeansAsk)
+{
+    CHECK(!Defaults().downloadDeclined);                                        /* a first run asks */
+    CHECK(Has(FormatSavedSettings(Defaults()), L"\r\nmodelDownload=ask\r\n"));
+    SavedSettings declined = Defaults();
+    declined.downloadDeclined = true;
+    CHECK(Has(FormatSavedSettings(declined), L"\r\nmodelDownload=declined\r\n"));
+
+    CHECK(Read(L"modelDownload=declined\r\n").downloadDeclined);
+    SavedSettings was = Defaults();
+    was.downloadDeclined = true;
+    ParseSavedSettings(L"modelDownload=ask\r\n", &was);
+    CHECK(!was.downloadDeclined);                                               /* the way to be asked again: edit the file */
+    SavedSettings kept = Defaults();
+    kept.downloadDeclined = true;
+    ParseSavedSettings(L"modelDownload=maybe\r\nmodelDownload=\r\nModelDownload=ask\r\n", &kept);
+    CHECK(kept.downloadDeclined);                                               /* a bad value, or another case, changes nothing */
+}

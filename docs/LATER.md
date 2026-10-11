@@ -37,12 +37,29 @@ blocks using it; each item is worth doing when it starts to matter.
 - No CUDA backend (larger and faster on NVIDIA, but needs the CUDA toolkit).
 - The first GPU in the list may be an integrated one on some PCs.
 
+## Start-up set-up and downloads
+
+- Not yet checked on real hardware: the logic is unit-tested and the download program has
+  fetched a real model, but the DXGI scan on real cards, the notification in the real
+  window, the tray balloons and a download on a PC with the real helper are hand checks;
+  see `docs/FIRST-TEST.md`, section 5.
+- The graphics card is judged from DXGI (a card that is not the software renderer) and the
+  presence of `vulkan-1.dll`; whether the card really works with the helper's Vulkan backend
+  is only known when the helper runs, and it then falls back to the processor by itself. A
+  hybrid laptop's integrated card may be the one ggml picks (see above).
+- A model is offered only when none is installed. A PC with the small model and a strong
+  card is never offered the multilingual one; and the large model on a card has not been
+  timed, which is also why it is only offered, never made the default.
+- A download that is interrupted starts again from the beginning (no resume), and a proxy
+  that needs a sign-in is not supported (WinHTTP uses the system's proxy settings, but the
+  download program has no way to ask for credentials).
+- Only the models of the table can be downloaded; adding a mirror or another host means
+  changing `audior_fetch.exe`, which accepts `huggingface.co` only.
+
 ## Elsewhere
 
 - Cloud transcription: a placeholder only (see the README); to be designed later.
 - The helper is built for x64 only, and CI does not build it.
-- Models are downloaded by hand; the recorder has no networking code, so an in-app
-  download would have to be a separate small program.
 
 ## Found in the review of the saved settings, the saved transcripts and the window fit
 

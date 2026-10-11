@@ -23,8 +23,8 @@ namespace audiorgui {
 class WasapiEngine final : public IRecordingEngine {
 public:
     /* Transcription is offered if the helper and a model are in place when the
-     * engine is made (see asr_helper.h); a model added later is noticed at the
-     * next start of the program. */
+     * engine is made (see asr_helper.h); a model added later is noticed by
+     * RescanTranscription(), or at the next start of the program. */
     WasapiEngine();
 
     bool IsSimulated() const override { return false; }
@@ -39,6 +39,7 @@ public:
 
     bool CanTranscribe() const override { return transcribes_; }
     std::vector<TranscriptModel> TranscriptModels() const override { return models_; }
+    void RescanTranscription() override;
     bool CanTranscribeOnGpu() const override { return transcribes_ && asr_.gpu; }
     TranscriptStatus Transcription(StreamId stream) override
     {
@@ -57,7 +58,7 @@ public:
 
 private:
     AsrSetup                         asr_;              /* the helper, with the first model */
-    bool                             transcribes_;
+    bool                             transcribes_ = false;
     std::vector<TranscriptModel>     models_;           /* the installed ones, the first one first */
     StopSignal                       stopSignal_;       /* exists only while recording */
     std::unique_ptr<TranscriptFile>  transcriptFiles_[kStreamCount];    /* of the streams transcribed; before host_, which writes to them */

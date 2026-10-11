@@ -50,6 +50,26 @@ TEST(Models_EveryEntryIsCompleteAndUnique)
     check(kVadModel);
 }
 
+TEST(Models_ADownloadComesFromTheFilesPageOnHuggingFace)
+{
+    CHECK_EQ(ModelUrl(kAsrModels[0]),
+             std::wstring(L"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"));
+    CHECK_EQ(ModelUrl(kVadModel),
+             std::wstring(L"https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"));
+    for (const AsrModel &m : kAsrModels)                /* the download program takes only this host (src/fetch) */
+        CHECK(ModelUrl(m).rfind(L"https://huggingface.co/", 0) == 0);
+}
+
+TEST(Models_AtLeastOneModelIsOfferedToEveryPc)
+{
+    bool forEveryPc = false;                            /* or a PC without a good card would be offered nothing */
+    for (const AsrModel &m : kAsrModels)
+        forEveryPc = forEveryPc || m.gpuMemoryBytes == 0;
+    CHECK(forEveryPc);
+    CHECK_EQ(kAsrModels[0].gpuMemoryBytes, std::uint64_t(0));       /* the one that comes first: it is what is used by default */
+    CHECK_EQ(kVadModel.gpuMemoryBytes, std::uint64_t(0));
+}
+
 TEST(Models_TheNameSaysWhetherAModelIsMultilingual)
 {
     for (const AsrModel &m : kAsrModels) {              /* whisper.cpp's own naming: ".en" is English only */

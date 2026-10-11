@@ -390,3 +390,16 @@ TEST(IsAbsolutePath_NeedsADriveOrARoot)
         CHECK(!IsAbsolutePath(path));
 }
 
+TEST(IsFullPath_NeedsADriveAndASeparatorOrAShare)
+{
+    CHECK(IsFullPath(L"C:\\models"));
+    CHECK(IsFullPath(L"d:/models"));
+    CHECK(IsFullPath(L"\\\\server\\share\\models"));
+    CHECK(!IsFullPath(L""));
+    CHECK(!IsFullPath(L"models"));
+    CHECK(!IsFullPath(L"..\\models"));
+    CHECK(!IsFullPath(L"\\models"));                    /* the root of the current drive: not a full path */
+    CHECK(!IsFullPath(L"C:models"));                    /* relative to the current folder of drive C */
+    CHECK(!IsFullPath(L"C:"));
+    CHECK(!IsFullPath(L"\\\\"));
+}

@@ -129,6 +129,15 @@ const wchar_t *ExtensionFor(Format format);                 /* L".mp3" / L".wav"
  * the current folder. */
 bool IsAbsolutePath(const std::wstring &path);
 
+/* A full path: a drive and a separator ("C:\x", "C:/x") or a network share ("\\server\share").  Stricter than
+ * IsAbsolutePath, which also takes "\x" and "C:x": for the places that make a file from the path, as the download
+ * program does, and need to know exactly where it goes. */
+inline bool IsFullPath(const std::wstring &path)
+{
+    return (path.size() > 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/')) ||
+           (path.size() > 2 && path[0] == L'\\' && path[1] == L'\\');
+}
+
 /* `dir` + `\` + `name`, without doubling a trailing separator. */
 std::wstring JoinPath(const std::wstring &dir, const std::wstring &name);
 

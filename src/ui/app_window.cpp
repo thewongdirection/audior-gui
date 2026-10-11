@@ -22,6 +22,7 @@ const wchar_t kTitle[] = L"Audior-GUI";
 constexpr UINT_PTR kFrameTimer = 1;
 constexpr UINT kFrameMs = 16;                       /* about 60 frames a second */
 constexpr UINT kHiddenMs = 200;                     /* in the tray: nothing is drawn, so just keep up with the recording */
+constexpr UINT kSetupMs = 250;                      /* only the start-up set-up is at work: it changes a few times a second at most */
 constexpr double kMaxFrameSeconds = 0.25;           /* after a stall, do not jump */
 constexpr DWORD kStyle = WS_OVERLAPPEDWINDOW;
 
@@ -195,22 +196,27 @@ void AppWindow::Render()
 
 UINT AppWindow::FrameMs() const
 {
-    return hidden_ ? kHiddenMs : kFrameMs;
+    return hidden_ ? kHiddenMs : ctl_.Animating() ? kFrameMs : kSetupMs;
 }
 
 void AppWindow::Wake()
 {
-    if (timerOn_)
+    if (timerOn_) {
+        RearmTimer();                                   /* a recording may have begun while only the set-up was ticking */
         return;
+    }
     QueryPerformanceCounter(&lastTick_);
-    timerOn_ = SetTimer(hwnd_, kFrameTimer, FrameMs(), nullptr) != 0;
+    timerMs_ = FrameMs();
+    timerOn_ = SetTimer(hwnd_, kFrameTimer, timerMs_, nullptr) != 0;
 }
 
-/* The same timer at the rate that suits the window now (shown or hidden). */
+/* The same timer at the rate that suits the window now (shown or hidden, moving or not). */
 void AppWindow::RearmTimer()
 {
-    if (timerOn_)
-        SetTimer(hwnd_, kFrameTimer, FrameMs(), nullptr);
+    if (!timerOn_ || FrameMs() == timerMs_)
+        return;
+    timerMs_ = FrameMs();
+    SetTimer(hwnd_, kFrameTimer, timerMs_, nullptr);
 }
 
 void AppWindow::StopTimer()
@@ -228,13 +234,19 @@ void AppWindow::OnTimer()
                            static_cast<double>(frequency_.QuadPart);
     lastTick_ = now;
 
+    const std::uint32_t setupBefore = ctl_.SetupVersion();
     ctl_.Tick(std::min(elapsed, kMaxFrameSeconds));
     view_.Update();
     SyncTray();
-    if (!hidden_)
-        Invalidate();
-    if (!ctl_.Animating())
+
+    const bool moving = ctl_.Animating();
+    if (!hidden_ && (moving || wasMoving_ || ctl_.SetupVersion() != setupBefore))
+        Invalidate();                                   /* (an idle tick that has nothing new draws nothing) */
+    wasMoving_ = moving;
+    if (!moving && !ctl_.SetupBusy())
         StopTimer();
+    else
+        RearmTimer();
 }
 
 /* ====================================================================== */
@@ -243,9 +255,13 @@ void AppWindow::OnTimer()
 
 std::wstring AppWindow::TrayTip() const
 {
-    if (ctl_.GetPhase() != Phase::Recording)
-        return kTitle;
-    return std::wstring(kTitle) + L" · recording " + FormatDuration(ctl_.Stats().seconds);
+    if (ctl_.GetPhase() == Phase::Recording)
+        return std::wstring(kTitle) + L" · recording " + FormatDuration(ctl_.Stats().seconds);
+    const SetupStatus &setup = ctl_.Setup();
+    if (setup.phase == SetupPhase::Downloading && setup.fraction >= 0.0f)
+        return std::wstring(kTitle) + L" · downloading a speech model " +
+               std::to_wstring(static_cast<int>(setup.fraction * 100.0f)) + L"%";
+    return kTitle;
 }
 
 /* Minimizing puts the window in the notification area instead of the taskbar.
@@ -281,7 +297,9 @@ void AppWindow::RestoreFromTray()
 
 /* Keeps the tray icon true to the recording: its look, and the time in its tip
  * (changed once a second); and, while hidden, says if a recording that was
- * running ended with a problem, which no one would otherwise see. */
+ * running ended with a problem, which no one would otherwise see.  The same for the
+ * start-up set-up: a download's progress goes into the tip, and its question and its
+ * result into a balloon. */
 void AppWindow::SyncTray()
 {
     const Phase phase = ctl_.GetPhase();
@@ -289,14 +307,35 @@ void AppWindow::SyncTray()
     if (hidden_ && changed && phase == Phase::Idle)
         ReportProblem();
     lastPhase_ = phase;
+    TellTrayAboutSetup();
     if (!hidden_)
         return;
 
     const long long seconds = phase == Phase::Recording ? static_cast<long long>(ctl_.Stats().seconds) : -1;
-    if (!changed && seconds == traySeconds_)
+    const SetupStatus &setup = ctl_.Setup();
+    const int percent = setup.phase == SetupPhase::Downloading && setup.fraction >= 0.0f
+                            ? static_cast<int>(setup.fraction * 100.0f)
+                            : -1;
+    if (!changed && seconds == traySeconds_ && percent == trayPercent_)
         return;
     traySeconds_ = seconds;
+    trayPercent_ = percent;
     tray_.Update(phase == Phase::Recording, TrayTip());
+}
+
+/* A window hidden in the tray cannot show the set-up's notification: a balloon says when its question
+ * waits for an answer, and how a download ended (not the all-clear of an ordinary start). */
+void AppWindow::TellTrayAboutSetup()
+{
+    const SetupStatus &setup = ctl_.Setup();
+    const SetupPhase phase = ctl_.SetupVisible() ? setup.phase : SetupPhase::Idle;
+    if (hidden_ && phase != lastSetupPhase_) {
+        if (phase == SetupPhase::Asking)
+            tray_.Balloon(L"Audior-GUI: speech model", L"Live transcripts need a speech model. Open the window to download one.", false);
+        else if (phase == SetupPhase::Finished && (setup.modelsChanged || setup.result != SetupResult::Ready))
+            tray_.Balloon(L"Audior-GUI: speech model", setup.title + L". " + setup.detail, setup.result == SetupResult::Failed);
+    }
+    lastSetupPhase_ = phase;
 }
 
 void AppWindow::ReportProblem()
@@ -609,6 +648,7 @@ void AppWindow::RememberSettings()
     SavedSettings saved;
     saved.recording = ctl_.Settings();
     std::copy(std::begin(keys_), std::end(keys_), saved.hotkeys);
+    saved.downloadDeclined = ctl_.DownloadDeclined();
     prefs_->Save(saved);
 }
 

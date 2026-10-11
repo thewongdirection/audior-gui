@@ -33,6 +33,8 @@ const AsrModel *FindAsrModel(const std::wstring &file)
     return nullptr;
 }
 
+std::wstring ModelUrl(const AsrModel &model) { return std::wstring(model.source) + L"/resolve/main/" + model.file; }
+
 std::vector<const AsrModel *> SmallerModels(const AsrModel *table, const AsrModel *chosen,
                                             const std::vector<const AsrModel *> &installed, bool keepLanguages)
 {

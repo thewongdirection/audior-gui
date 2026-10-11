@@ -1,5 +1,6 @@
 #include "recorder_controller.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace audiorgui {
@@ -10,6 +11,8 @@ constexpr std::size_t kPullChunk     = 256;     /* bins per TakePeaks() call    
 constexpr std::size_t kTranscriptChunk = 4;     /* events per TakeTranscript() call     */
 constexpr int         kMaxPullsPerTick = 64;    /* bounds a misbehaving engine's output */
 constexpr int         kMaxNumberedNames = 1000; /* " (2)" ... " (999)" before giving up   */
+constexpr double      kSetupResultSeconds = 10.0; /* how long the notification of a finished set-up stays   */
+constexpr double      kSetupAwaitSeconds = 2.0;  /* how long to wait for the set-up to answer a request  */
 
 }  // namespace
 
@@ -128,14 +131,17 @@ bool RecorderController::Start()
         }
     }
 
+    RecordingSettings run = settings_;
+    if (gpuUnusable_)                                   /* what the scan found out about this PC, not the user's choice */
+        run.transcribeGpu = false;
     std::wstring error;
-    if (!engine_.Start(settings_, path, &error)) {
+    if (!engine_.Start(run, path, &error)) {
         outcome_.kind = Outcome::Kind::Failed;
         outcome_.message = error.empty() ? L"The recording could not be started." : error;
         return false;
     }
 
-    active_ = settings_;
+    active_ = run;
     stats_ = RecordingStats();
     for (WaveformLane &lane : lanes_)
         lane.Reset();
@@ -230,8 +236,94 @@ bool RecorderController::Animating() const
     return false;
 }
 
+bool RecorderController::SetupBusy() const
+{
+    if (!setupSource_)
+        return false;
+    switch (setup_.phase) {
+    case SetupPhase::Scanning:
+    case SetupPhase::Downloading:
+        return true;
+    case SetupPhase::Finished:                  /* a failure stays until it is dismissed: nothing to count down */
+        return setupAwaitSeconds_ > 0.0 || (!setupDismissed_ && setup_.result != SetupResult::Failed);
+    default:
+        return setupAwaitSeconds_ > 0.0;
+    }
+}
+
+void RecorderController::RefreshTranscription()
+{
+    engine_.RescanTranscription();
+    transcriptModels_ = engine_.TranscriptModels();
+}
+
+void RecorderController::AnswerSetup(bool download)
+{
+    if (!setupSource_)
+        return;
+    setupSource_->Answer(download);
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+}
+
+void RecorderController::CancelSetup()
+{
+    if (!setupSource_)
+        return;
+    setupSource_->Cancel();
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+}
+
+void RecorderController::RetrySetup()
+{
+    if (!setupSource_)
+        return;
+    modelsApplied_ = false;                             /* a new run finds out afresh */
+    setupSource_->Retry();
+    setupAwaitSeconds_ = kSetupAwaitSeconds;
+    TakeSetup();                                        /* it says Scanning at once: no look at the old notification */
+}
+
+void RecorderController::DismissSetup()
+{
+    setupDismissed_ = true;
+    ++setupVersion_;
+}
+
+/* Takes what the set-up has to say, if it is something new, and applies what it found out. */
+bool RecorderController::TakeSetup()
+{
+    if (!setupSource_->Poll(&setup_))
+        return false;
+    ++setupVersion_;
+    setupDismissed_ = false;
+    setupShownSeconds_ = 0.0;
+    setupAwaitSeconds_ = 0.0;
+    downloadDeclined_ = setup_.declined;
+    if (setup_.scanned)
+        gpuUnusable_ = !setup_.gpuUsable;
+    if (setup_.modelsChanged && !modelsApplied_) {
+        modelsApplied_ = true;
+        RefreshTranscription();
+    }
+    return true;
+}
+
+void RecorderController::PollSetup(double dtSeconds)
+{
+    if (!setupSource_ || TakeSetup())
+        return;
+
+    setupAwaitSeconds_ = std::max(0.0, setupAwaitSeconds_ - dtSeconds);
+    if (setup_.phase == SetupPhase::Finished && !setupDismissed_ && setup_.result != SetupResult::Failed) {
+        setupShownSeconds_ += dtSeconds;
+        if (setupShownSeconds_ >= kSetupResultSeconds)
+            DismissSetup();
+    }
+}
+
 void RecorderController::Tick(double dtSeconds)
 {
+    PollSetup(dtSeconds);
     if (phase_ == Phase::Recording) {
         DrainPeaks();
         DrainTranscripts();

@@ -38,6 +38,7 @@ inline constexpr std::size_t kMaxSavedSettingsBytes = 16 * 1024;
 struct SavedSettings {
     RecordingSettings recording;
     Hotkey            hotkeys[kHotkeyActionCount] = {kDefaultStartHotkey, kDefaultStopHotkey};
+    bool              downloadDeclined = false;     /* "Not now" to the offer to download a speech model: not asked again at start-up */
 };
 
 /* The file's text, lines ended by CR LF.  A new setting needs a line here and a

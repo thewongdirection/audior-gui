@@ -38,8 +38,8 @@ public:
     void Update(bool recording, const std::wstring &tip);
     void Remove();
 
-    /* A balloon with a warning icon; nothing if the icon is not shown. */
-    void Balloon(const std::wstring &title, const std::wstring &text);
+    /* A balloon (with a warning icon, or an information one); nothing if the icon is not shown. */
+    void Balloon(const std::wstring &title, const std::wstring &text, bool warning = true);
 
     bool Visible() const { return added_; }
 

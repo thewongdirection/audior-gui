@@ -34,6 +34,7 @@ inline audiorgui::SavedSettings UnusualSettings()
     r.transcribeGpu = false;
     s.hotkeys[HotkeyIndex(HotkeyAction::Start)] = {kModAlt | kModShift, 'M'};
     s.hotkeys[HotkeyIndex(HotkeyAction::Stop)] = {0, 0x7A};                         /* F11 */
+    s.downloadDeclined = true;
     return s;
 }
 
@@ -60,4 +61,5 @@ inline void ExpectSame(const audiorgui::SavedSettings &a, const audiorgui::Saved
     CHECK_EQ(x.transcribeGpu, y.transcribeGpu);
     for (int i = 0; i < kHotkeyActionCount; ++i)
         CHECK(a.hotkeys[i] == b.hotkeys[i]);
+    CHECK_EQ(a.downloadDeclined, b.downloadDeclined);
 }

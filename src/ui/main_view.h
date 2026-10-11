@@ -24,6 +24,11 @@
  * a drop-down of every detected device, its gain and its waveform.  When the
  * engine can transcribe, a "Transcript" switch beside the title adds the live
  * text under the waveform, and the panel gets the choice of model and language.
+ *
+ * While the start-up set-up of transcription has something to say (it is looking at the PC, asks
+ * whether to download a speech model, downloads it, or has finished) a notification sits above the
+ * two panes, with the buttons that answer it.  Without a speech model the Transcript section of
+ * the panel says so, and offers to download one.
  * MainView only reads and drives a RecorderController; everything the operating system has to do
  * (dialogs, menus, the frame timer, the system-wide hotkeys) goes through IViewHost, so the same
  * view renders into a window or into an offscreen bitmap for screenshots.
@@ -76,7 +81,8 @@ public:
     void Layout(float width, float height);
 
     /* How much taller than the window's base minimum it must be for every control of the settings
-     * panel to fit: the Transcript section exists only when transcription is installed. */
+     * panel to fit: the Transcript section exists only when the transcription helper is installed
+     * (without a speech model it says so, and offers to download one). */
     float ExtraMinHeight() const;
 
     /* Call after each RecorderController::Tick(). */
@@ -115,7 +121,7 @@ public:
     void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
 
 private:
-    static constexpr int kWidgetCount = 23;
+    static constexpr int kWidgetCount = 26;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -125,7 +131,13 @@ private:
         std::wstring text;
     };
 
+    /* What the notification's buttons do. */
+    enum class BannerAct { None, Download, NotNow, Cancel, TryAgain, Dismiss };
+
     void Refresh();
+    void RefreshSetup();
+    void PositionBanner();
+    void Act(BannerAct act);
     void ChooseDevice(DeviceKind kind, std::wstring RecordingSettings::*idField, const Widget &anchor);
     void ChooseBitrate();
     void ChooseModel();
@@ -144,18 +156,20 @@ private:
     TranscriptPane PaneOf(StreamId stream) const;
 
     void PaintHeader(Painter &p);
+    void PaintBanner(Painter &p);
     void PaintPaneControls(Painter &p);
     void PaintPanel(Painter &p);
     void PaintTransport(Painter &p);
 
     RecorderController &ctl_;
     IViewHost          *host_;
-    float               width_ = 0.0f;
+    float               width_ = 0.0f, height_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
     Switch    micTranscript_, systemTranscript_, gpuSwitch_;
     Button    micField_, systemField_, folderField_, bitrateField_, modelField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_;
+    Button    bannerPrimary_, bannerSecondary_, retryLink_;
     Segmented formatSeg_, mixSeg_, languageSeg_;
     Slider    shareSlider_;
     TextBox   fileNameBox_;
@@ -170,9 +184,21 @@ private:
     bool   hotkeyActive_[kHotkeyActionCount] = {true, true};    /* the system accepted it */
 
     D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
+    D2D1_RECT_F bannerRect_ = {}, transcriptNoteRect_ = {};
     D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {}, micNoteRect_ = {};
     bool        micBluetooth_ = false;  /* the microphone to be recorded is a Bluetooth one: say what that does */
     Caption     captions_[6] = {};
+
+    /* The set-up's notification: what the buttons do, whether it takes room above the panes, and the
+     * detail text laid out (rebuilt only when the text or the width changes). */
+    BannerAct   primaryAct_ = BannerAct::None, secondaryAct_ = BannerAct::None;
+    bool        bannerShown_ = false;
+    std::wstring transcriptNote_;       /* the Transcript section without a speech model */
+    ComPtr<IDWriteTextLayout> bannerLayout_;
+    std::uint32_t bannerLayoutVersion_ = 0;
+    float         bannerLayoutWidth_ = 0.0f;
+    std::uint32_t setupVersion_ = 0;
+    bool          sectionShown_ = false;
 
     LaneView micView_, systemView_;
 

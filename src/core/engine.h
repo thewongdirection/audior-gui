@@ -85,6 +85,10 @@ public:
      * stands for first; empty when it cannot transcribe. */
     virtual std::vector<TranscriptModel> TranscriptModels() const { return {}; }
 
+    /* Looks again for what transcription needs (a model that was downloaded since the program
+     * started).  Afterwards CanTranscribe() and TranscriptModels() answer for what is there now. */
+    virtual void RescanTranscription() {}
+
     /* True if it can also transcribe on the graphics card (RecordingSettings::transcribeGpu). */
     virtual bool CanTranscribeOnGpu() const { return false; }
 

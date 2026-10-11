@@ -2,8 +2,11 @@
 
 #include <dxgiformat.h>
 
+#include <memory>
+
 #include "../core/asr_models.h"
 #include "../core/recorder_controller.h"
+#include "../core/setup_status.h"
 #include "../engine/simulated_engine.h"
 #include "main_view.h"
 
@@ -11,11 +14,33 @@ namespace audiorgui::ui {
 
 namespace {
 
+/* A start-up set-up that has one thing to say, for the "setup-" scenarios. */
+class ScriptedSetup : public ISetupSource {
+public:
+    explicit ScriptedSetup(SetupStatus status) : status_(std::move(status)) {}
+    bool Poll(SetupStatus *out) override
+    {
+        if (said_)
+            return false;
+        *out = status_;
+        said_ = true;
+        return true;
+    }
+    void Answer(bool) override {}
+    void Cancel() override {}
+    void Retry() override {}
+
+private:
+    SetupStatus status_;
+    bool        said_ = false;
+};
+
 /* A controller on a simulated engine whose clock only moves when told to. */
 struct Scene {
     double             now = 0.0;
     SimulatedEngine    engine;
     RecorderController ctl;
+    std::unique_ptr<ScriptedSetup> setup;
 
     Scene()
         : engine([this] { return now; }),
@@ -34,10 +59,47 @@ struct Scene {
     }
 };
 
+/* The window while the start-up set-up of transcription has `name` to say: no speech model is installed
+ * (except once the download is done), on a PC with a graphics card made up for the picture. */
+bool BuildSetup(Scene &scene, const std::wstring &name)
+{
+    HardwareProfile hardware;
+    hardware.vulkanDriver = true;
+    hardware.gpus.push_back({L"Demo Graphics Card", 12ull << 30});
+    const SetupPlan plan = PlanSetup(hardware, true, {}, false);
+
+    SetupStatus status;
+    if (name == L"setup-scan") {
+        status = ScanningStatus();
+    } else if (name == L"setup-ask") {
+        status = AskingStatus(plan);
+    } else if (name == L"setup-download") {                 /* the second file, two fifths of the way */
+        status = DownloadingStatus(plan, 1, plan.download[0]->bytes + plan.download[1]->bytes * 2 / 5);
+    } else if (name == L"setup-done") {                     /* the models have arrived: the Transcript section is complete */
+        status = ReadyStatus(plan.gpu, kAsrModels[0].label, true);
+        status.modelsChanged = true;
+    } else if (name == L"setup-failed") {
+        status = FailedStatus(L"Download failed", L"The download of Small · English did not finish: the connection was lost (error 12030).");
+        status.canRetry = true;
+    } else if (name == L"setup-declined") {                 /* "Not now" was answered before: nothing to show but the link */
+        status.scanned = true;
+        status.canRetry = true;
+    } else {
+        return false;
+    }
+    scene.engine.LackModels();
+    scene.setup = std::make_unique<ScriptedSetup>(status);
+    scene.ctl.AttachSetup(scene.setup.get());
+    scene.ctl.Tick(0.0);                                    /* takes what the set-up says */
+    return true;
+}
+
 /* Sets the scene up for `name`; false if there is no such scenario. */
 bool Build(Scene &scene, const std::wstring &name)
 {
     RecorderController &ctl = scene.ctl;
+    if (name.compare(0, 6, L"setup-") == 0)
+        return BuildSetup(scene, name);
     if (name == L"idle" || name == L"hotkeys" || name == L"hotkey-taken")      /* the view does the rest */
         return true;
     if (name == L"model") {                              /* idle, the multilingual model chosen, transcripts on */
