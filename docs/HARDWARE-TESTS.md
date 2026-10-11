@@ -90,6 +90,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 | T15 | Live transcript of the system audio | skipped (with a note) unless the helper and a model are in place. Runs the recording engine in the test process with the system stream's transcript on, once on the processor and, if the helper has the Vulkan backend, once on the graphics card, while a voice speaks a sentence: the helper becomes ready; the transcript does not fail; text appears *while* the voice is still speaking; at least 4 of the 5 key words (quick, brown, fox, lazy, dog) are in the settled text; the text is never 3 s or more behind; no `audior_asr.exe` is left after the recording ends |
 | T16 | A busy PC: the step to a smaller model | skipped (with a note) unless the helper and both the large (turbo) and the small English model are in place. Windows' voice says about a minute of speech into a file (silently); the large model reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the small model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
+| T17 | The large model on the graphics card | skipped (with a note) unless the helper has the Vulkan backend (`build.bat vulkan`) and the large (turbo) model is installed. About a minute of speech (a voice, into a file, silently) goes at the pace of speech to a helper with the large model: first on the graphics card (checked: ready; first text within 10 s of the speech beginning, which takes in the card's first use; never 3 s or more behind; the last phrase settled within 5 s of the end; at least 4 of 5 key words from the early and from the late sentences), then on the processor (only reported, for comparison; it must give text). Takes about three minutes |
 
 ### How the files are measured
 
@@ -164,6 +165,13 @@ waiting or being decoded once a second. Second run, all checks pass: with every 
 large model said *catching up* at 7 s, was 17 s behind at its worst, the small model took over
 at 24 s, was then 0.2 to 0.3 s behind, and all five key words of the last sentences are in the
 text; it was live again a few seconds after the load stopped.
+
+**T17 (the large model on the graphics card), 2026-10-11, x64, RTX 5080:** 54 s of speech at the
+pace of speech, large (turbo) model, English fixed. On the card: ready after 4.2 s, the first text
+1.6 s into the speech, 0.3 s behind on average and 0.5 s at most, the last phrase settled 0.1 s
+after the speech ended, all ten key words found. On the processor, for comparison: ready after
+2.4 s, first text at 3.0 s, 1.7 s behind on average and 4.3 s at most (it would say *catching up*),
+the last phrase settled 2.2 s after the end, all ten key words found.
 
 ## Findings
 

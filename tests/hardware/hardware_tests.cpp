@@ -32,7 +32,9 @@
  * stray --stop, T11 closing the window while recording, T12 the other architecture's build,
  * T13 memory, handles, threads and CPU over a recording, T14 the focus, T15 the live transcript
  * of a spoken sentence (the one test that runs the recording engine itself, in this process;
- * skipped unless the transcription helper and a model are in place).
+ * skipped unless the transcription helper and a model are in place), T16 a busy PC (the
+ * transcript changes to a smaller model) and T17 the large model on the graphics card at the
+ * pace of speech (both also need the large model, and no audio devices).
  *
  * Not automatable (docs\FIRST-TEST.md): unplugging a device, a loud voice for the CLIP flag,
  * the communications-ducking opt-out, and how the window looks.
@@ -854,6 +856,32 @@ bool SpeechSamples(const wchar_t *text, std::vector<std::int16_t> *samples)
     return ok && ReadSamples(path, samples);
 }
 
+/* About a minute of speech for T16 and T17, with words to look for early on and in the last sentences. */
+const wchar_t kLongSpeech[] =
+    L"Good morning. Today the weather is mild, the river is calm, and the mountain road is open. "
+    L"We meet at the station at nine, and then we walk to the old market together. "
+    L"The first stall sells bread and honey, the second one sells wool and tea. "
+    L"My neighbour says that the best coffee in town is made behind the church, "
+    L"although nobody agrees about it, and everybody has a different favourite place. "
+    L"After lunch we climb the hill, take a few photographs, and watch the boats on the lake. "
+    L"In the evening the streets fill with music, children laugh, and the lamps are lit one by one. "
+    L"Please remember the schedule for tomorrow: breakfast at seven, a short meeting at eight, "
+    L"and the long drive to the coast after that. "
+    L"And finally, at the very end, a purple banana sat quietly beside the open window.";
+const wchar_t *const kEarlyWords[] = {L"river", L"mountain", L"station", L"market", L"honey"};
+const wchar_t *const kLateWords[] = {L"purple", L"banana", L"window", L"coast", L"schedule"};
+
+int CountWords(const std::wstring &text, const wchar_t *const *words, std::size_t count)
+{
+    std::wstring lowered = text;
+    for (wchar_t &c : lowered)
+        c = static_cast<wchar_t>(std::towlower(c));
+    int found = 0;
+    for (std::size_t i = 0; i < count; ++i)
+        found += lowered.find(words[i]) != std::wstring::npos ? 1 : 0;
+    return found;
+}
+
 void T16()
 {
     Section("T16 a busy PC: the transcript changes to a smaller model");
@@ -867,20 +895,8 @@ void T16()
         return;
     }
 
-    static const wchar_t kSpeech[] =
-        L"Good morning. Today the weather is mild, the river is calm, and the mountain road is open. "
-        L"We meet at the station at nine, and then we walk to the old market together. "
-        L"The first stall sells bread and honey, the second one sells wool and tea. "
-        L"My neighbour says that the best coffee in town is made behind the church, "
-        L"although nobody agrees about it, and everybody has a different favourite place. "
-        L"After lunch we climb the hill, take a few photographs, and watch the boats on the lake. "
-        L"In the evening the streets fill with music, children laugh, and the lamps are lit one by one. "
-        L"Please remember the schedule for tomorrow: breakfast at seven, a short meeting at eight, "
-        L"and the long drive to the coast after that. "
-        L"And finally, at the very end, a purple banana sat quietly beside the open window.";
-    static const wchar_t *const kLateWords[] = {L"purple", L"banana", L"window", L"coast", L"schedule"};
     std::vector<std::int16_t> speech;
-    if (!SpeechSamples(kSpeech, &speech)) {
+    if (!SpeechSamples(kLongSpeech, &speech)) {
         Check("a voice could be synthesized into a file", false);
         return;
     }
@@ -967,12 +983,7 @@ void T16()
     Check("the text fell behind while the PC was busy (it said it was catching up)", sawCatchingUp,
           sawCatchingUp ? Fmt("at %.1f s, at most %.1f s behind", catchingAt, maxLag) : Fmt("at most %.1f s behind", maxLag));
     Check("it changed to the smaller model", smaller, smaller ? Fmt("at %.1f s", smallerAt) : "never");
-    std::wstring lowered = finals;
-    for (wchar_t &c : lowered)
-        c = static_cast<wchar_t>(std::towlower(c));
-    int found = 0;
-    for (const wchar_t *word : kLateWords)
-        found += lowered.find(word) != std::wstring::npos ? 1 : 0;
+    const int found = CountWords(finals, kLateWords, sizeof(kLateWords) / sizeof(kLateWords[0]));
     Check("the last sentences, said after the change, are in the text", found >= 3,
           Fmt("%d of %d key words; the end of the text: \"%s\"", found, static_cast<int>(sizeof(kLateWords) / sizeof(kLateWords[0])),
               Narrow(finals.size() > 200 ? finals.substr(finals.size() - 200) : finals).c_str()));
@@ -985,6 +996,140 @@ void T16()
     Check("no helper is left running", helpersAfter <= helpersBefore, Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
 }
 
+/* ---- T17: the large model on the graphics card, at the pace of speech --------- */
+
+struct LargeRun {
+    bool         ready = false;
+    double       readySeconds = 0.0;
+    double       firstTextAfter = -1.0;                 /* seconds after the speech began; < 0: no text */
+    double       lastFinalAfterEnd = -1.0;              /* seconds after the speech ended (< 0: before it ended or none) */
+    double       maxLag = 0.0, meanLag = 0.0;
+    int          early = 0, late = 0;                   /* key words found, of the early and of the last sentences */
+    std::wstring finals;
+};
+
+/* The speech goes to a helper with the large model, at the pace of speech and with no smaller model to fall back on. */
+LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<std::int16_t> &speech)
+{
+    LargeRun run;
+    audiorgui::TranscriptionHost::Options options;
+    options.model = setup.modelPath;
+    options.vadModel = setup.vadPath;
+    options.language = audiorgui::SpeechLanguage::English;
+    options.gpu = gpu;
+    audiorgui::TranscriptionHost host(audiorgui::MakeProcessFactory(setup), options);
+    constexpr audiorgui::StreamId kStream = audiorgui::StreamId::Microphone;
+    host.Start(static_cast<std::uint8_t>(1u << audiorgui::StreamIndex(kStream)));
+
+    const auto began = std::chrono::steady_clock::now();
+    auto now = [&] { return SecondsSince(began); };
+    while (now() < 180.0 && host.Status(kStream).state != audiorgui::TranscriptState::Live)       /* checks the files, loads the model */
+        Sleep(50);
+    run.ready = host.Status(kStream).state == audiorgui::TranscriptState::Live;
+    run.readySeconds = now();
+    if (!run.ready) {
+        host.Stop();
+        return run;
+    }
+
+    const double speechSeconds = static_cast<double>(speech.size()) / 16000.0;
+    const double started = now();
+    double lagSum = 0.0;
+    int lagCount = 0;
+    audiorgui::TranscriptEvent events[8];
+    auto observe = [&] {
+        const audiorgui::TranscriptStatus status = host.Status(kStream);
+        run.maxLag = status.lagSeconds > run.maxLag ? status.lagSeconds : run.maxLag;
+        lagSum += status.lagSeconds;
+        ++lagCount;
+        for (std::size_t n; (n = host.TakeEvents(kStream, events, 8)) > 0;) {
+            for (std::size_t i = 0; i < n; ++i) {
+                if (run.firstTextAfter < 0.0 && events[i].text[0] != L'\0')
+                    run.firstTextAfter = now() - started;
+                if (events[i].isFinal) {
+                    run.finals += std::wstring(events[i].text) + L" ";
+                    run.lastFinalAfterEnd = now() - started - speechSeconds;
+                }
+            }
+        }
+    };
+    std::size_t at = 0;
+    while (at < speech.size()) {                                        /* at the pace of speech */
+        const std::size_t chunk = std::min<std::size_t>(1600, speech.size() - at);
+        host.Push(kStream, speech.data() + at, chunk);
+        at += chunk;
+        observe();
+        const double due = started + static_cast<double>(at) / 16000.0;
+        while (now() < due)
+            Sleep(10);
+    }
+    const double settleUntil = now() + 40.0;                            /* what is left, until it is quiet */
+    double lastFinalSeen = run.lastFinalAfterEnd;
+    double quietSince = now();
+    while (now() < settleUntil && now() - quietSince < 4.0) {
+        observe();
+        if (run.lastFinalAfterEnd != lastFinalSeen) {
+            lastFinalSeen = run.lastFinalAfterEnd;
+            quietSince = now();
+        }
+        Sleep(50);
+    }
+    host.Stop();
+    observe();
+    run.meanLag = lagCount ? lagSum / lagCount : 0.0;
+    run.early = CountWords(run.finals, kEarlyWords, sizeof(kEarlyWords) / sizeof(kEarlyWords[0]));
+    run.late = CountWords(run.finals, kLateWords, sizeof(kLateWords) / sizeof(kLateWords[0]));
+    return run;
+}
+
+void T17()
+{
+    Section("T17 the large model on the graphics card, at the pace of speech");
+    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    audiorgui::AsrSetup setup;
+    if (!big || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
+                                    audiorgui::kAsrModelCount, big->file) || !setup.gpu) {
+        Info("skipped: it needs the helper with the Vulkan backend (build.bat vulkan) and the large (turbo) model");
+        return;
+    }
+    std::vector<std::int16_t> speech;
+    if (!SpeechSamples(kLongSpeech, &speech)) {
+        Check("a voice could be synthesized into a file", false);
+        return;
+    }
+    const double speechSeconds = static_cast<double>(speech.size()) / 16000.0;
+    Info(Fmt("%.0f s of speech, given at the pace of speech to the large model, on the graphics card and then on the processor", speechSeconds));
+
+    for (const bool gpu : {true, false}) {
+        const char *label = gpu ? "graphics card" : "processor";
+        const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+        const LargeRun r = RunLarge(setup, gpu, speech);
+        Info(Fmt("%s: ready after %.1f s; first text %.1f s into the speech; lag %.1f s on average, %.1f s at most; the last phrase settled "
+                 "%.1f s after the speech ended; key words %d of 5 early, %d of 5 late",
+                 label, r.readySeconds, r.firstTextAfter, r.meanLag, r.maxLag, r.lastFinalAfterEnd, r.early, r.late));
+        if (!gpu) {
+            Check("processor: the helper becomes ready and gives text", r.ready && r.firstTextAfter >= 0.0);       /* the numbers above are for comparison */
+        } else {
+            Check("graphics card: the helper becomes ready", r.ready, Fmt("after %.1f s", r.readySeconds));
+            Check("graphics card: text begins soon after the speech does", r.firstTextAfter >= 0.0 && r.firstTextAfter < 10.0,
+                  r.firstTextAfter < 0.0 ? "no text at all" : Fmt("%.1f s (the first use of the card takes a few seconds longer)", r.firstTextAfter));
+            Check("graphics card: the text is never far behind", r.ready && r.maxLag < 3.0, Fmt("at most %.1f s, on average %.1f s", r.maxLag, r.meanLag));
+            Check("graphics card: the last phrase is settled soon after the speech ends", r.lastFinalAfterEnd >= 0.0 && r.lastFinalAfterEnd < 5.0,
+                  Fmt("%.1f s after", r.lastFinalAfterEnd));
+            Check("graphics card: the words that were said are in the text", r.early >= 4 && r.late >= 4,
+                  Fmt("%d of 5 early and %d of 5 late; the end of the text: \"%s\"", r.early, r.late,
+                      Narrow(r.finals.size() > 160 ? r.finals.substr(r.finals.size() - 160) : r.finals).c_str()));
+        }
+        std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+            Sleep(100);
+            helpersAfter = FindProcesses(L"audior_asr.exe").size();
+        }
+        Check(Fmt("%s: no helper is left running", label), helpersAfter <= helpersBefore,
+              Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+    }
+}
+
 struct TestEntry {
     const char *id;
     void      (*run)();
@@ -994,7 +1139,7 @@ struct TestEntry {
 const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
-    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false},
+    {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false},
 };
 
 /* ---- start-up ------------------------------------------------------------- */
