@@ -50,6 +50,25 @@ audior_gui --stop                                         :: from another prompt
 audio, their volume should not drop when you start recording (the communications
 ducking opt-out).
 
+## 4. Live transcripts (only with the helper and a model)
+
+Skip this if you have not built the helper. Otherwise: `build.bat x64 asr`, keep
+`audior_asr.exe` and `audior_asr.sha256` next to `audior_gui.exe`, and put
+`ggml-small.en-q5_1.bin` (181 MiB, from the whisper.cpp page on Hugging Face, see
+the README) in `%LOCALAPPDATA%\audior-gui\models`. Start the program: each pane
+now has a **Transcript** switch. Without the helper or the model it is hidden.
+
+| Try | Expect |
+|---|---|
+| Switch the microphone's transcript on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
+| Both streams on, play a video with speech while you speak | Each pane shows its own stream's words. The computer stays usable; recording and the waveforms do not stutter. |
+| A long stretch of talking (a minute or more) | Old lines scroll away upwards; the program's memory does not keep growing (Task Manager). |
+| Switch the transcript off before recording | `audior_asr.exe` does not appear in Task Manager at all. |
+| End `audior_asr.exe` in Task Manager while recording | The pane says *Starting…* and then *Live* again; the recording is not affected. Do it four times quickly (it is restarted after each of the first three): the pane says *Transcript stopped*, and the recording carries on and is saved. |
+| Change one byte of `audior_asr.exe` (or delete the model) and start a recording | The pane says the engine's file is not the one in its file list (or the switch disappears); the recording works as always. |
+| Close the window, or press Stop, while someone is mid-sentence | The last words still appear (up to three seconds' wait); afterwards no `audior_asr.exe` is left running. |
+| Run the helper alone: `audior_asr.exe --file speech.wav --model <model> --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
+
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of

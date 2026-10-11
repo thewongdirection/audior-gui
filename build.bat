@@ -6,6 +6,8 @@ REM    build.bat                 x86 and x64: the app and the unit tests
 REM    build.bat x64             one architecture only (x64 or x86)
 REM    build.bat tests           build only the unit tests (fast edit-test loop)
 REM    build.bat notest          build, but do not run the unit tests
+REM    build.bat asr             also build the transcription helper, audior_asr.exe (x64 only; it
+REM                              compiles whisper.cpp with CMake, so it takes a few minutes the first time)
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
 REM    audior_gui.exe     the application
@@ -25,14 +27,16 @@ cd /d "%~dp0"
 set "ARCHS="
 set "WANT_APP=1"
 set "RUN_TESTS=1"
+set "WANT_ASR=0"
 :parse
 if "%~1"=="" goto :parsed
 if /i "%~1"=="x64"    ( set "ARCHS=!ARCHS! x64"    & shift & goto :parse )
 if /i "%~1"=="x86"    ( set "ARCHS=!ARCHS! x86"    & shift & goto :parse )
 if /i "%~1"=="tests"  ( set "WANT_APP=0"           & shift & goto :parse )
 if /i "%~1"=="notest" ( set "RUN_TESTS=0"          & shift & goto :parse )
+if /i "%~1"=="asr"    ( set "WANT_ASR=1"           & shift & goto :parse )
 echo Unknown option: %~1
-echo Usage: build.bat [x64] [x86] [tests] [notest]
+echo Usage: build.bat [x64] [x86] [tests] [notest] [asr]
 exit /b 2
 :parsed
 if not defined ARCHS set "ARCHS=x86 x64"
@@ -46,6 +50,10 @@ if not defined VSDIR (
 
 for %%a in (%ARCHS%) do (
     call :build %%a
+    if errorlevel 1 goto :fail
+)
+if "%WANT_ASR%"=="1" (
+    call :asr
     if errorlevel 1 goto :fail
 )
 
@@ -106,4 +114,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 %OUT
 endlocal & exit /b 0
 
 :buildfail
+endlocal & exit /b 1
+
+REM ---- the optional transcription helper (x64): whisper.cpp from third_party, built with the CMake and Ninja
+REM      that come with Visual Studio; intermediates go to build\asr-x64 ----
+:asr
+setlocal EnableDelayedExpansion
+set "CMAKEDIR=%VSDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake"
+if not exist "%CMAKEDIR%\CMake\bin\cmake.exe" (
+    echo CMake was not found: add the "C++ CMake tools for Windows" component to Visual Studio.
+    goto :asrfail
+)
+call "%VSDIR%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>nul
+set "PATH=%CMAKEDIR%\CMake\bin;%CMAKEDIR%\Ninja;%PATH%"
+echo Building audior_asr (x64)...
+cmake -S src\asr -B build\asr-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -Wno-dev || goto :asrfail
+cmake --build build\asr-x64 || goto :asrfail
+if not exist "bin\x64" mkdir "bin\x64"
+copy /y "build\asr-x64\out\audior_asr.exe" "bin\x64\audior_asr.exe" >nul || goto :asrfail
+
+REM The list of the helper's files with their SHA-256, which the recorder checks before it starts the helper.
+set "ASRHASH="
+for /f "skip=1 tokens=* delims=" %%h in ('certutil -hashfile "bin\x64\audior_asr.exe" SHA256') do if not defined ASRHASH set "ASRHASH=%%h"
+if not defined ASRHASH goto :asrfail
+set "ASRHASH=!ASRHASH: =!"
+> "bin\x64\audior_asr.sha256" echo !ASRHASH!  audior_asr.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\check_imports.ps1 bin\x64\audior_asr.exe || goto :asrfail
+endlocal & exit /b 0
+
+:asrfail
 endlocal & exit /b 1

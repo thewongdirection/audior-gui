@@ -81,14 +81,32 @@ Beyond audior: a **gain for system audio** (`--system-amplify <0-300>`), a
 checkbox to leave the **microphone** out (system audio alone), `--demo`, and live
 waveforms with a peak level and a clipping flag for every stream.
 
-**Live transcripts** (work in progress). Each pane has a **Transcript** switch
-(`--transcribe-mic`, `--transcribe-system`) that shows the stream's speech as text
-under its waveform while recording: words appear as they are spoken, the last
-few can still change, and each phrase is timestamped once it is final. Only the
-simulated audio of `--demo` can do this so far; the real recorder gets an
-engine in a later step (the design: a separate helper process, local models you
-download yourself, cloud engines only if you opt in), so the switch stays hidden
-until an engine is available.
+**Live transcripts.** Each pane has a **Transcript** switch (`--transcribe-mic`,
+`--transcribe-system`) that shows the stream's speech as text under its waveform
+while recording: the text grows about once a second while someone speaks, the
+last words can still change, and a phrase is settled and timestamped when the
+speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
+
+It is optional and needs two things, otherwise the switch stays hidden (`--demo`
+has a built-in script and always shows it):
+
+1. **The helper**, `audior_asr.exe` with its `audior_asr.sha256`, next to
+   `audior_gui.exe`. `build.bat x64 asr` builds it (it compiles whisper.cpp, so it
+   needs the *C++ CMake tools for Windows* of Visual Studio, and takes a few
+   minutes the first time).
+2. **A speech model**, downloaded by you into `%LOCALAPPDATA%\audior-gui\models`
+   (or the folder named by the `AUDIOR_MODELS` environment variable), from
+   <https://huggingface.co/ggerganov/whisper.cpp>: `ggml-small.en-q5_1.bin`
+   (English, 181 MiB, fast enough for two streams on an ordinary CPU) or
+   `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a GPU).
+   Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
+   are used; the first one found is.
+
+The helper is a separate process, so a problem with it can never end or damage a
+recording: it is started at low priority inside a Windows Job object, restarted if
+it dies, given up on after a few quick crashes (the pane then says *Transcript
+stopped* and why) and killed with the recorder. Its licences are in
+`THIRD-PARTY-NOTICES.md`.
 
 The command-line options only preset the window, so a shortcut such as
 
@@ -173,7 +191,8 @@ Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
 | Path | |
 |------|--|
 | `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the command line, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine) and the `IRecordingEngine` interface. |
-| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. |
+| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`. |
+| `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, dialogs, clipboard), `MainView`, `LaneView`, widgets, `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`. |
 | `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. |

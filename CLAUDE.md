@@ -14,10 +14,11 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
   functionality. `tests/check_imports.ps1` fails the build if the exe imports a
   DLL that is not on its allowlist of in-box Windows DLLs.
   - *One exception, narrowly:* the optional live-transcription engine. The
-    recorder (`audior_gui.exe`) stays in-box only. Transcription may run in a
-    separate helper process (not yet written) that uses a third-party inference
-    library (whisper.cpp first), GPU backends, extra DLLs and, opt-in only, the
-    internet. The helper and its DLLs sit next to the exe, are started by
+    recorder (`audior_gui.exe`) stays in-box only. Transcription runs in a
+    separate helper process (`audior_asr.exe`, built by `build.bat asr` from
+    `src/asr`) that uses a third-party inference library (whisper.cpp, vendored
+    in `third_party`, CPU only so far); later it may use GPU backends, extra
+    DLLs and, opt-in only, the internet. The helper and its DLLs sit next to the exe, are started by
     absolute path and checked against a hash list first; models are files the
     user downloads (never in the repo); a notices file lists every third-party
     library and model licence; API keys live in Credential Manager, never in
@@ -49,8 +50,9 @@ WASAPI audio recorder. Windows only: C++17, Win32, Direct2D and DirectWrite.
 | Path | What |
 |------|------|
 | `src/core` | Logic with no Windows or UI headers: settings and their rules, the command line (`cli`), the text-box editing model, formatting, waveform and transcript models, controller, the `IRecordingEngine` seam (audio as peak bins, live transcripts as `TranscriptEvent`s), and `asr_protocol` (the byte stream between the recorder and its transcription helper, with a bounds-checked parser). |
-| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks; it cannot transcribe yet) and `SimulatedEngine` (`--demo`, tests; it plays a scripted transcript). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. Transcription: `SpeechDecimator` (48 kHz stereo to 16 kHz mono) feeds `TranscriptionHost`, which talks to the helper through an `IAsrTransport`, restarts it when it dies and never blocks or fails a capture thread; tested against a fake helper on in-memory pipes. `ProcessTransport` is the real transport (the helper in a Job object, below-normal priority, three inherited handles), `asr_helper` finds the helper and a model and checks them against the manifest and the models table (`core/asr_models`, `core/sha256`); the process tests run `run_tests.exe` itself as a fake helper (`tests/fake_asr_helper`). |
+| `src/engine` | Engines behind that seam: `WasapiEngine` (the real one: `RecordingSession` with capture and writer threads, `WasapiCapture`, WAV and Media Foundation MP3 sinks; it transcribes when the helper and a model are in place) and `SimulatedEngine` (`--demo`, tests; it plays a scripted transcript). The session takes sources and sinks from factories, so it is tested with generated audio and in-memory files. Transcription: `SpeechDecimator` (48 kHz stereo to 16 kHz mono) feeds `TranscriptionHost`, which talks to the helper through an `IAsrTransport`, restarts it when it dies and never blocks or fails a capture thread; tested against a fake helper on in-memory pipes. `ProcessTransport` is the real transport (the helper in a Job object, below-normal priority, three inherited handles), `asr_helper` finds the helper and a model and checks them against the manifest and the models table (`core/asr_models`, `core/sha256`); the process tests run `run_tests.exe` itself as a fake helper (`tests/fake_asr_helper`). |
 | `src/ui` | Win32 + Direct2D window and widgets. |
+| `src/asr`, `third_party` | The transcription helper `audior_asr.exe`: protocol loop, phrase cutting (`core/utterance_tracker`), decode scheduling (`core/decode_queue`) and whisper.cpp behind `WhisperDecoder`; whisper.cpp is a trimmed, unedited copy (see `third_party/README.md`). Every library and model licence is in `THIRD-PARTY-NOTICES.md`. Checked by hand with `audior_asr.exe --file x.wav --model m --realtime`, and by `tests/test_real_helper.cpp` (skipped without the helper and a model). |
 | `src/console.*`, `src/main.cpp` | Entry point and console output for `--help`, `--list-devices`, `--stop`. |
 | `tests` | Unit tests for everything outside `src/ui` (`run_tests.exe`), `check_imports.ps1`, and `ui_smoke.ps1`, which launches the real exe on a Windows machine. |
 
@@ -67,7 +69,9 @@ flag (`src/core/cli`) and a control (`src/ui/main_view`), with tests.
 code itself (`wasapi_capture.cpp`, `devices.cpp`) is only exercised for its
 failure paths. Everything after the capture (conversion, mixing, threads, sinks,
 failure handling) is tested with fakes. Real-hardware checks are listed in
-`docs/FIRST-TEST.md`; keep it current.
+`docs/FIRST-TEST.md`; keep it current. The same goes for the transcription
+helper: CI does not build it (`build.bat asr`) or have a model, so its speech
+tests are skipped there and run by hand.
 
 ## Before any commit, push or merge
 

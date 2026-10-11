@@ -42,6 +42,9 @@ std::wstring ProgramDirectory()
 std::wstring ModelsDirectory()
 {
     wchar_t base[MAX_PATH];
+    const DWORD chosen = GetEnvironmentVariableW(L"AUDIOR_MODELS", base, MAX_PATH);
+    if (chosen > 0 && chosen < MAX_PATH)
+        return std::wstring(base, chosen);              /* the user keeps the models somewhere else */
     const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
         return std::wstring();

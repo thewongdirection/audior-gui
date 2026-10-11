@@ -32,6 +32,8 @@ struct DecodeJob {
     std::uint32_t             id = 0;               /* the utterance */
     std::uint64_t             startSample = 0;      /* of audio[0], in the stream */
     bool                      isFinal = false;
+    double                    receivedAt = 0.0;     /* when the last of the audio arrived (monotonic seconds):
+                                                       the consumer measures how far behind it is from this */
     std::vector<std::int16_t> audio;
 };
 

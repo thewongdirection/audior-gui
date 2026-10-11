@@ -33,7 +33,8 @@ struct AsrSetup {
     std::wstring    modelPath;
 };
 
-/* The folder the program runs from, and the folder models are looked for in. */
+/* The folder the program runs from, and the folder models are looked for in:
+ * %AUDIOR_MODELS% if that is set, else %LOCALAPPDATA%\audior-gui\models. */
 std::wstring ProgramDirectory();
 std::wstring ModelsDirectory();
 

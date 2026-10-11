@@ -23,6 +23,7 @@
 #include "console.h"
 #include "core/cli.h"
 #include "core/recorder_controller.h"
+#include "engine/asr_helper.h"
 #include "engine/simulated_engine.h"
 #include "engine/stop_signal.h"
 #include "engine/wasapi_engine.h"
@@ -132,7 +133,8 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const R
     RecorderController controller(*engine, LocalNow, FileExists);
     controller.Settings() = settings;
     if (!controller.CanTranscribe() && (settings.transcribeMicrophone || settings.transcribeSystem))
-        WriteError(L"Warning: live transcription is not available yet; only --demo can transcribe.\n");
+        WriteError(L"Warning: live transcription needs the helper audior_asr.exe next to this program and a model in " +
+                   ModelsDirectory() + L" (see the README); without them only --demo can transcribe.\n");
     if (!ChooseDevice(controller, DeviceKind::Microphone, cli.microphone, &controller.Settings().microphoneId) ||
         !ChooseDevice(controller, DeviceKind::Playback, cli.outputDevice, &controller.Settings().systemDeviceId))
         return 1;
