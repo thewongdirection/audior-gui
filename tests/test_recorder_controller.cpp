@@ -358,11 +358,13 @@ TEST(Controller_ATranscriptFileThatWouldBeTooLongIsRefusedBeforeRecording)
     CHECK(rig.ctl.Start());
 }
 
-/* An engine without the helper or a model: the transcript switches are hidden, whatever the saved settings say. */
+/* An engine without the helper or a model (until `hears` is set): the transcript switches are hidden, whatever the
+ * saved settings say. */
 class DeafEngine : public SimulatedEngine {
 public:
     using SimulatedEngine::SimulatedEngine;
-    bool CanTranscribe() const override { return false; }
+    bool CanTranscribe() const override { return hears; }
+    bool hears = false;
 };
 
 TEST(Controller_AnEngineThatCannotTranscribeLeavesTheTranscriptSwitchesOutOfTheNames)
@@ -385,6 +387,22 @@ TEST(Controller_AnEngineThatCannotTranscribeLeavesTheTranscriptSwitchesOutOfTheN
     CHECK(ctl.Start());
     ctl.Stop();
     CHECK_EQ(ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\a.mp3"));
+}
+
+TEST(Controller_AModelThatArrivesDuringARecordingIsForTheNextOne)
+{
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10;
+    DeafEngine engine([] { return 0.0; });
+    RecorderController ctl(engine, [&time] { return time; }, [](const std::wstring &) { return false; });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().transcribeMicrophone = true;                 /* saved, but there is nothing to transcribe with */
+    CHECK(ctl.Start());
+    engine.hears = true;
+    ctl.RefreshTranscription();                                 /* what the set-up does when its download ends */
+    CHECK(!ctl.ShowsTranscript(StreamId::Microphone));          /* this recording has no transcript: no pane that only listens */
+    ctl.Stop();
+    CHECK(ctl.ShowsTranscript(StreamId::Microphone));           /* the next one has */
 }
 
 TEST(Controller_TheSystemTranscriptsLongerNameCanBeTheOnlyOneOverTheLimit)

@@ -132,6 +132,8 @@ bool RecorderController::Start()
     }
 
     RecordingSettings run = settings_;
+    if (!engine_.CanTranscribe())                       /* no transcript in this recording: a model that arrives during it is for the next */
+        run.transcribeMicrophone = run.transcribeSystem = false;
     if (gpuUnusable_)                                   /* what the scan found out about this PC, not the user's choice */
         run.transcribeGpu = false;
     std::wstring error;

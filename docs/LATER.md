@@ -100,3 +100,48 @@ None of these loses a recording; each is worth doing when it starts to matter.
   Nothing makes a new `RecordingSettings` field a field of the settings file: add a test
   that fails on a field it does not know. `hardware_tests.exe --only T15` records with
   the first installed model, so a slow PC can fail it for speed, not for a bug.
+
+## Found in the review of the start-up set-up and the download
+
+No blocker; each is worth doing when it starts to matter.
+
+- **A download during a recording.** The fetcher runs at below-normal CPU priority, but its disk
+  priority is normal, and the SHA-256 pass and the move run at normal priority: on one slow disk
+  they can stall the recording's writer (its ring is 8 s). The free-space check (64 MiB spare) looks
+  at the models folder's drive, not at what the recording needs. Background I/O priority for the
+  fetcher and the hash, or holding the install while a recording runs, would cover it.
+- **A partial install.** The small model is fetched first: cancelling or failing during the large
+  one leaves it installed, but the notification still says "Live transcripts stay off", "Try again"
+  finds nothing missing and says "ready", and the README's "leaves nothing behind" is not true of
+  the finished files. A crash or End Task during a download leaves its `.part` (up to about
+  550 MiB) until the next install of that file; sweep `*.part` of the table at start.
+- **The graphics card.** The 4 GiB rule is an exact `>=` (a "4 GB" card often reports a little
+  less) and a 32-bit program is only told "4 GiB less a byte" at most; the Vulkan judgement is
+  "the loader is in System32" (a loader next to the helper is not seen, one for an old card is),
+  and virtual adapters other than Microsoft's (VMware, VirtualBox) count as cards. The "ready"
+  text names the card even when `--transcribe-cpu` or the GPU switch says otherwise, and a PC
+  without a usable card gets a disabled GPU switch without an explanation once the banner is gone.
+  `ScanHardware` has no stop check, so closing the window waits for a slow driver.
+- **Installed means the right size.** A model of the right size but wrong content (a power loss
+  after the rename: the fetcher and the move do not flush) counts as installed, is never offered
+  again, and fails its hash when a recording starts. Delete or re-offer a model that fails its hash.
+- **The banner.** At the smallest width (900 DIP) long texts are cut without an ellipsis (the
+  no-Vulkan sentence, "(3 of 3)" in the title); its height is not part of `ExtraMinHeight`, so a
+  recording with the banner up has about two lines of transcript, and when it appears or goes
+  after 10 s the cards move under the pointer. Every poll (4 a second while it moves) does a full
+  `Refresh` and redraws the whole window. The tray icon is restored after an Explorer restart with
+  the flags of the last call (`TrayIcon::Restore`), and the one balloon for a waiting question can
+  be lost to Focus Assist: a tooltip suffix such as "needs your answer" would help.
+- **The download program.** Redirects may go to any https host and port, and WinHTTP's automatic
+  logon stays on (follow redirects by hand and check each host, or use the high logon level). It is
+  started with the default DLL search and no process mitigations (`/DEPENDENTLOADFLAG`, block
+  non-Microsoft binaries), runs with the recorder's full token, and its hash is checked without
+  holding the file open until `CreateProcess` returns. Its path rule is "a full path ending in
+  `.part`": `\\?\` paths, `..` and `:stream` names pass, and a reparse point at the `.part` is
+  followed. A verified file is thrown away after one failed move (retry for a second or two), and
+  the import allowlist of the one program with the network is the recorder's list plus `winhttp`.
+- **"Not now"** is saved with the other settings (at a recording start, a hotkey change and exit):
+  a crash loses it, and where the program folder cannot be written the offer returns at every start.
+  `RememberSettings` copying the flag is not covered by a test; nor is the real DXGI call
+  (`ProfileFromDesc` could be pulled out and tested).
+
