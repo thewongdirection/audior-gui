@@ -7,6 +7,8 @@ REM    build.bat x64             one architecture only (x64 or x86)
 REM    build.bat tests           build only the unit tests (fast edit-test loop)
 REM    build.bat notest          build, but do not run the unit tests
 REM    build.bat hardware        also build the hardware tests (they record, so they are not run)
+REM    build.bat x64 screenshots also render docs\screenshots\*.png from the x64 app (the pictures
+REM                              in the README and docs; run it whenever the window changes)
 REM
 REM  Output, per architecture (bin\x86 and bin\x64):
 REM    Audior-GUI.exe     the application
@@ -28,6 +30,7 @@ set "ARCHS="
 set "WANT_APP=1"
 set "RUN_TESTS=1"
 set "WANT_HW=0"
+set "WANT_SHOTS=0"
 :parse
 if "%~1"=="" goto :parsed
 if /i "%~1"=="x64"    ( set "ARCHS=!ARCHS! x64"    & shift & goto :parse )
@@ -35,8 +38,9 @@ if /i "%~1"=="x86"    ( set "ARCHS=!ARCHS! x86"    & shift & goto :parse )
 if /i "%~1"=="tests"  ( set "WANT_APP=0"           & shift & goto :parse )
 if /i "%~1"=="notest" ( set "RUN_TESTS=0"          & shift & goto :parse )
 if /i "%~1"=="hardware" ( set "WANT_HW=1"          & shift & goto :parse )
+if /i "%~1"=="screenshots" ( set "WANT_SHOTS=1"    & shift & goto :parse )
 echo Unknown option: %~1
-echo Usage: build.bat [x64] [x86] [tests] [notest] [hardware]
+echo Usage: build.bat [x64] [x86] [tests] [notest] [hardware] [screenshots]
 exit /b 2
 :parsed
 if not defined ARCHS set "ARCHS=x86 x64"
@@ -53,6 +57,11 @@ for %%a in (%ARCHS%) do (
     if errorlevel 1 goto :fail
 )
 
+if "%WANT_SHOTS%"=="1" (
+    call :shots
+    if errorlevel 1 goto :fail
+)
+
 echo.
 echo Build SUCCESS: %ARCHS%
 exit /b 0
@@ -61,6 +70,25 @@ exit /b 0
 echo.
 echo Build FAILED.
 exit /b 1
+
+REM ---- render the screenshots the documentation shows, with the x64 app ----
+REM  The scenarios are drawn by the program itself (simulated audio, a fixed clock and sample paths), so
+REM  the pictures hold nothing personal.  Every file named here is used by README.md or docs\*.md.
+:shots
+if not exist "bin\x64\Audior-GUI.exe" (
+    echo The screenshots are rendered by bin\x64\Audior-GUI.exe: build x64 too.
+    exit /b 1
+)
+if not exist "docs\screenshots" mkdir "docs\screenshots"
+for %%s in (recording idle saved error clipping hotkeys bluetooth-mic) do (
+    start "" /wait "bin\x64\Audior-GUI.exe" --screenshot "docs\screenshots\%%s.png" --scenario %%s
+    if errorlevel 1 (
+        echo Scenario %%s failed.
+        exit /b 1
+    )
+)
+echo Documentation screenshots written to docs\screenshots.
+exit /b 0
 
 REM ---- build one architecture (%1 = x86 or x64) ----
 :build

@@ -16,25 +16,11 @@ Ctrl+Alt+S, yours to change).
 > [docs/FIRST-TEST.md](docs/FIRST-TEST.md). `--demo` runs the window with simulated
 > audio and needs no devices.
 
-```
-+----------------------------------------------------------------+
-|  Audior-GUI                                            * Ready  |
-+------------------------------------------+---------------------+
-|  [x] Microphone                  -12 dB  |  SAVE TO            |
-|  [Realtek Mic Array v]   Gain --o-- +0%  |  [ ...\Audior-GUI  v]|
-|  |||  ||||||  ||| ||||||||| |||||| |||   |  FILE NAME          |
-+------------------------------------------+  [team-call       ] |
-|  [x] System audio                -20 dB  |  Saved as team-call.mp3
-|  [Speakers (Realtek) v]  Gain --o-- +0%  |  FORMAT             |
-|  ||| |||||  |||||| ||||  |||||| ||| ||   |  [MP3|WAV] [128 kbps]|
-|                                          |  OUTPUT             |
-|                                          |  [merged|2 tracks]  |
-|                                          |  HOTKEYS            |
-|                                          |  [Start Ctrl+Alt+R] [Stop ...]
-+------------------------------------------+---------------------+
-|  00:00:12   Recording              [ Stop ] [ * Start recording ]|
-+----------------------------------------------------------------+
-```
+![Audior-GUI while recording: a live waveform for the microphone and for system audio on the left, the settings panel with the save folder, file name, format, output mode and hotkeys on the right, the Stop and Start buttons below](docs/screenshots/recording.png)
+
+*The window while recording. Every picture in these docs is drawn by the program
+itself from simulated audio (hence the DEMO badge, and the sample folder), so none
+shows a real PC; `build.bat x64 screenshots` redraws them (see [Design](#design)).*
 
 ## Requirements
 
@@ -175,6 +161,9 @@ the program, or to the file or pipe it was redirected to
   finalised into a valid file, and the window says what happened (for example
   `Audio capture failed: the device was unplugged or switched off (hr=0x88890004)`).
   WAV is limited to 4 GiB, about 6 h 12 min.
+
+  ![A recording that ended with a problem: the status pill says Problem, the bottom bar says Audio capture failed and that the audio captured before the problem was kept, and a Show in folder button is offered](docs/screenshots/error.png)
+
 - **Other programs keep their volume.** The recorder opts out of Windows'
   "communications activity" ducking.
 - **Bluetooth headsets switch to call mode.** Opening a headset's microphone makes
@@ -187,6 +176,8 @@ the program, or to the file or pipe it was redirected to
   microphone and ticks system audio in one click. System audio only does not trigger
   the switch, nor does a microphone that is not Bluetooth. Measurements in
   [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.
+
+  ![The microphone pane with a Bluetooth headset chosen: an amber note says the headset switches to call mode while recording, and a Record system audio only link sits on the right](docs/screenshots/bluetooth-mic.png)
 - **Closing the window, `--stop`, or Stop** all finalise the files and release
   the devices (a Bluetooth headset returns to normal playback).
 - **Stopping from outside.** While recording, the program holds the named event
@@ -221,6 +212,8 @@ the program, or to the file or pipe it was redirected to
   letters, though, Ctrl+Alt+S or Ctrl+Alt+R may be a character you need (the Polish
   layout types ś with AltGr+S); choose another pair, such as two function keys.
 
+![The Hotkeys section of the settings panel with the Start box listening: it shows Press keys, and the hint under the boxes says to press the new shortcut or Esc to cancel](docs/screenshots/hotkeys.png)
+
 ## Design
 
 - **One pane per stream**, each with its own **checkbox** (is this stream
@@ -228,6 +221,8 @@ the program, or to the file or pipe it was redirected to
   opens, so a newly plugged-in microphone appears), a **gain** slider, a peak
   level in dB, a **CLIP** flag and its waveform. At least one stream must stay
   ticked.
+
+  ![The microphone at 300% gain clipping: a red CLIP flag and 0 dB above its waveform, while the system audio stream stays below full scale](docs/screenshots/clipping.png)
 - **Scrolling bars.** Bar heights follow a dB scale (about 54 dB of range),
   newest on the right. The playhead glides at the real-time rate even though audio
   arrives in bursts.
@@ -248,9 +243,22 @@ To see the UI without opening it, render a scenario to a PNG:
 bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
-Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `clipping`, `saved`,
-`error`, `named`, `typing`, `hotkeys` (a shortcut box waiting for keys),
-`hotkey-taken` (a shortcut another program owns).
+Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
+headset microphone chosen), `clipping`, `saved`, `error`, `named`, `typing`,
+`hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
+program owns).
+
+The pictures in this README and in `docs/` are such scenarios, kept in
+`docs/screenshots/` (named after their scenario, drawn at 1120x720 from simulated
+audio, so they hold nothing from a real PC). **When the window changes, redraw
+them and commit the new pictures with the change:**
+
+```bat
+build.bat x64 screenshots      :: builds, then renders every picture the docs use
+```
+
+If a change adds a picture to the docs, add its scenario to the `:shots` list in
+`build.bat` as well.
 
 ## Architecture
 

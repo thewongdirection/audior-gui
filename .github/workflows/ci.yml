@@ -20,6 +20,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                # the next step compares this branch with main
+
+      - name: Warn if the UI changed but the documentation screenshots did not
+        shell: cmd
+        run: |
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD > "%RUNNER_TEMP%\changed.txt"
+          findstr /b /c:"src/ui/" "%RUNNER_TEMP%\changed.txt" >nul && (findstr /b /c:"docs/screenshots/" "%RUNNER_TEMP%\changed.txt" >nul || echo ::warning title=Documentation screenshots::src/ui changed but docs/screenshots did not. If the window looks different, run build.bat x64 screenshots and commit the pictures.)
+          exit /b 0
 
       - name: Build, check imports and test (x64 and x86)
         shell: cmd

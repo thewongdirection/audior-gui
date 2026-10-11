@@ -46,9 +46,15 @@ signed), choose *More info*, then *Run anyway*.
 1. Start `Audior-GUI.exe`. Both drop-downs should list your devices, each marked
    *Default · name* at the top.
 2. While idle the waveforms rest; they move only while recording.
+
+   ![The idle window: green Ready status, both device drop-downs, resting waveforms, and the Start recording button](screenshots/idle.png)
+
+   (The pictures here show simulated devices; yours lists your own.)
 3. Press **Start recording**, speak, play some music, press **Stop**.
    The waveforms move, the time runs, the status says *Saved*, **Show in folder**
    opens `Documents\Audior-GUI`.
+
+   ![After a recording: the bottom bar says Saved with the file name, and offers Show in folder](screenshots/saved.png)
 4. Play the file. For MP3, check the length matches the clock.
 
 ## 2. The cases worth trying
