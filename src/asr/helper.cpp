@@ -4,8 +4,9 @@
  *     audior_asr.exe                          the recorder's helper: speaks the protocol of
  *                                             core/asr_protocol.h on standard input and output
  *     audior_asr.exe --file x.wav --model m   transcribes a 16 kHz mono 16-bit WAV through the same
- *       [--english] [--realtime]              pipeline and prints what the recorder would be told
- *                                             (--english: take the speech for English;
+ *       [--vad v] [--english] [--realtime]    pipeline and prints what the recorder would be told
+ *                                             (--vad: the Silero model, to cut phrases with it;
+ *                                             --english: take the speech for English;
  *                                             --realtime gives the audio at the pace of speech)
  *
  * The audio of each stream goes through an UtteranceTracker (where do phrases
@@ -424,7 +425,7 @@ bool ReadWav(const std::wstring &path, std::vector<std::int16_t> *samples, std::
 }
 
 /* `realtime`: the audio is given at the pace of speech (100 ms every 100 ms), as the recorder does, instead of at once. */
-int RunFile(const std::wstring &wav, const std::wstring &model, SpeechLanguage language, bool realtime)
+int RunFile(const std::wstring &wav, const std::wstring &model, const std::wstring &vad, SpeechLanguage language, bool realtime)
 {
     ConsoleEvents events(GetStdHandle(STD_OUTPUT_HANDLE));
     std::vector<std::int16_t> samples;
@@ -437,6 +438,7 @@ int RunFile(const std::wstring &wav, const std::wstring &model, SpeechLanguage l
     hello.type = asr::Type::Hello;
     hello.streams = 1;
     hello.language = language;
+    hello.vadModel = vad;
     hello.text = model;
     WhisperDecoder decoder;
     std::unique_ptr<Transcriber> work;
@@ -463,7 +465,7 @@ int wmain(int argc, wchar_t **argv)
 
     if (argc == 1)
         return RunProtocol();
-    std::wstring wav, model;
+    std::wstring wav, model, vad;
     bool realtime = false, understood = true;
     SpeechLanguage language = SpeechLanguage::Auto;
     for (int i = 1; i < argc && understood; ++i) {
@@ -476,15 +478,17 @@ int wmain(int argc, wchar_t **argv)
             wav = argv[++i];
         else if (i + 1 < argc && option == L"--model")
             model = argv[++i];
+        else if (i + 1 < argc && option == L"--vad")
+            vad = argv[++i];
         else
             understood = false;
     }
     if (!understood || wav.empty() || model.empty()) {
-        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--english] [--realtime]\r\n"
+        const char usage[] = "usage: audior_asr.exe --file <16 kHz mono 16-bit WAV> --model <ggml model> [--vad <silero model>] [--english] [--realtime]\r\n"
                              "(without arguments it is the recorder's helper and speaks on standard input and output)\r\n";
         DWORD written = 0;
         WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), usage, sizeof(usage) - 1, &written, nullptr);
         return 1;
     }
-    return RunFile(wav, model, language, realtime);
+    return RunFile(wav, model, vad, language, realtime);
 }

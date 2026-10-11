@@ -99,7 +99,7 @@ now has a **Transcript** switch. Without the helper or the model it is hidden.
 | With `ggml-large-v3-turbo-q5_0.bin` in the models folder too, pick it in the **Transcript** section of the settings panel, leave the language on *Auto*, record someone speaking another language | The text comes out in that language. With *English* chosen it is forced into English words. With only the English-only model, the language buttons are greyed and show *English*. |
 | With the turbo model chosen and *English* as the language, start a heavy job on all cores (a video encode, say) and talk for a minute | The pane turns amber, *Catching up · N s behind*, and text arrives after each pause rather than while you speak. If it stays six seconds behind for ten, it says *smaller model* and the small English model takes over; when the load ends the pane says *Live* again. With *Auto* it never switches (the small model is English only). The recording is unaffected throughout. |
 | Start with `--transcribe-model ggml-large-v3-turbo-q5_0.bin` while that file is not in the models folder | Recording does not start and the message names the missing model. |
-| Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--english] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
+| Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--english] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
 
 ## If something is wrong
 
