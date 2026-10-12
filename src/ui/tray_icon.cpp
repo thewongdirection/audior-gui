@@ -92,6 +92,7 @@ TrayIcon::~TrayIcon()
 
 bool TrayIcon::Register()
 {
+    data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;    /* (Update and Balloon leave theirs here: a restored icon would not answer clicks) */
     added_ = Shell_NotifyIconW(NIM_ADD, &data_) != FALSE;
     if (added_) {
         data_.uVersion = NOTIFYICON_VERSION_4;          /* NIN_SELECT and WM_CONTEXTMENU, with the position */

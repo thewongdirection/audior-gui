@@ -702,7 +702,10 @@ int AppWindow::Choose(const std::vector<std::wstring> &items, int selected, cons
         return -1;
     for (std::size_t i = 0; i < items.size(); ++i) {
         const UINT flags = MF_STRING | (static_cast<int>(i) == selected ? MF_CHECKED : 0);
-        AppendMenuW(menu, flags, i + 1, items[i].c_str());      /* command ids are 1-based */
+        std::wstring text = items[i];                           /* an '&' makes the next letter a shortcut: a device may be "Mic & Line" */
+        for (std::size_t at = 0; (at = text.find(L'&', at)) != std::wstring::npos; at += 2)
+            text.insert(at, 1, L'&');
+        AppendMenuW(menu, flags, i + 1, text.c_str());          /* command ids are 1-based */
     }
 
     POINT where = {ToPixels(anchor.left), ToPixels(anchor.bottom) + 4};

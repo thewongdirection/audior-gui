@@ -248,6 +248,17 @@ TEST(Asr_TextInAnyScriptSurvivesTheWire)
     }
 }
 
+TEST(Asr_AnUtteranceNumberThatCouldWrapTheRecordersCountIsRefused)
+{
+    const auto event = [](std::uint32_t utterance) {
+        return Frame(EventMessage(StreamId::Microphone, utterance, false, 1.0, L"hello"));
+    };
+    CHECK(!IsInvalid(event(0)));
+    CHECK(!IsInvalid(event(kMaxUtterance - 1)));
+    CHECK(IsInvalid(event(kMaxUtterance)));
+    CHECK(IsInvalid(event(0xFFFFFFFFu)));               /* +1 would wrap to 0 and freeze the pane for the rest of the recording */
+}
+
 TEST(Asr_ProblemRoundTrips)
 {
     Message m;

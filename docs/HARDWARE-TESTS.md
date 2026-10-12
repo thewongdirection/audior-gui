@@ -114,7 +114,7 @@ microphone mid-recording, unticking **Microphone** (the command line always incl
 the check that other programs' volume does not drop while recording (the communications
 ducking opt-out). The microphone's own transcript also stays a manual check (T15 uses the
 system audio, which is the same code after the capture): speak into the microphone with
-**Transcript** on, as in FIRST-TEST.md section 4.
+**Transcript** on, as in FIRST-TEST.md section 5.
 
 ## Results on the reference PC
 

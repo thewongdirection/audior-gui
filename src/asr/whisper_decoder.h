@@ -34,7 +34,7 @@ public:
     /* Loads the backends from `backendDir` and the model (a path in UTF-8).  `language`: what the speech is in
      * (Auto: the model finds out for each utterance).  `gpu`: use the graphics card if there is a backend for
      * it and a card it can use.  False, with a reason, if it cannot. */
-    bool Load(const std::string &path, audiorgui::SpeechLanguage language, bool gpu, const std::string &backendDir,
+    bool Load(const std::string &path, audiorgui::SpeechLanguage language, bool gpu, const std::wstring &backendDir,
               std::string *error);
 
     const std::string &Device() const override { return device_; }

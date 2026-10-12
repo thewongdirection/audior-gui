@@ -359,8 +359,51 @@ TEST(Asr_ProgramAndModelFoldersAreFullPaths)
 {
     const std::wstring program = ProgramDirectory();
     CHECK(program.size() > 3 && program[1] == L':');
+
+    wchar_t before[MAX_PATH];                           /* the person's own AUDIOR_MODELS must not decide this test */
+    const DWORD had = GetEnvironmentVariableW(L"AUDIOR_MODELS", before, MAX_PATH);
+    SetEnvironmentVariableW(L"AUDIOR_MODELS", nullptr);
     const std::wstring models = ModelsDirectory();
     CHECK(models.empty() || models.find(L"audior-gui") != std::wstring::npos);
+
+    SetEnvironmentVariableW(L"AUDIOR_MODELS", L"D:\\somewhere\\else");              /* a full path is taken as it is */
+    CHECK_EQ(ModelsDirectory(), std::wstring(L"D:\\somewhere\\else"));
+    SetEnvironmentVariableW(L"AUDIOR_MODELS", L"models");                           /* a relative one would mean two places: ignored */
+    CHECK_EQ(ModelsDirectory(), models);
+    SetEnvironmentVariableW(L"AUDIOR_MODELS", had > 0 && had < MAX_PATH ? before : nullptr);
+}
+
+TEST(Asr_AModelThatWasHashedAndHasNotChangedIsNotHashedAgainButAChangedOneIs)
+{
+    Pack pack;
+    const std::wstring path = pack.modelsDir.Path(pack.standIn.model.file);
+    const auto backdate = [&] {                         /* a file that has been there for an hour: the one that is remembered */
+        HANDLE file = CreateFileW(path.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                  OPEN_EXISTING, 0, nullptr);
+        CHECK(file != INVALID_HANDLE_VALUE);
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        ULARGE_INTEGER hourAgo;
+        hourAgo.LowPart = now.dwLowDateTime;
+        hourAgo.HighPart = now.dwHighDateTime;
+        hourAgo.QuadPart -= 36000000000ull;
+        const FILETIME then = {hourAgo.LowPart, hourAgo.HighPart};
+        SetFileTime(file, nullptr, nullptr, &then);
+        CloseHandle(file);
+    };
+    AsrSetup setup;
+    CHECK(pack.Find(&setup));
+
+    backdate();
+    CHECK(VerifyAsr(setup, true).empty());              /* hashed, and remembered */
+    CHECK(VerifyAsr(setup, true).empty());              /* the same file: the same answer */
+
+    std::string damaged = pack.standIn.content;
+    damaged[3] = '#';
+    Write(path, damaged);                               /* same size, new time of last write: it is looked at again */
+    CHECK(!VerifyAsr(setup, true).empty());
+    Write(path, pack.standIn.content);                  /* put right, and (being new) hashed again, not trusted for what it was */
+    CHECK(VerifyAsr(setup, true).empty());
 }
 
 TEST(Asr_TheHelperCountsAsInstalledWithItsManifestWhateverTheModels)

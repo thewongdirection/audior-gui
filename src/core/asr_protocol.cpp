@@ -152,6 +152,7 @@ bool Decode(Type type, const std::uint8_t *payload, std::size_t size, Message *m
         e.startSeconds = r.Get<double>();
         std::wstring text;
         if (!r.String(kTranscriptChars - 1, &text) || !r.done() || !ValidStream(stream) || isFinal > 1 ||
+            e.utterance >= kMaxUtterance ||
             !std::isfinite(e.startSeconds) || e.startSeconds < 0.0)
             return false;
         m->stream = static_cast<StreamId>(stream);

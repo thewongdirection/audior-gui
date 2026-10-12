@@ -32,6 +32,7 @@ namespace audiorgui::asr {
 
 constexpr std::uint16_t kVersion = 7;                   /* 7: Hello's language is an index into core/asr_languages.h; 6: it names the engine; 5: an event's text may be up to 511 characters (4: 255) */
 constexpr int           kSampleRate = 16000;            /* the audio the helper receives */
+constexpr std::uint32_t kMaxUtterance = 1u << 28;       /* an utterance's number is below this: the recorder adds to it, and must not wrap */
 
 /* The biggest payload either side sends; an Audio message carries at most
  * kMaxAudioSamples of them. */

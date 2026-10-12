@@ -57,7 +57,8 @@ struct SetupPlan {
 };
 
 /* What to do about speech models.  A PC that has any model installed is left as it is.  One that has
- * none is offered every model of `models` that suits its hardware (see AsrModel::gpuMemoryBytes), and
+ * none is offered every model of `models` that suits its hardware (see AsrModel::gpuMemoryBytes and
+ * gpuMemoryBelowBytes), and
  * the voice-activity model `vad` besides, unless it is installed already.  (`models` is the table; the
  * tests give it a small one.) */
 SetupPlan PlanSetup(const HardwareProfile &hw, bool backendPresent, const std::vector<const AsrModel *> &installed,

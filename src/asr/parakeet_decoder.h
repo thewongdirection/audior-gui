@@ -24,7 +24,7 @@ public:
 
     /* Loads the backends from `backendDir` and the model (a path in UTF-8).  `gpu`: use the graphics
      * card if there is a backend for it and a card it can use.  False, with a reason, if it cannot. */
-    bool Load(const std::string &path, bool gpu, const std::string &backendDir, std::string *error);
+    bool Load(const std::string &path, bool gpu, const std::wstring &backendDir, std::string *error);
 
     const std::string &Device() const override { return device_; }
     bool Decode(const std::int16_t *samples, std::size_t count, std::string *text) override;

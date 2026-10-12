@@ -133,6 +133,37 @@ TEST(Plan_ThePlanOfTheRealTableAlwaysOffersAModelToAPcWithNone)
     CHECK_EQ(plan.bytes, total);
 }
 
+TEST(Plan_TheRealTableOffersLargeV3OnlyToACardOfEightGiBAndParakeetToEveryone)
+{
+    const auto planFor = [](std::uint64_t card) {
+        HardwareProfile hw;
+        hw.vulkanDriver = true;
+        if (card)
+            hw.gpus.push_back({L"Test Card", card});
+        return PlanSetup(hw, true, {}, false);
+    };
+    const auto has = [](const SetupPlan &plan, const wchar_t *file) {
+        for (const AsrModel *m : plan.download) {
+            if (std::wstring(m->file) == file)
+                return true;
+        }
+        return false;
+    };
+    CHECK(has(planFor(8ull << 30), L"ggml-large-v3.bin"));
+    CHECK(!has(planFor((8ull << 30) - 1), L"ggml-large-v3.bin"));       /* a "8 GB" card that reports a little less is not enough */
+    CHECK(!has(planFor(0), L"ggml-large-v3.bin"));
+    CHECK(!has(planFor(8ull << 30), L"ggml-large-v3-q5_0.bin"));        /* a card for the full model is not offered the 5-bit one too */
+    CHECK(!has(planFor(64ull << 30), L"ggml-large-v3-q5_0.bin"));
+    CHECK(has(planFor((8ull << 30) - 1), L"ggml-large-v3-q5_0.bin"));   /* the one below it gets the 5-bit one, from 4 GiB */
+    CHECK(has(planFor(4ull << 30), L"ggml-large-v3-q5_0.bin"));
+    CHECK(!has(planFor((4ull << 30) - 1), L"ggml-large-v3-q5_0.bin"));
+    CHECK(!has(planFor(0), L"ggml-large-v3-q5_0.bin"));                 /* nor a PC with no card (too slow on the processor) */
+    for (std::uint64_t card : {0ull, 1ull << 30, 8ull << 30, 64ull << 30}) {
+        CHECK(has(planFor(card), L"ggml-parakeet-tdt-0.6b-v3-q8_0.bin"));
+        CHECK(!has(planFor(card), L"ggml-large-v3-turbo-q5_0.bin"));     /* used when it is there, but never offered */
+    }
+}
+
 TEST(Plan_AModelThatIsNotOfferedIsNeverPlannedForDownload)
 {
     AsrModel table[2] = {{L"a.bin", "x", 100, L"A", L"MIT", L"https://huggingface.co/x"},

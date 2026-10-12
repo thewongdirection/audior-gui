@@ -161,7 +161,7 @@ void TranscriptionSetup::Run(bool forced)
         Publish(stamped(DownloadingStatus(plan, i, before)));
         const auto progress = [&](ModelInstaller::Stage stage, std::uint64_t bytes) {
             Publish(stamped(stage == ModelInstaller::Stage::Checking ? CheckingStatus(plan, i)
-                                                                     : DownloadingStatus(plan, i, before + bytes)));
+                                                                     : DownloadingStatus(plan, i, before + (bytes < model.bytes ? bytes : model.bytes))));
         };
         std::wstring problem;
         const bool ok = env_.install(model, progress, [this] { return StopRequested(); }, &problem);

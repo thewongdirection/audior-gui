@@ -55,10 +55,14 @@ WhisperDecoder::~WhisperDecoder()
 }
 
 bool WhisperDecoder::Load(const std::string &path, audiorgui::SpeechLanguage language, bool gpu,
-                          const std::string &backendDir, std::string *error)
+                          const std::wstring &backendDir, std::string *error)
 {
     whisper_log_set(Silent, nullptr);                   /* the helper's error output goes nowhere anyway */
     const BackendInfo backends = LoadBackends(backendDir, gpu);
+    if (!backends.usable) {
+        *error = "The processor backend of the engine could not be loaded.";
+        return false;
+    }
     device_ = backends.device;
     discrete_ = backends.discrete;
     threads_ = backends.threads;

@@ -209,9 +209,10 @@ std::vector<Word> Words(const std::wstring &text)
 std::wstring Plain(const std::wstring &word)
 {
     std::size_t from = 0, to = word.size();
-    while (from < to && !IsSpoken(word[from]))
+    while (from < to && !IsSpoken(word[from]) && !IsUnspaced(word, from))      /* (a pair of surrogates may be a character) */
         ++from;
-    while (to > from && !IsSpoken(word[to - 1]))
+    while (to > from && !IsSpoken(word[to - 1]) &&
+           !(to - 1 > from && In(word[to - 1], 0xDC00, 0xDFFF) && IsUnspaced(word, to - 2)))
         --to;
     std::wstring plain = word.substr(from, to - from);
     for (wchar_t &c : plain)
@@ -233,6 +234,9 @@ std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found)
     /* A character of such a script is about half a word: a phrase has to be twice as long in them to count as long. */
     const std::size_t scale = unspaced * 2 > words.size() ? 2 : 1;
 
+    /* Words that are nothing but marks ("...", a run of notes) have nothing to compare: they are never the same. */
+    const auto same = [](const std::wstring &a, const std::wstring &b) { return !a.empty() && a == b; };
+
     *found = false;
     std::wstring out;
     for (std::size_t i = 0; i < words.size();) {
@@ -243,12 +247,12 @@ std::wstring RemoveRepeatedPhrases(const std::wstring &text, bool *found)
             const std::size_t inWords = (length + scale - 1) / scale;
             std::size_t repeats = 1;
             while (i + (repeats + 1) * length <= words.size() &&
-                   std::equal(plain.begin() + i, plain.begin() + i + length, plain.begin() + i + repeats * length))
+                   std::equal(plain.begin() + i, plain.begin() + i + length, plain.begin() + i + repeats * length, same))
                 ++repeats;
             /* A last copy that was cut short (the model ran out of room): the words after the phrase begin it again. */
             std::size_t tail = 0;
             const std::size_t after = i + repeats * length;
-            while (tail + 1 < length && after + tail < words.size() && plain[i + tail] == plain[after + tail])
+            while (tail + 1 < length && after + tail < words.size() && same(plain[i + tail], plain[after + tail]))
                 ++tail;
             const bool cutShort = after + tail == words.size();         /* the cut-off copy ends the text */
             const std::size_t extra = inWords >= kPartialCopyMinWords && tail >= kLongPhraseWords * scale && cutShort ? tail : 0;

@@ -28,7 +28,7 @@ jobs:
         run: |
           git fetch --no-tags origin main
           git diff --name-only origin/main...HEAD > "%RUNNER_TEMP%\changed.txt"
-          findstr /b /c:"src/ui/" "%RUNNER_TEMP%\changed.txt" >nul && (findstr /b /c:"docs/screenshots/" "%RUNNER_TEMP%\changed.txt" >nul || echo ::warning title=Documentation screenshots::src/ui changed but docs/screenshots did not. If the window looks different, run build.bat x64 screenshots and commit the pictures.)
+          findstr /b /c:"src/ui/" /c:"src/core/asr_models.h" /c:"src/core/asr_languages.h" /c:"src/core/setup_status.cpp" /c:"src/engine/simulated_engine.cpp" "%RUNNER_TEMP%\changed.txt" >nul && (findstr /b /c:"docs/screenshots/" "%RUNNER_TEMP%\changed.txt" >nul || echo ::warning title=Documentation screenshots::src/ui, or a file whose words are in the pictures such as the models, the languages, the notification text and the demo script, changed but docs/screenshots did not. If the window looks different, run build.bat x64 screenshots and commit the pictures.)
           exit /b 0
 
       - name: Build, check imports and test (x64 and x86)
@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path shots | Out-Null
-          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'transcript-saved', 'transcript-chinese', 'enhancing', 'enhanced', 'enhance-failed', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken', 'setup-scan', 'setup-ask', 'setup-download', 'setup-done', 'setup-failed', 'setup-declined') {
+          foreach ($scenario in 'idle', 'recording', 'mic-only', 'system-only', 'bluetooth-mic', 'clipping', 'saved', 'transcript', 'transcript-saved', 'transcript-chinese', 'model', 'catching-up', 'enhancing', 'enhanced', 'enhance-failed', 'error', 'named', 'typing', 'hotkeys', 'hotkey-taken', 'setup-scan', 'setup-ask', 'setup-download', 'setup-done', 'setup-failed', 'setup-declined') {
             $run = Start-Process -FilePath bin\x64\Audior-GUI.exe -Wait -PassThru `
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }

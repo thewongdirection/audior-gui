@@ -41,7 +41,7 @@ Either build it (`build.bat x64`), or download **audior-gui-windows** from the
 If Windows SmartScreen warns about an unknown publisher (the file is not code
 signed), choose *More info*, then *Run anyway*.
 
-Each run leaves its settings in `Audior-GUI.ini` for the next (section 5), so a row that
+Each run leaves its settings in `Audior-GUI.ini` for the next (section 6), so a row that
 says "type a file name" or "switch the format" is still in force in the rows after it.
 Start a section from the defaults when it matters: delete the file, or start the program
 with `--defaults` (which neither reads nor writes it).
@@ -99,7 +99,7 @@ These are done by hand: the build machines have no desktop shell to check them o
 | Start with a shortcut set to *Run: Minimized* | The window never shows; the icon is in the tray. |
 
 The saved shortcuts are the `startHotkey` and `stopHotkey` lines of `Audior-GUI.ini`
-beside the exe (section 5); delete the file to go back to Ctrl+Alt+R and Ctrl+Alt+S.
+beside the exe (section 6); delete the file to go back to Ctrl+Alt+R and Ctrl+Alt+S.
 
 ## 4. From a command prompt
 
@@ -114,11 +114,11 @@ Audior-GUI --stop                                         :: from another prompt
 audio, their volume should not drop when you start recording (the communications
 ducking opt-out).
 
-## 4. Live transcripts (only with the helper and a model)
+## 5. Live transcripts (only with the helper and a model)
 
 Skip this if you have not built the helper. Otherwise: `build.bat x64 asr` (or
 `vulkan`, for the graphics card too), keep `audior_asr.exe`, its DLLs and
-`audior_asr.sha256` next to `audior_gui.exe`, and put
+`audior_asr.sha256` next to `Audior-GUI.exe`, and put
 a model (`ggml-large-v3-turbo-q5_0.bin`, 547 MiB, from the whisper.cpp page on Hugging Face, see
 the README) in `%LOCALAPPDATA%\audior-gui\models`. Start the program: each pane
 now has a **Live transcription** switch. Without the helper or the model it is hidden.
@@ -141,9 +141,9 @@ now has a **Live transcription** switch. Without the helper or the model it is h
 | Choose *Chinese* in the language field of a Whisper model and play or say Mandarin | Chinese characters, all Simplified (*Traditional Chinese* makes them all Traditional), in the pane and in the `.txt` beside the recording (open it in Notepad: the characters are right), with no spaces between characters; a real repetition such as 谢谢谢谢 is kept. Some phrases in *Auto* may come out Traditional and some Simplified: that is why the choice is there. |
 | With Whisper large-v3 chosen (on the processor: *GPU* off) and *English* as the language, start a heavy job on all cores (a video encode, say) and talk for a minute | The pane turns amber, *Catching up · N s behind*, and text arrives after each pause rather than while you speak. If it stays six seconds behind for ten, it says *smaller model* and the turbo model takes over (if it is installed; it understands the same languages); when the load ends the pane says *Live* again. Parakeet never changes to a Whisper model, or the other way. The recording is unaffected throughout. |
 | Start with `--transcribe-model ggml-large-v3-turbo-q5_0.bin` while that file is not in the models folder | Recording does not start and the message names the missing model. |
-| Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--language <en|zh|...>] --realtime` | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
+| Run the helper alone: `audior_asr.exe --file speech.wav --model <model> [--vad <silero model>] [--language <en|zh|...>] [--cpu] [--parakeet] --realtime` (`--parakeet` for a Parakeet model file, which a Whisper loader would refuse) | Lines of `partial` and `final` text, as the recorder would receive them (the WAV must be 16 kHz, mono, 16-bit). |
 
-## 5. Remembered settings
+## 6. Remembered settings
 
 The settings of the last run live in `Audior-GUI.ini`, in the folder of `Audior-GUI.exe`.
 The unit tests cover reading and writing it; these are the parts that need the real window
@@ -164,20 +164,20 @@ and Windows itself.
 | Open the file in Notepad, set `format=wav`, `bitrate=100`, `folder=Recordings` and add a line `colour=blue`; save; start the program | WAV is selected, the bitrate is still 128 and the folder is still the one before: the lines that are not valid are skipped, the rest is used. |
 | Delete the file | The next start shows the defaults and the file is back after the next recording. |
 
-## 6. The start-up set-up of transcription (only with the helper)
+## 7. The start-up set-up of transcription (only with the helper)
 
 Needs `audior_asr.exe` with its list next to `Audior-GUI.exe`, and `audior_fetch.exe` with
 `audior_fetch.sha256` (`build.bat` makes the second pair; `build.bat x64 asr` the first). The
-downloads are 181 MiB (and 547 MiB, only on a PC whose card has 4 GiB or more of its own
-memory) and need a connection. To start over between rows: delete the files of the models
+downloads are 638 MiB for Parakeet and 864 KiB for the voice detector (and 2.9 GiB for Whisper large-v3,
+only on a PC whose card has 8 GiB or more of its own memory, or 1.0 GiB for its 5-bit version on a card of 4 GiB up to 8 GiB) and need a connection. To start over between rows: delete the files of the models
 folder, and the line `modelDownload=declined` of `Audior-GUI.ini` (set it to `ask`, or delete the file).
 
 | Try | Expect |
 |---|---|
 | Start the program with the models folder empty | A notification above the two panes: *Live transcripts need a speech model*, naming the files, their total size and `huggingface.co`, and saying which graphics card will be used (or why the processor will do the work). Nothing is downloaded yet (check the folder, and Task Manager's network column). The panel's Transcript section says *Waiting for your answer*. |
-| Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
+| Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more, its 5-bit version (and not the full one) if it has 4 GiB up to 8. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
 | Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Live transcription** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
-| Record with a transcript on straight afterwards | Works as in section 4. |
+| Record with a transcript on straight afterwards | Works as in section 5. |
 | Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |
 | Delete the models, start, press **Not now**, close the window (the answer is saved with the other settings when the program ends) | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |
 | Press **Download**, then **Cancel** while it runs | *Download cancelled*; no `.part` file is left; the next start asks again (a cancel is not a "not now"). |
@@ -201,7 +201,7 @@ unit tests only cover what it refuses before it touches the network):
 | The same with a path of a file that already exists | `E the file could not be created (80)`, and the existing file is untouched. |
 | Unplug the network in the middle of a large model | An `E` line, and the `.part` file is gone. |
 
-## 7. Voice enhancement
+## 8. Voice enhancement
 
 The unit tests prove the arithmetic (levels, noise, length, the limiter, cancelling, failing) on
 made-up speech; **only your ears can say whether it sounds better**. Use a recording of a real

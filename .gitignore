@@ -10,6 +10,11 @@ build/
 *.lib
 *.exe
 
+# Models and the helper's libraries are fetched or built, never committed
+*.bin
+*.gguf
+*.dll
+
 # Local test recordings and UI screenshots
 *.wav
 *.mp3

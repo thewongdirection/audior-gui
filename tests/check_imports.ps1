@@ -17,7 +17,7 @@
     - the download program audior_fetch.exe: winhttp, Windows' own HTTP library.
       It is the only file of the project that may touch the network, so winhttp
       is not on the base list: the recorder and the helper must never import it.
-  The recorder itself, audior_gui.exe, is never checked with it.
+  The recorder itself, Audior-GUI.exe, is never checked with it.
 
   dumpbin.exe must be on PATH, as it is after vcvarsall.bat.
 #>
@@ -36,7 +36,7 @@ $allowed = @(
     'd2d1', 'dwrite', 'windowscodecs', 'dxgi',
     'mmdevapi', 'avrt', 'mf', 'mfplat', 'mfreadwrite'
 )
-$allowedPattern = '^api-ms-win-(crt|core)-'
+$allowedPattern = '^api-ms-win-(crt|core)-[a-z0-9\-]+-l\d+-\d+-\d+$'      # an api-set name with its version, nothing more
 $allowed += @($Allow | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
 
 $bad = 0
@@ -47,7 +47,13 @@ foreach ($exe in $Executables) {
         $bad++
         continue
     }
-    $dlls = @($lines | ForEach-Object { if ($_ -match '^\s+([\w.\-]+)\.dll\s*$') { $Matches[1].ToLowerInvariant() } })
+    # Any name at all counts (one with a space or a '+' in it is not on the list either, so it is an offender below).
+    $dlls = @($lines | ForEach-Object { if ($_ -match '^\s+(\S.*?)\.dll\s*$') { $Matches[1].ToLowerInvariant() } })
+    if ($dlls.Count -eq 0) {
+        Write-Host "check_imports: no imports were found in $exe (every program imports something): not trusted"
+        $bad++
+        continue
+    }
     $offenders = @($dlls | Where-Object { ($allowed -notcontains $_) -and ($_ -notmatch $allowedPattern) })
 
     if ($offenders.Count -gt 0) {

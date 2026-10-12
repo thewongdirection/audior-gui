@@ -33,8 +33,9 @@
  * T13 memory, handles, threads and CPU over a recording, T14 the focus, T15 the live transcript
  * of a spoken sentence (the one test that runs the recording engine itself, in this process;
  * skipped unless the transcription helper and a model are in place), T16 a busy PC (the
- * transcript changes to a smaller model) and T17 the large model on the graphics card at the
- * pace of speech (both also need the large model, and no audio devices).
+ * transcript changes to a lighter model) and T17 the large model on the graphics card at the
+ * pace of speech (both also need the large model, and no audio devices), and T18 Parakeet at the
+ * pace of speech, on the processor and on the card (skipped without a Parakeet model).
  *
  * Not automatable (docs\FIRST-TEST.md): unplugging a device, a loud voice for the CLIP flag,
  * the communications-ducking opt-out, and how the window looks.
@@ -1100,14 +1101,26 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
     return run;
 }
 
+/* The heaviest Whisper model that is in the models folder (what T17 is about: whichever large one the PC has), or null. */
+const audiorgui::AsrModel *HeaviestWhisper()
+{
+    const std::wstring models = audiorgui::ModelsDirectory();
+    for (std::size_t i = audiorgui::kAsrModelCount; i-- > 0;) {
+        const audiorgui::AsrModel &m = audiorgui::kAsrModels[i];
+        if (m.engine == audiorgui::AsrEngine::Whisper && audiorgui::ModelInstalled(models, m.file))
+            return &m;
+    }
+    return nullptr;
+}
+
 void T17()
 {
     Section("T17 the large model on the graphics card, at the pace of speech");
-    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const audiorgui::AsrModel *big = HeaviestWhisper();
     audiorgui::AsrSetup setup;
     if (!big || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
                                     audiorgui::kAsrModelCount, big->file) || !setup.gpu) {
-        Info("skipped: it needs the helper with the Vulkan backend (build.bat vulkan) and the large (turbo) model");
+        Info("skipped: it needs the helper with the Vulkan backend (build.bat vulkan) and a large Whisper model");
         return;
     }
     std::vector<std::int16_t> speech;
@@ -1116,7 +1129,7 @@ void T17()
         return;
     }
     const double speechSeconds = static_cast<double>(speech.size()) / 16000.0;
-    Info(Fmt("%.0f s of speech, given at the pace of speech to the large model, on the graphics card and then on the processor", speechSeconds));
+    Info(Fmt("%.0f s of speech, given at the pace of speech to the large model (%ls), on the graphics card and then on the processor", speechSeconds, big->file));
 
     for (const bool gpu : {true, false}) {
         const char *label = gpu ? "graphics card" : "processor";

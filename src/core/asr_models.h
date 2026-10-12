@@ -34,6 +34,8 @@ struct AsrModel {
     AsrEngine      engine = AsrEngine::Whisper;
     bool           offered = true;          /* false: used if the user has put it in the models folder, but never
                                                offered for download (it is big, or a matter of taste) */
+    std::uint64_t  gpuMemoryBelowBytes = 0; /* not offered to a card with this much memory or more, which is offered
+                                               a bigger model of its kind instead (0: no such limit) */
 };
 
 /* In order of weight (a step down goes to the entries before); the first one installed is the one used
@@ -42,8 +44,14 @@ inline constexpr AsrModel kAsrModels[] = {
     {L"ggml-large-v3-turbo-q5_0.bin",
      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574041195,
      L"Large v3 turbo", L"MIT", L"https://huggingface.co/ggerganov/whisper.cpp", nullptr, 4ull << 30, AsrEngine::Whisper, false},
-    /* The top end, offered to a PC whose card has room for it: Whisper large-v3 at full precision.  The turbo model above
-     * is not offered any more (large-v3 is the better one and Parakeet the lighter) but is used when it is there. */
+    /* Whisper large-v3 in 5 bits: a third of the size and nearly the same words, for a card that is too small for the full-precision
+     * model below (a card of 8 GiB or more is offered that one instead).  The turbo model above is not offered any more
+     * (large-v3 is the better one and Parakeet the lighter) but is used when it is there. */
+    {L"ggml-large-v3-q5_0.bin",
+     "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1", 1081140203,
+     L"Large v3 (5-bit)", L"Apache-2.0", L"https://huggingface.co/ggerganov/whisper.cpp", nullptr, 4ull << 30, AsrEngine::Whisper, true,
+     8ull << 30},
+    /* The top end, offered to a PC whose card has room for it: Whisper large-v3 at full precision. */
     {L"ggml-large-v3.bin",
      "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2", 3095033483,
      L"Large v3", L"Apache-2.0", L"https://huggingface.co/ggerganov/whisper.cpp", nullptr, 8ull << 30},

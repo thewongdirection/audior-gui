@@ -26,7 +26,10 @@ TEST(Hardware_TheScanCanBeRepeated)
 
 TEST(Hardware_WhateverIsFoundCanBeJudged)
 {
-    const GpuVerdict v = JudgeGpu(ScanHardware(), true);
+    const HardwareProfile hw = ScanHardware();
+    const GpuVerdict v = JudgeGpu(hw, true);
     CHECK(v.use != GpuUse::NoBackend);                  /* the helper was said to have its backend */
+    CHECK_EQ(hw.gpus.empty(), v.use == GpuUse::NoCard); /* a card found is a card judged, and none found is none */
+    CHECK_EQ(v.use == GpuUse::NoCard, v.card.empty());
     CHECK(!DescribeGpu(v).empty());
 }

@@ -11,12 +11,22 @@ part of this repository.
 
 | Component | Used in | Licence | Source |
 |---|---|---|---|
-| whisper.cpp v1.9.5 | `whisper.dll` next to `audior_asr.exe`, in `third_party/whisper.cpp` | MIT | https://github.com/ggml-org/whisper.cpp |
+| whisper.cpp v1.9.5 (with its parakeet library) | `whisper.dll` and `parakeet.dll` next to `audior_asr.exe`, in `third_party/whisper.cpp` | MIT | https://github.com/ggml-org/whisper.cpp |
 | ggml (part of whisper.cpp), with its CPU and Vulkan backends | `ggml*.dll`, the same | MIT | https://github.com/ggml-org/ggml |
 
 The MIT licence text, with the copyright notice of the authors, is in
 `third_party/whisper.cpp/LICENSE`. It requires that notice to travel with copies
 of the code, so a binary release of `audior_asr.exe` ships with this file.
+
+Two pieces inside ggml's CPU backend (`ggml-cpu.dll`) have notices of their own, kept in their
+source files and repeated here, under the same MIT terms (permission to use, copy, modify, merge,
+publish, distribute, sublicense and sell, on the condition that the notice and these terms are
+included in all copies, and with no warranty of any kind):
+
+- the matrix-multiplication kernels of `ggml/src/ggml-cpu/llamafile/sgemm.cpp`:
+  Copyright 2024 Mozilla Foundation;
+- the YaRN rotary-embedding code in `ggml/src/ggml-cpu/ops.cpp`
+  (from https://github.com/jquesnelle/yarn): Copyright (c) 2023 Jeffrey Quesnelle and Bowen Peng.
 
 Building the Vulkan backend (`build.bat vulkan`) uses the LunarG Vulkan SDK's headers
 and shader compiler on the build machine; none of the SDK is part of this
@@ -33,7 +43,7 @@ uses a model only if it is one of those below, with the size and SHA-256 listed 
 | Model | Licence | Source |
 |---|---|---|
 | Whisper large-v3-turbo (`ggml-large-v3-turbo-q5_0.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
-| Whisper large-v3 (`ggml-large-v3.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
+| Whisper large-v3 (`ggml-large-v3.bin`) and its 5-bit version (`ggml-large-v3-q5_0.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
 | Parakeet TDT 0.6B v3 (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) | CC BY 4.0 | https://huggingface.co/ggml-org/parakeet-GGUF |
 
 The Whisper ones are OpenAI's weights converted to the ggml format by the whisper.cpp

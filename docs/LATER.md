@@ -5,7 +5,7 @@ blocks using it; each item is worth doing when it starts to matter.
 
 ## Not yet checked on real hardware
 
-- The microphone's own transcript, and the rest of `docs/FIRST-TEST.md` section 4 (killing
+- The microphone's own transcript, and the rest of `docs/FIRST-TEST.md` section 5 (killing
   the helper, a changed file, closing mid-sentence): a person has to speak into the
   microphone and watch the window. The system audio's transcript is checked by
   `hardware_tests.exe --only T15`, which makes the PC speak a sentence (CI has no audio
@@ -17,8 +17,8 @@ blocks using it; each item is worth doing when it starts to matter.
 ## Graphics card
 
 - An NVIDIA card (RTX 5080) and, forced with `GGML_VK_VISIBLE_DEVICES=1`, an AMD Radeon
-  iGPU have been tried: both transcribe, with the same text as the processor. The small
-  model keeps up on the iGPU, the large turbo one does not (slower than the processor).
+  iGPU have been tried: both transcribe, with the same text as the processor. A small
+  model kept up on the iGPU (it has since been dropped), the large turbo one did not (slower than the processor).
   Intel cards are untested; the first GPU in ggml's list is used, with no way to choose
   another.
 - The helper's processor time on a card of its own is now small: 54 s of speech with the
@@ -36,8 +36,8 @@ blocks using it; each item is worth doing when it starts to matter.
   from Whisper large-v3 to Parakeet, which is lighter, is not made (a step down goes to the
   models before it in the table, of the same engine only).
 - Parakeet understands 25 European languages. It was only tried with English speech (this PC
-  has English voices only); a recording in another language is worth trying, and the Auto /
-  English switch is greyed out for it by design.
+  has English voices only); a recording in another language is worth trying, and the language
+  field is greyed out for it by design.
 - There is no way yet to download one more model from the window once a model is installed
   (the start-up offer only comes when none is); a "More models" choice would do it.
 - The first use of the card takes about eight seconds (the driver builds its shader
@@ -57,7 +57,7 @@ blocks using it; each item is worth doing when it starts to matter.
 - Not yet checked on real hardware: the logic is unit-tested and the download program has
   fetched a real model, but the DXGI scan on real cards, the notification in the real
   window, the tray balloons and a download on a PC with the real helper are hand checks;
-  see `docs/FIRST-TEST.md`, section 5.
+  see `docs/FIRST-TEST.md`, section 7.
 - The graphics card is judged from DXGI (a card that is not the software renderer) and the
   presence of `vulkan-1.dll`; whether the card really works with the helper's Vulkan backend
   is only known when the helper runs, and it then falls back to the processor by itself. A
@@ -66,11 +66,12 @@ blocks using it; each item is worth doing when it starts to matter.
   offered Whisper large-v3 afterwards (there is no "More models" choice yet); and the large model
   on a card has not been timed on every card, which is also why it is only offered, never made the
   default.
-- **PCs without an 8 GiB card are offered Parakeet only** (since the small English model was dropped),
-  which has no Chinese, Japanese, Korean, Arabic or Hindi. Such a PC can use Whisper turbo if the person
-  puts the file in the models folder, but it is slow without a card (about seven cores for real-time
-  speech), and nothing lighter that understands those languages is in the table. A middle Whisper
-  model for them (a smaller multilingual one) is the open question.
+- **PCs without a card of 4 GiB or more are offered Parakeet only** (since the small English model was
+  dropped), which has no Chinese, Japanese, Korean, Arabic or Hindi. A card of 4 GiB up to 8 gets Whisper
+  large-v3 in 5 bits (`ggml-large-v3-q5_0.bin`), one of 8 GiB or more the full model. A PC with a weaker card
+  or none can use Whisper turbo if the person puts the file in the models folder, but it is slow without a card
+  (about seven cores for real-time speech), and nothing lighter that understands those languages is in the
+  table: a middle Whisper model for them (a smaller multilingual one) is the open question.
 - A download that is interrupted starts again from the beginning (no resume), and a proxy
   that needs a sign-in is not supported (WinHTTP uses the system's proxy settings, but the
   download program has no way to ask for credentials).
@@ -203,10 +204,48 @@ No blocker; each is worth doing when it starts to matter.
   (about eighty) can only be had through *Auto*. Cantonese (`yue`) has no entry because its prompt has not
   been tried.
 
+## Found in the code review of the whole transcription feature (2026-10-11)
+
+Five reviewers read the helper, the recorder's side, the set-up and download, the window and settings,
+and the tests, build and docs. What was fixed is in the commit; what follows is real but was left (none
+loses a recording).
+
+- **Downloads.** The address is `<source>/resolve/main/<file>`, a name that can be re-uploaded, while the
+  size and SHA-256 are fixed: an upstream re-upload makes every download fail its hash, looking like
+  tampering (pin `resolve/<commit>` per entry). The first failed file ends the whole run, so a flaky link
+  fails Large v3 and never tries Parakeet or the voice detector (smaller files first, or carry on past a
+  failure). A `.part` left by a killed recorder stays until the same model is installed again (sweep
+  `*.part` at start). The models folder is validated only after the person has pressed Download (the
+  checks of `ModelInstaller::Install` could run in `downloadProblem`). A file of the right size but wrong
+  content (a power loss, a manual copy that preallocates) counts as installed and is never repaired; the
+  download program has a per-read timeout but no overall one.
+- **The recorder's side.** A helper that floods the recorder can grow a transcript file without a limit (cap
+  bytes per file and events per second). When a helper dies or a step down happens, the phrase being spoken
+  stays shown as live (the file is right; the pane would need a closing event). After transcription has
+  stopped for good, the capture threads still run the decimator for nobody. A step-down fallback that
+  fails to start fails the whole transcription instead of going back to the model that worked.
+  A helper's Ready is trusted for the device it names: whisper may have fallen back to the processor
+  when the card's backend failed to start, and the full-window decoding is then slower than the short one.
+- **The helper.** Every Step copies the whole utterance so far (up to about 480 KB) onto the heap, once a second
+  a stream; a pooled buffer would do. The state (Live, Catching up) can reach the recorder out of order by a
+  second. Thai, Lao, Burmese and Khmer combining marks count as words of their own to the loop guard.
+- **The window.** The minimum window height with the Transcript section (734 DIP) is taller than the work area
+  of a 1366x768 screen (see the first section of the review of the saved settings above). The device lists are read
+  at start and when a drop-down opens, so a headset that becomes the default while the program runs
+  is not shown until then. At 900 DIP wide the status chip of a pane is cut to a few letters ("Transcript stopped" is
+  nearly invisible). Saved values are compared case-sensitively (`format=MP3` is ignored) and
+  `folder=\Rec` counts as a full path. A recording started from the command line (`-o`) asks for the card before
+  the start-up scan has said there is none. There is no flag for "system audio only" (the microphone checkbox).
+  There is no screenshot of the Parakeet state (language field greyed, "European languages"), and the default
+  picture size (1120x720) is shorter than the window with the Transcript section.
+- **The build.** `build.bat x64 asr` builds the helper after the tests have run, so on a first run every
+  `RealHelper_` test skips and later runs test the previous helper. `tests/ui_smoke.ps1` signals the shared
+  stop event and records on the real microphone (run it on a PC where nothing else records).
+
 ## Voice enhancement
 
 - **Not yet heard on real recordings.** The filters were tuned on made-up speech with noise of known
-  levels; the first thing to do is to listen to real lectures (see `docs/FIRST-TEST.md`, section 7)
+  levels; the first thing to do is to listen to real lectures (see `docs/FIRST-TEST.md`, section 8)
   and adjust the constants in `src/core/voice_enhancer.cpp` and `src/core/voice_dsp.cpp`: the
   denoiser floor (12 dB), the leveler's target (-17 dBFS) and its 2:1 ratio, the two EQ bands.
 - **Enhance a file that already exists** (a command-line option or a button), and a choice of how

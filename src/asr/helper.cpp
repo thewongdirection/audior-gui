@@ -63,6 +63,8 @@ std::wstring FileNameOf(const std::wstring &path)
     return slash == std::wstring::npos ? path : path.substr(slash + 1);
 }
 
+constexpr int kMissesToGiveUp = 3;
+
 /* ---- where the results go ---- */
 
 class IEvents {
@@ -275,6 +277,7 @@ private:
     void Work()
     {
         bool failed[kStreamCount] = {false, false};     /* streams the recorder was told are over: nothing more is decoded for them */
+        int misses[kStreamCount] = {0, 0};              /* decodes that failed in a row */
         for (;;) {
             DecodeJob job;
             {
@@ -291,11 +294,21 @@ private:
             const int s = StreamIndex(job.stream);
             if (failed[s])
                 continue;                               /* the recorder has been told this stream is over */
-            if (!decoder_.Decode(job.audio.data(), job.audio.size(), &utf8)) {
-                failed[s] = true;
-                events_.Problem(false, job.stream, L"The speech engine failed on some audio.");
+            bool decoded = false;
+            try {
+                decoded = decoder_.Decode(job.audio.data(), job.audio.size(), &utf8);
+            } catch (...) {                             /* (a state that cannot be made, no memory): the same as a failed decode */
+            }
+            if (!decoded) {
+                if (job.isFinal)                        /* the gap is shown, not a draft that never settles */
+                    events_.Text(job.stream, job.id, true, static_cast<double>(job.startSample) / asr::kSampleRate, L"…");
+                if (++misses[s] >= kMissesToGiveUp) {   /* one odd clip is not the end of the stream, a run of them is */
+                    failed[s] = true;
+                    events_.Problem(false, job.stream, L"The speech engine failed on some audio.");
+                }
                 continue;
             }
+            misses[s] = 0;
             bool looped = false;
             std::wstring text = RemoveRepeatedPhrases(CleanTranscript(WideFromUtf8(utf8)), &looped);
             if (looped && !job.isFinal)
@@ -338,16 +351,24 @@ bool Begin(const asr::Message &hello, IEvents &events, std::unique_ptr<IDecoder>
     const DWORD length = GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring dir(exe, length < MAX_PATH ? length : 0);
     dir.resize(dir.find_last_of(L'\\') == std::wstring::npos ? 0 : dir.find_last_of(L'\\'));
-    const std::string model = Utf8FromWide(hello.text), directory = Utf8FromWide(dir);
-    bool loaded;
-    if (hello.engine == AsrEngine::Parakeet) {
-        auto parakeet = std::make_unique<ParakeetDecoder>();
-        loaded = parakeet->Load(model, hello.gpu, directory, &error);
-        *decoder = std::move(parakeet);
-    } else {
-        auto whisper = std::make_unique<WhisperDecoder>();
-        loaded = whisper->Load(model, hello.language, hello.gpu, directory, &error);
-        *decoder = std::move(whisper);
+    if (dir.empty()) {                                  /* (never the root of the current drive, which is not the helper's folder) */
+        events.Problem(true, StreamId::Microphone, L"The engine cannot tell which folder it is in.");
+        return false;
+    }
+    const std::string model = Utf8FromWide(hello.text);
+    bool loaded = false;
+    try {
+        if (hello.engine == AsrEngine::Parakeet) {
+            auto parakeet = std::make_unique<ParakeetDecoder>();
+            loaded = parakeet->Load(model, hello.gpu, dir, &error);
+            *decoder = std::move(parakeet);
+        } else {
+            auto whisper = std::make_unique<WhisperDecoder>();
+            loaded = whisper->Load(model, hello.language, hello.gpu, dir, &error);
+            *decoder = std::move(whisper);
+        }
+    } catch (...) {                                     /* a backend that cannot start throws: the recorder is told, not left to guess */
+        error = "The engine could not start.";
     }
     if (!loaded) {
         events.Problem(true, StreamId::Microphone, WideFromUtf8(error));

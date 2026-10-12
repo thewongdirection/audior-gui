@@ -116,8 +116,8 @@ bool EndsWith(const std::wstring &text, const wchar_t *suffix)
 /* The number in the header `what` of the response; false if there is none. */
 bool NumberHeader(HINTERNET request, DWORD what, unsigned long long *value)
 {
-    wchar_t text[32];
-    DWORD size = sizeof(text);
+    wchar_t text[32] = {};
+    DWORD size = sizeof(text) - sizeof(wchar_t);                /* the terminator always has room */
     if (!WinHttpQueryHeaders(request, what, WINHTTP_HEADER_NAME_BY_INDEX, text, &size, WINHTTP_NO_HEADER_INDEX))
         return false;
     wchar_t *end = nullptr;
@@ -136,7 +136,7 @@ std::string Receive(HINTERNET request, HANDLE file, unsigned long long expected)
 {
     static char buffer[kBufferBytes];
     unsigned long long total = 0;
-    DWORD reportedAt = GetTickCount();
+    ULONGLONG reportedAt = GetTickCount64();
     for (;;) {
         DWORD got = 0;
         if (!WinHttpReadData(request, buffer, kBufferBytes, &got))
@@ -149,9 +149,9 @@ std::string Receive(HINTERNET request, HANDLE file, unsigned long long expected)
         if (!WriteFile(file, buffer, got, &written, nullptr) || written != got)
             return "the file could not be written (is the disk full?)";
         total += got;
-        if (GetTickCount() - reportedAt >= kReportMs) {
+        if (GetTickCount64() - reportedAt >= kReportMs) {
             Say(ProgressLine(total));
-            reportedAt = GetTickCount();
+            reportedAt = GetTickCount64();
         }
     }
     if (total != expected)
@@ -191,6 +191,8 @@ int Download(const std::wstring &url, const std::wstring &path, unsigned long lo
     if (request) {
         DWORD features = WINHTTP_DISABLE_COOKIES;               /* nothing here needs a cookie, and none is kept or sent */
         WinHttpSetOption(request.Get(), WINHTTP_OPTION_DISABLE_FEATURE, &features, sizeof(features));
+        DWORD logon = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;    /* and no server, whichever a redirect leads to, gets the user's logon */
+        WinHttpSetOption(request.Get(), WINHTTP_OPTION_AUTOLOGON_POLICY, &logon, sizeof(logon));
     }
     if (!request || !WinHttpSendRequest(request.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
         !WinHttpReceiveResponse(request.Get(), nullptr))
@@ -206,6 +208,8 @@ int Download(const std::wstring &url, const std::wstring &path, unsigned long lo
     if (file == INVALID_HANDLE_VALUE)
         return Fail("the file could not be created (" + std::to_string(GetLastError()) + ")");
     const std::string problem = Receive(request.Get(), file, expected);
+    if (problem.empty())
+        FlushFileBuffers(file);                                 /* on the disk, not only in the cache, when "done" is said */
     CloseHandle(file);                                          /* before "done" is said, so that it can be read */
     if (!problem.empty()) {
         DeleteFileW(path.c_str());

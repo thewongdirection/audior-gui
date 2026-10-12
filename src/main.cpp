@@ -125,8 +125,8 @@ bool ChooseDevice(const RecorderController &controller, DeviceKind kind, const s
     return false;
 }
 
-int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const SavedSettings &start,
-              const Preferences &prefs, ui::Gfx &gfx)
+int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const SavedSettings &saved,
+              const SavedSettings &start, const Preferences &prefs, ui::Gfx &gfx)
 {
     std::unique_ptr<IRecordingEngine> engine;
     if (cli.demo)
@@ -145,7 +145,9 @@ int RunWindow(HINSTANCE instance, int showCommand, const CliResult &cli, const S
     controller.SetDownloadDeclined(start.downloadDeclined);
     controller.AttachSetup(setup.get());
     controller.DropUnavailableDevices();                /* before --mic and --output-device, which are checked below */
-    if (!controller.CanTranscribe() && (start.recording.transcribeMicrophone || start.recording.transcribeSystem))
+    const bool askedForTranscript = (start.recording.transcribeMicrophone && !saved.recording.transcribeMicrophone) ||
+                                    (start.recording.transcribeSystem && !saved.recording.transcribeSystem);
+    if (!controller.CanTranscribe() && askedForTranscript)       /* (not for a switch an earlier run left on: Explorer would show a box at every start) */
         WriteError(setup ? L"Warning: no speech model is installed in " + ModelsDirectory() +
                                L" yet: live transcription starts once the window has downloaded one (see the README).\n"
                          : L"Warning: live transcription needs the helper audior_asr.exe next to this program and a model in " +
@@ -210,7 +212,7 @@ int Run(HINSTANCE instance, int showCommand)
         }
         return ui::RunScreenshot(gfx, options);
     }
-    return RunWindow(instance, showCommand, cli, start, prefs, gfx);
+    return RunWindow(instance, showCommand, cli, saved, start, prefs, gfx);
 }
 
 }  // namespace
