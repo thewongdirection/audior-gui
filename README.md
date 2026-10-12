@@ -159,14 +159,19 @@ voice:
    so that the noise between sentences is not raised;
 5. a look-ahead limiter at -1 dBFS, so that nothing clips.
 
-The bottom bar shows *Enhancing voice… 42%* with a bar under it, and **Cancel** gives the copy up
-(the half-written file is removed; the recording stays). Starting a new recording ends it too.
+The bottom bar shows *Enhancing voice… 42%* with a bar under it, and **Cancel enhancing** (where
+*Show in folder* is otherwise) gives the copy up: the half-written file is removed, the recording
+stays. Starting a new recording, closing the window or signing out ends it too.
 Plan on a minute or two of work per hour of audio on a modern PC, on one core at a priority below
 normal. Nothing is sent anywhere: it is arithmetic on your own files, with no library but Windows
 (an MP3 recording is decoded and encoded again by Media Foundation, so for the best result record
 WAV, or use a high bitrate). It is made for **speech**: it does not remove other people talking,
 echo or music, and it is no use on a recording with no pauses at all, where the program cannot
 tell the noise from the voice.
+
+![Just after Stop with Enhance voice on: the status pill says Enhancing, the bottom bar says Enhancing voice 40% with a progress bar under the saved file's name and a Cancel enhancing button, and the Enhance voice switch sits on the Format row of the panel](docs/screenshots/enhancing.png)
+
+![When the copy is made: the bottom bar says Saved, with the recording's name and that the enhanced copy is saved](docs/screenshots/enhanced.png)
 
 It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):

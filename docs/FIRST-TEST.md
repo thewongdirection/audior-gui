@@ -211,7 +211,7 @@ microphone), and keep the originals: the copy is always a separate file.
 | Try | Expect |
 |---|---|
 | Start the program for the first time (or with `--defaults`) | The **Enhance voice** switch beside **Format** is **off**. Switch it on, close, start again: it is on. |
-| Switch it on, record a minute of someone talking in a noisy room, press **Stop** | The recording is saved at once. The bottom bar says *Enhancing voice… N%* with a bar under it, the header pill says *Enhancing*, **Stop** has become **Cancel**, **Start** works. After a few seconds: *Saved · enhanced copy saved*, and `<name> - enhanced.mp3` is beside the recording. |
+| Switch it on, record a minute of someone talking in a noisy room, press **Stop** | The recording is saved at once. The bottom bar says *Enhancing voice… N%* with a bar under it, the header pill says *Enhancing*, a **Cancel enhancing** button stands where *Show in folder* was, **Stop** is greyed and **Start** works. After a few seconds: *Saved · enhanced copy saved*, and `<name> - enhanced.mp3` is beside the recording. |
 | Play the original and the copy one after the other, with headphones | The copy has less steady noise (the fan, the hiss) both in the pauses and under the words, the voice is at about the same loudness all through (quiet stretches brought up, loud ones brought down a little), and it is a little brighter. There is no "underwater" or bird-like twittering, nothing is cut off at the start of a word, and loud passages do not crackle. **Write down anything that sounds worse and where** (see `docs/LATER.md`). |
 | Compare the files in Explorer | The original has not changed (same size and time as before). The copy has the same duration, to the second. |
 | The same with **WAV** | The copy is a WAV file, the same length. |
@@ -219,7 +219,7 @@ microphone), and keep the originals: the copy is always a separate file.
 | Record something already clean (a headset in a quiet room, or a clip of a podcast played as system audio) | The copy sounds the same, a little louder or quieter at most; no pumping, no new noise. |
 | Record only system audio with nothing playing (silence), with the switch on | A copy is made; it is silent. |
 | Record with the same name again | The new recording is `<name> (2).mp3` and its copy `<name> (2) - enhanced.mp3`; nothing was overwritten. |
-| Press **Cancel** while it works | *Saved · enhancement cancelled*; no `- enhanced` file is left; the recording is there. |
+| Press **Cancel enhancing** while it works | *Saved · enhancement cancelled*; no `- enhanced` file is left; the recording is there. |
 | Press **Start** while it works | The recording begins at once; afterwards no `- enhanced` file of the earlier recording is there, and the new one has no enhancement text unless you switched it on. |
 | Close the window while it works | The program ends within a second or so; no half-written `- enhanced` file is left; the recording is intact. |
 | Two streams, **Two separate tracks** | Two copies: `<name>_mic - enhanced.mp3` and `<name>_system - enhanced.mp3`, each as long as its original. |
