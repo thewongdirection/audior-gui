@@ -83,6 +83,35 @@ TEST(Settings_ATranscriptIsSavedBesideTheRecordingUnderItsOwnName)
     CHECK_EQ(PlannedTranscriptFile(L"meeting (2).mp3", StreamId::Microphone), std::wstring(L"meeting (2) - microphone.txt"));
 }
 
+TEST(Settings_VoiceEnhancementIsOffByDefault)
+{
+    RecordingSettings s;
+    CHECK(!s.enhanceVoice);
+    CHECK(PlannedEnhancedFiles(s, L"C:\\Rec\\a.mp3").empty());               /* nothing is planned while it is off */
+    CHECK(Validate(Valid()).empty());
+}
+
+TEST(Settings_AnEnhancedCopyIsNamedBesideItsRecording)
+{
+    CHECK_EQ(EnhancedPath(L"C:\\Rec\\lecture.mp3"), std::wstring(L"C:\\Rec\\lecture - enhanced.mp3"));
+    CHECK_EQ(EnhancedPath(L"C:\\Rec\\lecture (2).wav"), std::wstring(L"C:\\Rec\\lecture (2) - enhanced.wav"));
+    CHECK_EQ(EnhancedPath(L"C:\\My.Calls\\lecture"), std::wstring(L"C:\\My.Calls\\lecture - enhanced"));   /* a dot in a folder is not an extension */
+
+    RecordingSettings s = Valid();
+    s.enhanceVoice = true;
+    const std::vector<std::wstring> one = PlannedEnhancedFiles(s, L"C:\\Rec\\a.mp3");
+    CHECK_EQ(one.size(), std::size_t(1));
+    CHECK_EQ(one[0], std::wstring(L"C:\\Rec\\a - enhanced.mp3"));
+
+    s.includeSystemAudio = true;                                    /* two tracks: a copy of each */
+    s.mixMode = MixMode::Separate;
+    s.format = Format::Wav;
+    const std::vector<std::wstring> two = PlannedEnhancedFiles(s, L"C:\\Rec\\a.wav");
+    CHECK_EQ(two.size(), std::size_t(2));
+    CHECK_EQ(two[0], std::wstring(L"C:\\Rec\\a_mic - enhanced.wav"));
+    CHECK_EQ(two[1], std::wstring(L"C:\\Rec\\a_system - enhanced.wav"));
+}
+
 TEST(Settings_Mp3BitrateList)
 {
     const int valid[] = {96, 112, 128, 160, 192, 224, 256, 320};

@@ -17,6 +17,7 @@ constexpr float kLinkWidth = 170.0f;        /* room for "Record system audio onl
 constexpr float kBannerHeight = 96.0f;      /* the set-up's notification: a title, up to three lines of detail, a progress bar */
 constexpr float kBannerButtonWidth = 112.0f, kBannerButtonHeight = 30.0f;
 constexpr float kNoteLinkWidth = 110.0f;    /* "Download…" in the Transcript section */
+constexpr float kEnhanceSwitchWidth = 140.0f;   /* "Enhance voice", on the FORMAT caption's row */
 
 const LaneStyle kMicStyle    = {L"Microphone",  theme::kMic};
 const LaneStyle kSystemStyle = {L"System audio", theme::kSystem};
@@ -63,7 +64,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
-    micTranscript_.text = systemTranscript_.text = L"Transcript";
+    micTranscript_.text = systemTranscript_.text = L"Live transcription";
     micTranscript_.accent = theme::kMic;
     micTranscript_.onChange = [this](bool on) {
         ctl_.Settings().transcribeMicrophone = on;
@@ -130,6 +131,12 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         ctl_.Settings().transcribeGpu = on;
         Refresh();
     };
+    enhanceSwitch_.text = L"Enhance voice";
+    enhanceSwitch_.accent = theme::kOk;
+    enhanceSwitch_.onChange = [this](bool on) {
+        ctl_.Settings().enhanceVoice = on;
+        Refresh();
+    };
     languageField_.style = Button::Style::Field;
     languageField_.onClick = [this] { ChooseLanguage(); };
     modelField_.style = Button::Style::Field;
@@ -160,6 +167,12 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
+    cancelButton_.text = L"Cancel enhancing";           /* not where Stop is: a second click on Stop must not land on it */
+    cancelButton_.onClick = [this] {
+        ctl_.CancelEnhancement();
+        Refresh();
+    };
+
     showButton_.text = L"Show in folder";
     showButton_.onClick = [this] {
         const Outcome &o = ctl_.LastOutcome();
@@ -180,8 +193,8 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     Widget *const order[kWidgetCount] = {
         &bannerPrimary_, &bannerSecondary_, &micCheck_, &micTranscript_, &micField_, &bluetoothLink_,
         &gain_[0].slider, &systemCheck_, &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_,
-        &fileNameBox_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
-        &gpuSwitch_, &languageField_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_};
+        &fileNameBox_, &enhanceSwitch_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
+        &gpuSwitch_, &languageField_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_, &cancelButton_};
     std::copy(order, order + kWidgetCount, all_);
 
     RefreshHotkeys();
@@ -332,13 +345,19 @@ void MainView::Refresh()
     modelField_.text = model ? model->label : std::wstring();
     modelField_.enabled = unlocked && ctl_.TranscriptModels().size() > 1;
 
+    enhanceSwitch_.visible = ctl_.CanEnhanceVoice();
+    enhanceSwitch_.checked = s.enhanceVoice;
+    enhanceSwitch_.enabled = unlocked;
+
+    const bool enhancing = ctl_.Enhancing();
     startButton_.enabled = ctl_.CanStart() && (s.includeMicrophone || s.includeSystemAudio);
     stopButton_.enabled = ctl_.CanStop();
     stopButton_.style = ctl_.CanStop() ? Button::Style::Prominent : Button::Style::Secondary;
+    cancelButton_.visible = enhancing;
 
     const Outcome &o = ctl_.LastOutcome();
     const bool kept = o.kind != Outcome::Kind::None && !o.files.empty() && ctl_.CanStart();
-    showButton_.visible = kept;          /* after a failure too: the captured audio is kept */
+    showButton_.visible = kept && !enhancing;   /* after a failure too: the captured audio is kept; Cancel takes its place meanwhile */
     savedName_.clear();
     if (kept && o.kind == Outcome::Kind::Saved) {
         savedName_ = FileName(o.files[0]);
@@ -348,6 +367,7 @@ void MainView::Refresh()
             savedName_ += L"  ·  " + o.transcriptProblem;
         else if (!o.transcripts.empty())                    /* beside the recording, one for each transcribed pane */
             savedName_ += L"  ·  " + std::to_wstring(o.transcripts.size()) + (o.transcripts.size() == 1 ? L" transcript" : L" transcripts");
+        savedName_ += EnhancedText(o);
     }
 
     summary_ = Summarize(ctl_.Active());
@@ -668,7 +688,8 @@ void MainView::Layout(float w, float h)
     captions_[1] = {L"FILE NAME", RectXYWH(x, y, iw, 14)};          y += 18;
     fileNameBox_.rect = RectXYWH(x, y, iw, 36);                     y += 36 + 4;
     nameHintRect_ = RectXYWH(x, y, iw, 18);                         y += 18 + 14;
-    captions_[2] = {L"FORMAT", RectXYWH(x, y, iw, 14)};             y += 18;
+    captions_[2] = {L"FORMAT", RectXYWH(x, y, iw, 14)};
+    enhanceSwitch_.rect = RectXYWH(x + iw - kEnhanceSwitchWidth, y - 4, kEnhanceSwitchWidth, 22);   y += 18;
     formatSeg_.rect = RectXYWH(x, y, 140, 36);
     bitrateField_.rect = RectXYWH(x + 152, y, iw - 152, 36);        y += 36 + 16;
     captions_[3] = {L"OUTPUT", RectXYWH(x, y, iw, 14)};             y += 18;
@@ -695,6 +716,7 @@ void MainView::Layout(float w, float h)
     stopButton_.rect = RectXYWH(startButton_.rect.left - 12 - 110, by, 110, 48);
     messageArea_ = RectF(kMargin + 210, transport_.top, stopButton_.rect.left - kGap, h);
     showButton_.rect = RectXYWH(messageArea_.right - 140, by + 8, 140, 32);
+    cancelButton_.rect = showButton_.rect;
 }
 
 /* ====================================================================== */
@@ -763,6 +785,9 @@ void MainView::PaintHeader(Painter &p)
         /* The dot pulses once a second. */
         dot = WithAlpha(kRecord, 0.55f + 0.45f * std::fabs(std::sin(kPi * static_cast<float>(ctl_.Stats().seconds))));
         label = L"Recording";
+    } else if (ctl_.Enhancing()) {
+        dot = kMic;
+        label = L"Enhancing";
     } else if (ctl_.LastOutcome().kind == Outcome::Kind::Failed) {
         dot = kError;
         label = L"Problem";
@@ -883,12 +908,14 @@ void MainView::PaintTransport(Painter &p)
     /* What is going on, in words. */
     const Outcome &o = ctl_.LastOutcome();
     const RecordingSettings &s = ctl_.Settings();
-    const float textRight = showButton_.visible ? showButton_.rect.left - kGap : messageArea_.right;
+    const float textRight = showButton_.visible || cancelButton_.visible ? showButton_.rect.left - kGap : messageArea_.right;
     const D2D1_RECT_F line1 = RectF(messageArea_.left, transport_.top + 22, textRight, transport_.top + 48);
     const D2D1_RECT_F line2 = RectF(messageArea_.left, transport_.top + 48, textRight, transport_.top + 72);
     if (recording) {
         p.Text(L"Recording", line1, Font::BodyStrong, kText);
         p.Text(summary_, line2, Font::Small, kTextMuted);
+    } else if (ctl_.Enhancing()) {
+        PaintEnhancement(p, line1, line2);
     } else if (!s.includeMicrophone && !s.includeSystemAudio) {      /* Start is off: say why */
         p.Text(L"Nothing to record", line1, Font::BodyStrong, kWarn);
         p.Text(L"Tick the microphone or system audio.", line2, Font::Small, kTextMuted);
@@ -904,12 +931,53 @@ void MainView::PaintTransport(Painter &p)
             p.Text(o.message.c_str() + colon + 2, static_cast<UINT32>(o.message.size() - colon - 2), line2,
                    Font::Small, kTextMuted);
         }
+    } else if (o.kind == Outcome::Kind::Saved && o.enhancement == EnhanceState::Failed) {
+        /* The recording is safe; the copy is not: what failed on the first line, why on the second. */
+        const std::size_t colon = o.enhanceProblem.find(L": "), from = colon == std::wstring::npos ? 0 : colon + 2;
+        p.Text(L"Saved, but the voice was not enhanced", line1, Font::BodyStrong, kWarn);
+        p.Text(o.enhanceProblem.c_str() + from, static_cast<UINT32>(o.enhanceProblem.size() - from), line2, Font::Small,
+               kTextMuted);
     } else if (o.kind == Outcome::Kind::Saved) {
         p.Text(L"Saved", line1, Font::BodyStrong, kOk);
         p.Text(savedName_, line2, Font::Small, kTextMuted);
     } else {
         p.Text(L"Ready to record", line1, Font::BodyStrong, kText);
         p.Text(summary_, line2, Font::Small, kTextMuted);
+    }
+}
+
+/* The clearer copy being made: how far it is, in words and in a bar under them.  The recording is already saved. */
+void MainView::PaintEnhancement(Painter &p, const D2D1_RECT_F &line1, const D2D1_RECT_F &line2)
+{
+    using namespace theme;
+    const float progress = std::min(1.0f, std::max(0.0f, ctl_.EnhanceProgress()));
+    const int percent = static_cast<int>(progress * 100.0f);
+    if (percent != enhanceKey_) {                           /* the text changes at most a hundred times */
+        enhanceKey_ = percent;
+        enhanceText_ = L"Enhancing voice…  " + std::to_wstring(percent) + L"%";
+    }
+    p.Text(enhanceText_, line1, Font::BodyStrong, kText);
+    p.Text(savedName_, line2, Font::Small, kTextMuted);
+
+    const D2D1_RECT_F track = RectF(line2.left, line2.bottom + 4.0f, line2.right, line2.bottom + 8.0f);
+    p.FillRound(track, 2.0f, kBorder);
+    const float filled = Width(track) * progress;
+    if (filled >= 1.0f)
+        p.FillRound(RectXYWH(track.left, track.top, std::max(filled, 4.0f), Height(track)), 2.0f, kMic);
+}
+
+/* What follows the recording's name once the clearer copy is made, given up, or being made. */
+std::wstring MainView::EnhancedText(const Outcome &o) const
+{
+    if (ctl_.Enhancing())
+        return L"  ·  recording saved";
+    switch (o.enhancement) {
+    case EnhanceState::Done:
+        return o.enhanced.size() == 1 ? L"  ·  enhanced copy saved" : L"  ·  enhanced copies saved";
+    case EnhanceState::Cancelled:
+        return L"  ·  enhancement cancelled";
+    default:                                                /* Failed has its own message; Off has nothing to say */
+        return std::wstring();
     }
 }
 

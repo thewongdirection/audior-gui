@@ -152,6 +152,18 @@ std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &s, con
     return files;
 }
 
+std::wstring EnhancedPath(const std::wstring &recordedFile) { return SuffixedPath(recordedFile, L" - enhanced"); }
+
+std::vector<std::wstring> PlannedEnhancedFiles(const RecordingSettings &s, const std::wstring &outputPath)
+{
+    std::vector<std::wstring> files;
+    if (s.enhanceVoice) {
+        for (const std::wstring &file : PlannedOutputFiles(s, outputPath))
+            files.push_back(EnhancedPath(file));
+    }
+    return files;
+}
+
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &s,
                                              const std::wstring &outputPath)
 {

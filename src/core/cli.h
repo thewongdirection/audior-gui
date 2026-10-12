@@ -12,7 +12,8 @@
  *
  * and a few of its own:  --system-amplify <0-300>,  --transcribe-mic,
  * --transcribe-system (live transcripts, with --transcribe-model <file> and
- * --transcribe-language <language>, --transcribe-cpu),  --defaults (see below),
+ * --transcribe-language <language>, --transcribe-cpu),  --enhance-voice (a clearer
+ * copy of the voice after the recording),  --defaults (see below),
  * --demo (simulated audio).  The options only preset the window; everything
  * stays editable there.
  *

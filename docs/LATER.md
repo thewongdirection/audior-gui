@@ -145,7 +145,7 @@ No blocker; each is worth doing when it starts to matter.
 - **Installed means the right size.** A model of the right size but wrong content (a power loss
   after the rename: the fetcher and the move do not flush) counts as installed, is never offered
   again, and fails its hash when a recording starts. Delete or re-offer a model that fails its hash.
-- **The banner.** At the smallest width (900 DIP) long texts are cut without an ellipsis (the
+- **The banner.** At the smallest width (940 DIP) long texts are cut without an ellipsis (the
   no-Vulkan sentence, "(3 of 3)" in the title); its height is not part of `ExtraMinHeight`, so a
   recording with the banner up has about two lines of transcript, and when it appears or goes
   after 10 s the cards move under the pointer. Every poll (4 a second while it moves) does a full
@@ -241,3 +241,27 @@ loses a recording).
 - **The build.** `build.bat x64 asr` builds the helper after the tests have run, so on a first run every
   `RealHelper_` test skips and later runs test the previous helper. `tests/ui_smoke.ps1` signals the shared
   stop event and records on the real microphone (run it on a PC where nothing else records).
+
+## Voice enhancement
+
+- **Not yet heard on real recordings.** The filters were tuned on made-up speech with noise of known
+  levels; the first thing to do is to listen to real lectures (see `docs/FIRST-TEST.md`, section 8)
+  and adjust the constants in `src/core/voice_enhancer.cpp` and `src/core/voice_dsp.cpp`: the
+  denoiser floor (12 dB), the leveler's target (-17 dBFS) and its 2:1 ratio, the two EQ bands.
+- **Enhance a file that already exists** (a command-line option or a button), and a choice of how
+  strong the noise reduction is. Today it only follows a recording the program has just made.
+- **Hum at 50/60 Hz** is only reduced as far as the denoiser reduces any steady noise (up to 12 dB);
+  a notch filter set from the analysis would do better.
+- **Speed.** The chain runs on one core, about 30 s per hour of audio in a test build made for speed on a development machine; the
+  program is built for size (`/O1`), so it is slower here. Packing the left and right channels
+  into one transform already halves the work; a second thread for the analysis would help most.
+- The copy of an MP3 is encoded again (a second generation of lossy coding); a WAV recording
+  has no such loss.
+- **Muted or gated recordings.** Digital silence counts among the quietest stretches the noise is
+  learned from (a clean recording with real silences must not have its quiet speech taken for noise),
+  so a recording with a second or so of it gets no noise reduction at all, even if the speech is
+  noisy. Telling "silence between sentences" from "a gate that closed" would need a look at the
+  levels around each silence.
+- The noise picture is the average of the 128 quietest stretches (a stretch is 21 ms), so on a long
+  recording it is taken from its very quietest pauses and slightly under-estimates a noise that
+  changes (an air conditioner that cycles); a rolling estimate would follow it.

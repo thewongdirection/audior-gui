@@ -2,6 +2,7 @@
 
 #include "devices.h"
 #include "mp3_sink.h"
+#include "pcm_reader.h"
 #include "wasapi_capture.h"
 #include "wav_sink.h"
 
@@ -13,6 +14,16 @@ void CreateOutputFolder(const std::wstring &filePath)
     if (slash != std::wstring::npos && slash > 0)
         CreateDirectoryW(filePath.substr(0, slash).c_str(), nullptr);       /* fails harmlessly if it exists */
 }
+
+namespace {
+
+/* A new file of the recording's format, which must not exist. */
+std::unique_ptr<IAudioSink> CreateSink(const RecordingSettings &s, const std::wstring &path, HRESULT *hr)
+{
+    return s.format == Format::Wav ? WavSink::Create(path, hr) : Mp3Sink::Create(path, s.mp3BitrateKbps, hr);
+}
+
+}  // namespace
 
 WasapiEngine::WasapiEngine() { RescanTranscription(); }
 
@@ -48,6 +59,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         return false;                                   /* asked for by name: better said now than not at all */
     }
 
+    enhance_.reset();                                   /* the previous recording's clearer copies: given up if unfinished */
     session_.reset();                                   /* the previous recording's threads and results */
     host_.reset();
     for (std::unique_ptr<TranscriptFile> &file : transcriptFiles_)
@@ -69,7 +81,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
     };
     auto sinks = [s](const std::wstring &path, HRESULT *hr) {
         CreateOutputFolder(path);                       /* only now that the devices opened */
-        return s.format == Format::Wav ? WavSink::Create(path, hr) : Mp3Sink::Create(path, s.mp3BitrateKbps, hr);
+        return CreateSink(s, path, hr);
     };
 
     const SessionPlan plan = MakePlan(s, outputPath);
@@ -106,6 +118,8 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         stopSignal_.Close();
         return false;
     }
+    run_ = s;
+    enhancePending_ = s.enhanceVoice;
     return true;
 }
 
@@ -120,6 +134,24 @@ void WasapiEngine::Stop()
             file->Close();                              /* and they are in the transcript files */
     }
     stopSignal_.Close();                                /* `--stop` finds nothing to stop from now on */
+    BeginEnhancement();
+}
+
+/* After a recording that ended well and holds some audio: its files are read again to make the clearer copies. */
+void WasapiEngine::BeginEnhancement()
+{
+    if (!enhancePending_ || !session_)
+        return;
+    enhancePending_ = false;
+    if (!session_->Failure().empty() || session_->Stats().bytesWritten == 0)
+        return;
+
+    std::vector<VoiceEnhanceJob::Task> tasks;
+    for (const std::wstring &file : session_->Files())
+        tasks.push_back({file, EnhancedPath(file)});
+    const RecordingSettings s = run_;
+    enhance_ = std::make_unique<VoiceEnhanceJob>(
+        OpenPcmReader, [s](const std::wstring &path, HRESULT *hr) { return CreateSink(s, path, hr); }, std::move(tasks));
 }
 
 std::vector<std::wstring> WasapiEngine::TranscriptFiles()

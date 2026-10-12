@@ -86,7 +86,7 @@ private:
     void    ShowTrayMenu(int x, int y);
     void    SyncTray();
     void    TellTrayAboutSetup();
-    void    ReportProblem();
+    void    ReportOutcome();
     std::wstring TrayTip() const;
 
     Gfx                &gfx_;
@@ -112,6 +112,7 @@ private:
     bool          timerOn_          = false;
     UINT          timerMs_          = 0;            /* the rate it was last set to */
     bool          wasMoving_        = false;        /* something moved at the last tick: one more frame settles it */
+    int           enhancePercent_   = -1;           /* how far the enhancement was at the last tick (-1: none), to draw when it changes */
     bool          trackingMouse_    = false;
     bool          releasingCapture_ = false;       /* we, not the system, are ending the capture */
     LARGE_INTEGER lastTick_      = {};

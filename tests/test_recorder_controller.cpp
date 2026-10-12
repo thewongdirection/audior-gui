@@ -1117,3 +1117,233 @@ TEST(Setup_AQuietSetupShowsNothingButKeepsWhatItFoundOut)
     CHECK(rig.ctl.Setup().canRetry);                                /* the Transcript section offers the download */
     CHECK(!rig.ctl.SetupBusy());
 }
+
+/* ---- the voice enhancement after a recording ---- */
+
+namespace {
+
+const wchar_t kLecture[] = L"C:\\Rec\\Audior-GUI-20261010-153045.mp3";                  /* what the rig's clock names a recording */
+const wchar_t kLectureCopy[] = L"C:\\Rec\\Audior-GUI-20261010-153045 - enhanced.mp3";
+
+/* An engine that cannot write the clearer copies. */
+class PlainEngine : public SimulatedEngine {
+public:
+    using SimulatedEngine::SimulatedEngine;
+    bool CanEnhanceVoice() const override { return false; }
+};
+
+}  // namespace
+
+TEST(Enhance_IsOffByDefaultAndARecordingEndsAtOnce)
+{
+    Rig rig;
+    CHECK(rig.ctl.CanEnhanceVoice());
+    CHECK(!rig.ctl.Settings().enhanceVoice);
+    rig.Record();
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Off);
+    CHECK(rig.ctl.LastOutcome().enhanced.empty());
+}
+
+TEST(Enhance_FollowsARecordingAndFillsInTheOutcome)
+{
+    Rig rig;
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(1.0);
+    rig.ctl.Stop();
+
+    CHECK(rig.ctl.GetPhase() == Phase::Enhancing);                  /* the recording is saved; the copy is being made */
+    CHECK(rig.ctl.Enhancing());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Saved);
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Off);
+    CHECK(rig.ctl.LastOutcome().enhanced.empty());
+    CHECK(rig.ctl.CanStart() && !rig.ctl.CanStop() && !rig.ctl.SettingsLocked());
+
+    rig.Run(1.5);
+    CHECK(rig.ctl.Enhancing());
+    CHECK(rig.ctl.EnhanceProgress() > 0.3f && rig.ctl.EnhanceProgress() < 0.7f);
+    rig.Run(2.0);
+
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    const Outcome &outcome = rig.ctl.LastOutcome();
+    CHECK(outcome.kind == Outcome::Kind::Saved);
+    CHECK(outcome.enhancement == EnhanceState::Done);
+    CHECK(outcome.enhanceProblem.empty());
+    CHECK_EQ(outcome.files.size(), std::size_t(1));
+    CHECK_EQ(outcome.files[0], std::wstring(kLecture));
+    CHECK_EQ(outcome.enhanced.size(), std::size_t(1));
+    CHECK_EQ(outcome.enhanced[0], std::wstring(kLectureCopy));
+}
+
+TEST(Enhance_EachSeparateTrackGetsItsCopy)
+{
+    Rig rig;
+    rig.ctl.Settings().enhanceVoice = true;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    rig.Run(4.0);
+    const Outcome &outcome = rig.ctl.LastOutcome();
+    CHECK(outcome.enhancement == EnhanceState::Done);
+    CHECK_EQ(outcome.enhanced.size(), std::size_t(2));
+    CHECK_EQ(outcome.enhanced[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045_mic - enhanced.mp3"));
+    CHECK_EQ(outcome.enhanced[1], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045_system - enhanced.mp3"));
+}
+
+TEST(Enhance_CancellingKeepsTheRecordingAndGivesUpTheCopy)
+{
+    Rig rig;
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    rig.Run(1.0);
+    CHECK(rig.ctl.Enhancing());
+
+    rig.ctl.CancelEnhancement();
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Saved);
+    CHECK_EQ(rig.ctl.LastOutcome().files.size(), std::size_t(1));
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Cancelled);
+    CHECK(rig.ctl.LastOutcome().enhanced.empty());
+
+    rig.ctl.CancelEnhancement();                                    /* with nothing to cancel it does nothing */
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Cancelled);
+    rig.Run(4.0);
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Cancelled);       /* and it does not come back */
+}
+
+TEST(Enhance_StartingARecordingEndsTheEnhancementAtOnce)
+{
+    Rig rig;
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    rig.Run(1.0);
+    CHECK(rig.ctl.Enhancing());
+
+    rig.ctl.Settings().enhanceVoice = false;
+    CHECK(rig.ctl.Start());                                         /* the next recording does not wait */
+    CHECK(rig.ctl.GetPhase() == Phase::Recording);
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::None);       /* the outcome is the new recording's */
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Off);
+    rig.Run(5.0);                                                   /* the old copy does not turn up in it */
+    rig.ctl.Stop();
+    CHECK(rig.ctl.LastOutcome().enhanced.empty());
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Off);
+}
+
+TEST(Enhance_ShuttingDownLeavesNoCopyBehind)
+{
+    Rig rig;
+    rig.ctl.Shutdown();                                             /* idle: nothing happens */
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::None);
+
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Shutdown();                                             /* recording: finalised, and its copy not even begun */
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Saved);
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Cancelled);
+    CHECK(rig.engine.EnhancedFiles().empty());
+
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    rig.Run(1.0);
+    CHECK(rig.ctl.Enhancing());
+    rig.ctl.Shutdown();                                             /* enhancing: given up */
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Cancelled);
+}
+
+TEST(Enhance_AFailureIsReportedAndTheRecordingStaysSaved)
+{
+    Rig rig;
+    rig.engine.FailEnhancement(L"The voice could not be enhanced: the disk is full.");
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    rig.Run(4.0);
+
+    const Outcome &outcome = rig.ctl.LastOutcome();
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(outcome.kind == Outcome::Kind::Saved);
+    CHECK(outcome.enhancement == EnhanceState::Failed);
+    CHECK_EQ(outcome.enhanceProblem, std::wstring(L"The voice could not be enhanced: the disk is full."));
+    CHECK(outcome.enhanced.empty());
+    CHECK_EQ(outcome.files.size(), std::size_t(1));
+
+    CHECK(rig.ctl.Start());                                         /* and it was for that recording only */
+    rig.ctl.Stop();
+    rig.Run(4.0);
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Done);
+}
+
+TEST(Enhance_ARecordingThatFailedByItselfGetsNoCopy)
+{
+    Rig rig;
+    rig.engine.FailAfter(1.0, L"The microphone was unplugged.");
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(2.0);
+    CHECK(!rig.ctl.Enhancing());
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(rig.ctl.LastOutcome().enhancement == EnhanceState::Off);
+    CHECK(rig.ctl.LastOutcome().enhanced.empty());
+}
+
+TEST(Enhance_TheCopysNameIsNumberedWithTheRecordings)
+{
+    Rig rig;
+    rig.existing.insert(kLectureCopy);                              /* an old copy, though its recording is gone */
+    CHECK(rig.ctl.Start());                                         /* not asked for: the recording keeps its name */
+    rig.ctl.Stop();
+    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(kLecture));
+
+    rig.ctl.Settings().enhanceVoice = true;
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 (2).mp3"));
+    rig.Run(4.0);
+    CHECK_EQ(rig.ctl.LastOutcome().enhanced[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 (2) - enhanced.mp3"));
+}
+
+TEST(Enhance_ACopyWhosePathWouldBeTooLongStopsTheStart)
+{
+    Rig rig;
+    rig.ctl.Settings().fileName = L"rec";
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(244, L'a');         /* the recording's path is 255 characters */
+    CHECK(rig.ctl.Start());                                         /* and fits ... */
+    rig.ctl.Stop();
+
+    rig.ctl.Settings().enhanceVoice = true;                         /* ... but its copy, 11 characters longer, does not */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.GetPhase() == Phase::Idle);
+    CHECK(rig.ctl.LastOutcome().kind == Outcome::Kind::Failed);
+    CHECK(rig.ctl.LastOutcome().message.find(L"enhanced copy") != std::wstring::npos);
+    CHECK(rig.ctl.LastOutcome().message.find(L"259") != std::wstring::npos);
+}
+
+TEST(Enhance_IsLeftOutWhereTheEngineCannotDoIt)
+{
+    double now = 0.0;
+    LocalTime time;
+    PlainEngine engine([&now] { return now; });
+    RecorderController ctl(engine, [&time] { return time; });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().enhanceVoice = true;                             /* saved from a run on another engine, say */
+    CHECK(!ctl.CanEnhanceVoice());
+    CHECK(ctl.Start());
+    CHECK(!ctl.Active().enhanceVoice);
+    now = 1.0;
+    ctl.Stop();
+    CHECK(!ctl.Enhancing());
+    CHECK(ctl.LastOutcome().enhancement == EnhanceState::Off);
+}

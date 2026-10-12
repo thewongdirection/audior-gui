@@ -101,7 +101,7 @@ TEST(SavedSettings_ABadValueKeepsTheDefaultAndSpoilsNothingElse)
         L"microphone=",         L"microphoneGain=301",  L"microphoneGain=-5",   L"microphoneGain=1x",
         L"systemGain=9999999999", L"systemGain=",       L"mixMicrophone=101",   L"mixMicrophone=one",
         L"mix=blend",           L"systemAudio=1",       L"transcribeSystem=",   L"transcribeGpu=gpu",
-        L"transcribeMicrophone=yes", L"transcribeLanguage=klingon", L"transcribeModel=unknown.bin",
+        L"transcribeMicrophone=yes", L"enhanceVoice=maybe", L"enhanceVoice=",    L"transcribeLanguage=klingon", L"transcribeModel=unknown.bin",
         L"transcribeModel=..\\ggml-large-v3.bin",
         L"fileName=a:b",        L"fileName=CON.mp3",    L"fileName=.mp3",       L"folder=",
         L"startHotkey=Ctrl+Banana", L"startHotkey=",    L"stopHotkey=S",        L"stopHotkey=Ctrl",
@@ -112,6 +112,15 @@ TEST(SavedSettings_ABadValueKeepsTheDefaultAndSpoilsNothingElse)
         expected.recording.mp3BitrateKbps = 224;                               /* the good line after it */
         ExpectSame(s, expected);
     }
+}
+
+TEST(SavedSettings_VoiceEnhancementIsOffUnlessTheFileSaysOn)
+{
+    CHECK(!Defaults().recording.enhanceVoice);
+    CHECK(!Read(L"").recording.enhanceVoice);                                  /* a file from before it existed */
+    CHECK(Read(L"enhanceVoice=on\r\n").recording.enhanceVoice);
+    CHECK(!Read(L"enhanceVoice=on\r\nenhanceVoice=off\r\n").recording.enhanceVoice);
+    CHECK(Has(FormatSavedSettings(Defaults()), L"enhanceVoice=off\r\n"));
 }
 
 TEST(SavedSettings_TheEdgesOfTheRangesAreAccepted)

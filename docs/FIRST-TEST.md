@@ -73,7 +73,7 @@ with `--defaults` (which neither reads nor writes it).
 | Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
 | System audio gain 150% | The system waveform is taller and the file louder. |
 | Untick **Microphone**, keep **System audio** | Only the system file/lane. |
-| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Transcript** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
+| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Live transcription** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
 | Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
 | Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
@@ -121,11 +121,11 @@ Skip this if you have not built the helper. Otherwise: `build.bat x64 asr` (or
 `audior_asr.sha256` next to `Audior-GUI.exe`, and put
 a model (`ggml-large-v3-turbo-q5_0.bin`, 547 MiB, from the whisper.cpp page on Hugging Face, see
 the README) in `%LOCALAPPDATA%\audior-gui\models`. Start the program: each pane
-now has a **Transcript** switch. Without the helper or the model it is hidden.
+now has a **Live transcription** switch. Without the helper or the model it is hidden.
 
 | Try | Expect |
 |---|---|
-| Switch the microphone's transcript on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
+| Switch the microphone's **Live transcription** on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
 | Record a minute with a transcript switched on, speak or play speech (another language too, with a multilingual model and *Auto*), stop | Beside the recording a text file appears for each pane that was spoken on: `<name> - microphone.txt` / `<name> - system audio.txt`. It opens in Notepad with right letters and accents, one `[0:06] words` line per phrase in order; the status after Stop says *1 transcript* (*2 transcripts*). A pane nobody spoke in leaves no file. Recording again with the same name never overwrites it (` (2)`). |
 | Both streams on, play a video with speech while you speak | Each pane shows its own stream's words. The computer stays usable; recording and the waveforms do not stutter. |
 | A long stretch of talking (a minute or more) | Old lines scroll away upwards; the program's memory does not keep growing (Task Manager). |
@@ -176,7 +176,7 @@ folder, and the line `modelDownload=declined` of `Audior-GUI.ini` (set it to `as
 |---|---|
 | Start the program with the models folder empty | A notification above the two panes: *Live transcripts need a speech model*, naming the files, their total size and `huggingface.co`, and saying which graphics card will be used (or why the processor will do the work). Nothing is downloaded yet (check the folder, and Task Manager's network column). The panel's Transcript section says *Waiting for your answer*. |
 | Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more, its 5-bit version (and not the full one) if it has 4 GiB up to 8. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
-| Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Transcript** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
+| Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Live transcription** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
 | Record with a transcript on straight afterwards | Works as in section 5. |
 | Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |
 | Delete the models, start, press **Not now**, close the window (the answer is saved with the other settings when the program ends) | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |
@@ -200,6 +200,33 @@ unit tests only cover what it refuses before it touches the network):
 | The same for a file that does not exist on the server | `E the server answered with HTTP status 404`, no file. |
 | The same with a path of a file that already exists | `E the file could not be created (80)`, and the existing file is untouched. |
 | Unplug the network in the middle of a large model | An `E` line, and the `.part` file is gone. |
+
+## 8. Voice enhancement
+
+The unit tests prove the arithmetic (levels, noise, length, the limiter, cancelling, failing) on
+made-up speech; **only your ears can say whether it sounds better**. Use a recording of a real
+lecture, meeting or call made in a room with some background noise (a fan, a street, a bad
+microphone), and keep the originals: the copy is always a separate file.
+
+| Try | Expect |
+|---|---|
+| Start the program for the first time (or with `--defaults`) | The **Enhance voice** switch beside **Format** is **off**. Switch it on, close, start again: it is on. |
+| Switch it on, record a minute of someone talking in a noisy room, press **Stop** | The recording is saved at once. The bottom bar says *Enhancing voice… N%* with a bar under it, the header pill says *Enhancing*, a **Cancel enhancing** button stands where *Show in folder* was, **Stop** is greyed and **Start** works. After a few seconds: *Saved · enhanced copy saved*, and `<name> - enhanced.mp3` is beside the recording. |
+| Play the original and the copy one after the other, with headphones | The copy has less steady noise (the fan, the hiss) both in the pauses and under the words, the voice is at about the same loudness all through (quiet stretches brought up, loud ones brought down a little), and it is a little brighter. There is no "underwater" or bird-like twittering, nothing is cut off at the start of a word, and loud passages do not crackle. **Write down anything that sounds worse and where** (see `docs/LATER.md`). |
+| Compare the files in Explorer | The original has not changed (same size and time as before). The copy has the same duration, to the second. |
+| The same with **WAV** | The copy is a WAV file, the same length. |
+| Record something very quiet (talk softly far from the microphone) | The copy is clearly louder and not much noisier than the original sounded. |
+| Record something already clean (a headset in a quiet room, or a clip of a podcast played as system audio) | The copy sounds the same, a little louder or quieter at most; no pumping, no new noise. |
+| Record only system audio with nothing playing (silence), with the switch on | A copy is made; it is silent. |
+| Record with the same name again | The new recording is `<name> (2).mp3` and its copy `<name> (2) - enhanced.mp3`; nothing was overwritten. |
+| Press **Cancel enhancing** while it works | *Saved · enhancement cancelled*; no `- enhanced` file is left; the recording is there. |
+| Press **Start** while it works | The recording begins at once; afterwards no `- enhanced` file of the earlier recording is there, and the new one has no enhancement text unless you switched it on. |
+| Close the window while it works | The program ends within a second or so; no half-written `- enhanced` file is left; the recording is intact. |
+| Two streams, **Two separate tracks** | Two copies: `<name>_mic - enhanced.mp3` and `<name>_system - enhanced.mp3`, each as long as its original. |
+| An hour-long recording | The copy takes a minute or two. Task Manager: `Audior-GUI.exe` uses about one core and its memory does not grow with the length. The window stays responsive. |
+| Record onto a nearly full drive | The recording is saved; the bottom bar says *Saved, but the voice was not enhanced* and why (the disk is full); no partial copy is left. |
+| Minimize to the tray while it works | The tray tip says *enhancing the voice N%*; a balloon says when the copy is ready (or could not be made). |
+| `Audior-GUI --enhance-voice` | The switch is on. Without the option it is as it was left. |
 
 ## If something is wrong
 

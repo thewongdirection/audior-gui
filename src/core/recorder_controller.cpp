@@ -65,15 +65,19 @@ std::vector<std::wstring> RecorderController::PlannedTranscripts(const std::wstr
     return engine_.CanTranscribe() ? PlannedTranscriptFiles(settings_, path) : std::vector<std::wstring>();
 }
 
+std::vector<std::wstring> RecorderController::PlannedEnhanced(const std::wstring &path) const
+{
+    return engine_.CanEnhanceVoice() ? PlannedEnhancedFiles(settings_, path) : std::vector<std::wstring>();
+}
+
 bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
 {
-    for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
-        if (fileExists_(file))
-            return true;
-    }
-    for (const std::wstring &file : PlannedTranscripts(path)) {                      /* a transcript keeps its recording's name */
-        if (fileExists_(file))
-            return true;
+    for (const std::vector<std::wstring> &files :       /* a transcript and an enhanced copy keep their recording's name */
+         {PlannedOutputFiles(settings_, path), PlannedTranscripts(path), PlannedEnhanced(path)}) {
+        for (const std::wstring &file : files) {
+            if (fileExists_(file))
+                return true;
+        }
     }
     return false;
 }
@@ -82,7 +86,7 @@ bool RecorderController::AnyPlannedFileExists(const std::wstring &path) const
  * extension), else "Audior-GUI-<time>", in the output folder.  A recording never
  * replaces an existing file, so a taken name gets " (2)", " (3)" ... before
  * its extension; with two tracks, a taken "_mic" or "_system" file counts, and
- * so does a taken transcript file, so that a recording and its transcripts are numbered alike. */
+ * so does a taken transcript file or enhanced copy, so that a recording and what goes with it are numbered alike. */
 std::wstring RecorderController::NextOutputPath()
 {
     const std::wstring name = settings_.fileName.empty()
@@ -103,6 +107,8 @@ bool RecorderController::Start()
 {
     if (!CanStart())
         return false;
+    if (Enhancing())                                    /* recording comes first; the copy would have to wait */
+        CancelEnhancement();
 
     outcome_ = Outcome();
     const std::wstring problem = Validate(settings_);
@@ -114,28 +120,26 @@ bool RecorderController::Start()
 
     const std::wstring path = NextOutputPath();
     const std::wstring limit = std::to_wstring(kMaxOutputPathChars);
-    for (const std::wstring &file : PlannedOutputFiles(settings_, path)) {
-        if (file.size() > kMaxOutputPathChars) {
-            outcome_.kind = Outcome::Kind::Failed;
-            outcome_.message = L"The output path is too long (the limit is " + limit +
-                               L" characters). Choose a shorter folder or file name.";
+    const auto tooLong = [&](const std::vector<std::wstring> &files, const wchar_t *what, const wchar_t *advice) {
+        if (std::none_of(files.begin(), files.end(), [](const std::wstring &f) { return f.size() > kMaxOutputPathChars; }))
             return false;
-        }
-    }
-    for (const std::wstring &file : PlannedTranscripts(path)) {                     /* their names are the longer ones */
-        if (file.size() > kMaxOutputPathChars) {
-            outcome_.kind = Outcome::Kind::Failed;
-            outcome_.message = L"The transcript's path would be too long (the limit is " + limit +
-                               L" characters). Choose a shorter folder or file name, or switch the Transcript off.";
-            return false;
-        }
-    }
+        outcome_.kind = Outcome::Kind::Failed;
+        outcome_.message = std::wstring(what) + L" too long (the limit is " + limit + L" characters). " + advice;
+        return true;
+    };
+    if (tooLong(PlannedOutputFiles(settings_, path), L"The output path is", L"Choose a shorter folder or file name.") ||
+        tooLong(PlannedTranscripts(path), L"The transcript's path would be",       /* their names are the longer ones */
+                L"Choose a shorter folder or file name, or switch the Transcript off.") ||
+        tooLong(PlannedEnhanced(path), L"The enhanced copy's path would be",
+                L"Choose a shorter folder or file name, or switch Enhance voice off."))
+        return false;
 
     RecordingSettings run = settings_;
     if (!engine_.CanTranscribe())                       /* no transcript in this recording: a model that arrives during it is for the next */
         run.transcribeMicrophone = run.transcribeSystem = false;
     if (gpuUnusable_)                                   /* what the scan found out about this PC, not the user's choice */
         run.transcribeGpu = false;
+    run.enhanceVoice = run.enhanceVoice && engine_.CanEnhanceVoice();
     std::wstring error;
     if (!engine_.Start(run, path, &error)) {
         outcome_.kind = Outcome::Kind::Failed;
@@ -220,6 +224,52 @@ void RecorderController::Finish()
     outcome_.files = engine_.OutputFiles();
     outcome_.transcripts = engine_.TranscriptFiles();
     outcome_.transcriptProblem = engine_.TranscriptFileProblem();
+    phase_ = Phase::Idle;
+
+    if (active_.enhanceVoice && outcome_.kind == Outcome::Kind::Saved) {        /* the engine has begun the clearer copies */
+        const EnhanceStatus status = engine_.Enhancement();
+        if (status.state == EnhanceState::Working) {
+            enhanceProgress_ = status.progress;
+            phase_ = Phase::Enhancing;
+        } else {
+            TakeEnhancement(status);
+        }
+    }
+}
+
+void RecorderController::PollEnhancement()
+{
+    const EnhanceStatus status = engine_.Enhancement();
+    enhanceProgress_ = status.progress;
+    if (status.state != EnhanceState::Working) {
+        TakeEnhancement(status);
+        phase_ = Phase::Idle;
+    }
+}
+
+/* The enhancement is over (done, failed or given up): what it made goes into the outcome. */
+void RecorderController::TakeEnhancement(const EnhanceStatus &status)
+{
+    outcome_.enhancement = status.state;
+    outcome_.enhanceProblem = status.problem;
+    outcome_.enhanced = engine_.EnhancedFiles();
+}
+
+void RecorderController::Shutdown()
+{
+    Stop();
+    CancelEnhancement();            /* (the one Stop() has just begun, if the recording asked for it, too) */
+}
+
+void RecorderController::CancelEnhancement()
+{
+    if (!Enhancing())
+        return;
+    engine_.CancelEnhancement();
+    EnhanceStatus status = engine_.Enhancement();
+    if (status.state == EnhanceState::Working)          /* an engine that did not stop: it is given up all the same */
+        status.state = EnhanceState::Cancelled;
+    TakeEnhancement(status);
     phase_ = Phase::Idle;
 }
 
@@ -326,6 +376,8 @@ void RecorderController::PollSetup(double dtSeconds)
 void RecorderController::Tick(double dtSeconds)
 {
     PollSetup(dtSeconds);
+    if (phase_ == Phase::Enhancing)
+        PollEnhancement();
     if (phase_ == Phase::Recording) {
         DrainPeaks();
         DrainTranscripts();

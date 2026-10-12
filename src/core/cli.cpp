@@ -180,6 +180,8 @@ CliResult ParseCommandLine(const std::vector<std::wstring> &args, const std::wst
                 continue;
             if (!FindSpeechLanguage(Lowered(value), &s.transcribeLanguage))
                 r.error = L"invalid --transcribe-language '" + value + L"' (use " + SpeechLanguageWords() + L").";
+        } else if (option == L"--enhance-voice") {
+            s.enhanceVoice = true;
         } else if (option == L"-l" || option == L"--list-devices") {
             command(CliResult::Command::ListDevices);
         } else if (option == L"-s" || option == L"--stop") {
@@ -281,11 +283,11 @@ std::wstring HelpText()
            L"With no options the window opens. Options preset the window; giving --output starts\n"
            L"recording straight away. The options are audior's, plus --system-amplify,\n"
            L"--transcribe-mic, --transcribe-system (with --transcribe-model, --transcribe-language\n"
-           L"and --transcribe-cpu), --defaults and --demo.\n"
+           L"and --transcribe-cpu), --enhance-voice, --defaults and --demo.\n"
            L"\n"
            L"The window starts from the settings of the last run (kept in Audior-GUI.ini, next to the\n"
            L"program) and the options given here change them. An option that switches something on\n"
-           L"(-i, --transcribe-mic, ...) cannot switch it off again: use --defaults for that.\n"
+           L"(-i, --transcribe-mic, --enhance-voice, ...) cannot switch it off again: use --defaults for that.\n"
            L"\n"
            L"Recording:\n"
            L"  -o, --output <file>          File to record to (at most 247 characters). The extension\n"
@@ -314,6 +316,9 @@ std::wstring HelpText()
            L"                               the README). Parakeet finds the language itself whatever it is told.\n"
            L"      --transcribe-cpu         Transcribe on the processor only, not on the graphics card\n"
            L"                               (which is used by default if the engine has support for it).\n"
+           L"      --enhance-voice          After the recording, make a copy with clearer speech (less\n"
+           L"                               noise, an even level) named \"<name> - enhanced\". The\n"
+           L"                               recording itself is kept as it is.\n"
            L"\n"
            L"Other:\n"
            L"  -l, --list-devices           List the audio devices and exit.\n"

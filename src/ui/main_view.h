@@ -121,7 +121,7 @@ public:
     void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
 
 private:
-    static constexpr int kWidgetCount = 26;
+    static constexpr int kWidgetCount = 28;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -161,15 +161,17 @@ private:
     void PaintPaneControls(Painter &p);
     void PaintPanel(Painter &p);
     void PaintTransport(Painter &p);
+    void PaintEnhancement(Painter &p, const D2D1_RECT_F &line1, const D2D1_RECT_F &line2);
+    std::wstring EnhancedText(const Outcome &o) const;
 
     RecorderController &ctl_;
     IViewHost          *host_;
     float               width_ = 0.0f, height_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
-    Switch    micTranscript_, systemTranscript_, gpuSwitch_;
+    Switch    micTranscript_, systemTranscript_, gpuSwitch_, enhanceSwitch_;
     Button    micField_, systemField_, folderField_, bitrateField_, languageField_, modelField_, bluetoothLink_;
-    Button    startButton_, stopButton_, showButton_;
+    Button    startButton_, stopButton_, showButton_, cancelButton_;
     Button    bannerPrimary_, bannerSecondary_, retryLink_;
     Segmented formatSeg_, mixSeg_;
     Slider    shareSlider_;
@@ -206,7 +208,8 @@ private:
     /* Text that changes rarely is built when it changes, not every frame. */
     std::wstring shareText_, mixHint_, nameHint_, summary_, savedName_, hotkeyProblem_, hotkeyHint_;
     bool         nameHintIsError_ = false, hotkeyHintIsError_ = false;
-    std::wstring timeText_, sizeText_;
+    std::wstring timeText_, sizeText_, enhanceText_;
+    int                enhanceKey_ = -1;
     long long          timeKey_ = -1;
     unsigned long long sizeKey_ = ~0ULL;
     Phase              lastPhase_ = Phase::Idle;
