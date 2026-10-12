@@ -45,7 +45,7 @@ public:
 
     /* The transcript switch sits in the header, right of the title; the
      * status of the transcript follows it. */
-    static constexpr float kSwitchLeft = 172.0f, kSwitchWidth = 108.0f, kSwitchHeight = 26.0f;
+    static constexpr float kSwitchLeft = 172.0f, kSwitchWidth = 148.0f, kSwitchHeight = 26.0f;
 
     /* `included`: the stream is part of the recording (else the pane is dimmed
      * and says so).  `recording` only changes the hint shown while the lane is

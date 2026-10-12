@@ -132,7 +132,7 @@ checkbox to leave the **microphone** out (system audio alone), `--demo`, `--defa
 (see [Settings are remembered](#settings-are-remembered)), and live waveforms with a
 peak level and a clipping flag for every stream.
 
-**Live transcripts.** Each pane has a **Transcript** switch (`--transcribe-mic`,
+**Live transcripts.** Each pane has a **Live transcription** switch (`--transcribe-mic`,
 `--transcribe-system`) that shows the stream's speech as text under its waveform
 while recording: the text grows about once a second while someone speaks, the
 last words can still change, and a phrase is settled and timestamped when the
@@ -234,7 +234,7 @@ a notification above the two panes says what it is doing and what it found:
    a **Cancel** button; the recording and everything else keep working. Each file is
    checked (size and SHA-256) before it gets its name, so a damaged or tampered file is
    never used; a failed or cancelled download leaves nothing behind. When it is done the
-   **Transcript** switches and the model choice appear without a restart.
+   **Live transcription** switches and the model choice appear without a restart.
 
    ![The notification while downloading: Downloading Parakeet v3, 2 of 3, 3.1 GB of 3.5 GB, a progress bar and a Cancel button](docs/screenshots/setup-download.png)
 
@@ -403,7 +403,7 @@ modelDownload=ask            ask or declined: declined once you press Not now to
   thinner. That is the headset and Windows, not this program, and it cannot be avoided
   while the microphone is open, so the microphone pane says so when the chosen
   microphone is Bluetooth, with a **Record system audio only** link that unticks the
-  microphone and ticks system audio in one click (a **Transcript** switched on for the
+  microphone and ticks system audio in one click (**Live transcription** switched on for the
   microphone is switched on for the system audio too). System audio only does not trigger
   the switch, nor does a microphone that is not Bluetooth. Measurements in
   [docs/HARDWARE-TESTS.md](docs/HARDWARE-TESTS.md), finding 6.

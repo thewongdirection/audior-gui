@@ -73,7 +73,7 @@ with `--defaults` (which neither reads nor writes it).
 | Microphone gain 300%, speak loudly | The **CLIP** flag lights; the file is louder. |
 | System audio gain 150% | The system waveform is taller and the file louder. |
 | Untick **Microphone**, keep **System audio** | Only the system file/lane. |
-| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Transcript** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
+| Record with a Bluetooth headset's microphone while music plays | A note under the microphone drop-down says the headset switches to call mode. While recording the headset's output drops out for about half a second and its volume and sound change; both return when you stop. With only **System audio** ticked nothing changes. Click **Record system audio only** in the note: Microphone unticks, System audio ticks and the note goes (with the microphone's **Live transcription** on, the System audio's is on afterwards, so play some speech and its pane shows the text). |
 | Type a **File name** (`standup`) | `standup.mp3`; record again: `standup (2).mp3`. |
 | Switch **Format** to WAV | A `.wav` file, 48 kHz 16-bit stereo. |
 | Unplug the USB microphone *while recording* | Recording stops at once with *Audio capture failed: the device was unplugged...*; the file keeps what was recorded. |
@@ -121,11 +121,11 @@ Skip this if you have not built the helper. Otherwise: `build.bat x64 asr` (or
 `audior_asr.sha256` next to `audior_gui.exe`, and put
 a model (`ggml-large-v3-turbo-q5_0.bin`, 547 MiB, from the whisper.cpp page on Hugging Face, see
 the README) in `%LOCALAPPDATA%\audior-gui\models`. Start the program: each pane
-now has a **Transcript** switch. Without the helper or the model it is hidden.
+now has a **Live transcription** switch. Without the helper or the model it is hidden.
 
 | Try | Expect |
 |---|---|
-| Switch the microphone's transcript on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
+| Switch the microphone's **Live transcription** on, record, speak a few sentences with pauses | Text appears under the waveform within a second or two and grows while you speak; when you pause the line settles (capital letters, commas, a full stop) and gets a time. The status says *Live* with a lag of about a second or less. |
 | Record a minute with a transcript switched on, speak or play speech (another language too, with a multilingual model and *Auto*), stop | Beside the recording a text file appears for each pane that was spoken on: `<name> - microphone.txt` / `<name> - system audio.txt`. It opens in Notepad with right letters and accents, one `[0:06] words` line per phrase in order; the status after Stop says *1 transcript* (*2 transcripts*). A pane nobody spoke in leaves no file. Recording again with the same name never overwrites it (` (2)`). |
 | Both streams on, play a video with speech while you speak | Each pane shows its own stream's words. The computer stays usable; recording and the waveforms do not stutter. |
 | A long stretch of talking (a minute or more) | Old lines scroll away upwards; the program's memory does not keep growing (Task Manager). |
@@ -176,7 +176,7 @@ folder, and the line `modelDownload=declined` of `Audior-GUI.ini` (set it to `as
 |---|---|
 | Start the program with the models folder empty | A notification above the two panes: *Live transcripts need a speech model*, naming the files, their total size and `huggingface.co`, and saying which graphics card will be used (or why the processor will do the work). Nothing is downloaded yet (check the folder, and Task Manager's network column). The panel's Transcript section says *Waiting for your answer*. |
 | Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
-| Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Transcript** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
+| Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Live transcription** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
 | Record with a transcript on straight afterwards | Works as in section 4. |
 | Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |
 | Delete the models, start, press **Not now**, close the window (the answer is saved with the other settings when the program ends) | *Download skipped*; the Transcript section says *No speech model is installed* and shows **Download...**. Start again: no notification and no question, just that link. Press the link: the question comes back. |

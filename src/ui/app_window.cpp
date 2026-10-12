@@ -27,7 +27,7 @@ constexpr double kMaxFrameSeconds = 0.25;           /* after a stall, do not jum
 constexpr DWORD kStyle = WS_OVERLAPPEDWINDOW;
 
 constexpr float kStartWidth = 1120.0f, kStartHeight = 720.0f;       /* client size, DIPs */
-constexpr float kMinWidth = 900.0f, kMinHeight = 680.0f;
+constexpr float kMinWidth = 940.0f, kMinHeight = 680.0f;      /* wide enough for a pane's header (see LaneView) */
 
 constexpr UINT kTrayMessage = WM_APP + 1;           /* what the shell sends for the tray icon */
 enum TrayCommand : int { kShowCommand = 1, kStartCommand, kStopCommand, kExitCommand };

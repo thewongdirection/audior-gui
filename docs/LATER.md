@@ -144,7 +144,7 @@ No blocker; each is worth doing when it starts to matter.
 - **Installed means the right size.** A model of the right size but wrong content (a power loss
   after the rename: the fetcher and the move do not flush) counts as installed, is never offered
   again, and fails its hash when a recording starts. Delete or re-offer a model that fails its hash.
-- **The banner.** At the smallest width (900 DIP) long texts are cut without an ellipsis (the
+- **The banner.** At the smallest width (940 DIP) long texts are cut without an ellipsis (the
   no-Vulkan sentence, "(3 of 3)" in the title); its height is not part of `ExtraMinHeight`, so a
   recording with the banner up has about two lines of transcript, and when it appears or goes
   after 10 s the cards move under the pointer. Every poll (4 a second while it moves) does a full

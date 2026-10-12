@@ -63,7 +63,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
         Refresh();
     };
 
-    micTranscript_.text = systemTranscript_.text = L"Transcript";
+    micTranscript_.text = systemTranscript_.text = L"Live transcription";
     micTranscript_.accent = theme::kMic;
     micTranscript_.onChange = [this](bool on) {
         ctl_.Settings().transcribeMicrophone = on;
