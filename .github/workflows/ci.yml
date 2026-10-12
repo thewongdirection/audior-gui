@@ -46,6 +46,10 @@ jobs:
               -ArgumentList '--screenshot', "shots\$scenario.png", '--scenario', $scenario
             if ($run.ExitCode -ne 0) { throw "Scenario '$scenario' failed with exit code $($run.ExitCode)" }
           }
+          # The narrowest window (940 DIP) with a live transcript: the pane header must still show its status.
+          $run = Start-Process -FilePath bin\x64\Audior-GUI.exe -Wait -PassThru `
+            -ArgumentList '--screenshot', 'shots\transcript-narrow.png', '--scenario', 'transcript', '--size', '940x740'
+          if ($run.ExitCode -ne 0) { throw "The narrow transcript scenario failed with exit code $($run.ExitCode)" }
 
       - name: Drive the real application (command line, simulated and real engine)
         shell: powershell
