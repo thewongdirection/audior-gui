@@ -119,6 +119,8 @@ void Apply(SavedSettings *saved, const std::wstring &key, const std::wstring &va
         FindSpeechLanguage(value, &s.transcribeLanguage);               /* one that is not known leaves it as it was */
     } else if (key == L"transcribeGpu") {
         ReadOnOff(value, &s.transcribeGpu);
+    } else if (key == L"enhanceVoice") {
+        ReadOnOff(value, &s.enhanceVoice);
     } else if (key == L"modelDownload") {
         if (value == L"ask" || value == L"declined")
             saved->downloadDeclined = value == L"declined";
@@ -152,6 +154,7 @@ std::wstring FormatSavedSettings(const SavedSettings &saved)
     AddLine(&text, L"transcribeModel", s.transcribeModel);
     AddLine(&text, L"transcribeLanguage", InfoOf(s.transcribeLanguage).word);
     AddLine(&text, L"transcribeGpu", OnOff(s.transcribeGpu));
+    AddLine(&text, L"enhanceVoice", OnOff(s.enhanceVoice));
     AddLine(&text, L"modelDownload", saved.downloadDeclined ? L"declined" : L"ask");
     AddLine(&text, L"startHotkey", FormatHotkey(saved.hotkeys[HotkeyIndex(HotkeyAction::Start)]));
     AddLine(&text, L"stopHotkey", FormatHotkey(saved.hotkeys[HotkeyIndex(HotkeyAction::Stop)]));

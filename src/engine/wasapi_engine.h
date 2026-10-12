@@ -17,6 +17,7 @@
 #include "stop_signal.h"
 #include "transcript_file.h"
 #include "transcription_host.h"
+#include "voice_enhance_job.h"
 
 namespace audiorgui {
 
@@ -56,7 +57,21 @@ public:
     std::vector<std::wstring> TranscriptFiles() override;
     std::wstring TranscriptFileProblem() override;
 
+    bool CanEnhanceVoice() const override { return true; }
+    EnhanceStatus Enhancement() override { return enhance_ ? enhance_->Status() : EnhanceStatus(); }
+    void CancelEnhancement() override
+    {
+        if (enhance_)
+            enhance_->Cancel();
+    }
+    std::vector<std::wstring> EnhancedFiles() override
+    {
+        return enhance_ ? enhance_->Done() : std::vector<std::wstring>();
+    }
+
 private:
+    void BeginEnhancement();
+
     AsrSetup                         asr_;              /* the helper, with the first model */
     bool                             transcribes_ = false;
     std::vector<TranscriptModel>     models_;           /* the installed ones, the first one first */
@@ -64,6 +79,9 @@ private:
     std::unique_ptr<TranscriptFile>  transcriptFiles_[kStreamCount];    /* of the streams transcribed; before host_, which writes to them */
     std::unique_ptr<TranscriptionHost> host_;           /* the current or last recording's transcriber, if it had one */
     std::unique_ptr<RecordingSession> session_;         /* the current or last recording */
+    RecordingSettings                run_;              /* its settings */
+    bool                             enhancePending_ = false;   /* the recording is to be followed by enhancement_, once it has stopped */
+    std::unique_ptr<VoiceEnhanceJob> enhance_;          /* the last recording's clearer copies, being made or made */
 };
 
 /* Creates the folder `filePath` is to go in if it is missing, one level deep:

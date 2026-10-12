@@ -120,6 +120,18 @@ bool Build(Scene &scene, const std::wstring &name)
         return true;
     }
 
+    if (name == L"enhancing" || name == L"enhanced" || name == L"enhance-failed") {  /* saved, and its voice being enhanced */
+        ctl.Settings().includeSystemAudio = true;
+        ctl.Settings().enhanceVoice = true;
+        if (name == L"enhance-failed")
+            scene.engine.FailEnhancement(L"The voice could not be enhanced: the disk is full (hr=0x80070070)");
+        ctl.Start();
+        scene.Run(9.0);
+        ctl.Stop();
+        scene.Run(name == L"enhancing" ? 1.2 : 4.0);                  /* a bit under half way, or well past the end */
+        return true;
+    }
+
     const bool transcripts = name == L"transcript" || name == L"transcript-saved" || name == L"catching-up" ||
                              name == L"transcript-chinese";
     if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping" || transcripts) {

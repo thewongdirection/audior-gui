@@ -201,6 +201,33 @@ unit tests only cover what it refuses before it touches the network):
 | The same with a path of a file that already exists | `E the file could not be created (80)`, and the existing file is untouched. |
 | Unplug the network in the middle of a large model | An `E` line, and the `.part` file is gone. |
 
+## 7. Voice enhancement
+
+The unit tests prove the arithmetic (levels, noise, length, the limiter, cancelling, failing) on
+made-up speech; **only your ears can say whether it sounds better**. Use a recording of a real
+lecture, meeting or call made in a room with some background noise (a fan, a street, a bad
+microphone), and keep the originals: the copy is always a separate file.
+
+| Try | Expect |
+|---|---|
+| Start the program for the first time (or with `--defaults`) | The **Enhance voice** switch beside **Format** is **off**. Switch it on, close, start again: it is on. |
+| Switch it on, record a minute of someone talking in a noisy room, press **Stop** | The recording is saved at once. The bottom bar says *Enhancing voice… N%* with a bar under it, the header pill says *Enhancing*, **Stop** has become **Cancel**, **Start** works. After a few seconds: *Saved · enhanced copy saved*, and `<name> - enhanced.mp3` is beside the recording. |
+| Play the original and the copy one after the other, with headphones | The copy has less steady noise (the fan, the hiss) both in the pauses and under the words, the voice is at about the same loudness all through (quiet stretches brought up, loud ones brought down a little), and it is a little brighter. There is no "underwater" or bird-like twittering, nothing is cut off at the start of a word, and loud passages do not crackle. **Write down anything that sounds worse and where** (see `docs/LATER.md`). |
+| Compare the files in Explorer | The original has not changed (same size and time as before). The copy has the same duration, to the second. |
+| The same with **WAV** | The copy is a WAV file, the same length. |
+| Record something very quiet (talk softly far from the microphone) | The copy is clearly louder and not much noisier than the original sounded. |
+| Record something already clean (a headset in a quiet room, or a clip of a podcast played as system audio) | The copy sounds the same, a little louder or quieter at most; no pumping, no new noise. |
+| Record only system audio with nothing playing (silence), with the switch on | A copy is made; it is silent. |
+| Record with the same name again | The new recording is `<name> (2).mp3` and its copy `<name> (2) - enhanced.mp3`; nothing was overwritten. |
+| Press **Cancel** while it works | *Saved · enhancement cancelled*; no `- enhanced` file is left; the recording is there. |
+| Press **Start** while it works | The recording begins at once; afterwards no `- enhanced` file of the earlier recording is there, and the new one has no enhancement text unless you switched it on. |
+| Close the window while it works | The program ends within a second or so; no half-written `- enhanced` file is left; the recording is intact. |
+| Two streams, **Two separate tracks** | Two copies: `<name>_mic - enhanced.mp3` and `<name>_system - enhanced.mp3`, each as long as its original. |
+| An hour-long recording | The copy takes a minute or two. Task Manager: `Audior-GUI.exe` uses about one core and its memory does not grow with the length. The window stays responsive. |
+| Record onto a nearly full drive | The recording is saved; the bottom bar says *Saved, but the voice was not enhanced* and why (the disk is full); no partial copy is left. |
+| Minimize to the tray while it works | The tray tip says *enhancing the voice N%*; a balloon says when the copy is ready (or could not be made). |
+| `Audior-GUI --enhance-voice` | The switch is on. Without the option it is as it was left. |
+
 ## If something is wrong
 
 Note the message in the window, including the `hr=0x...` code, and the output of

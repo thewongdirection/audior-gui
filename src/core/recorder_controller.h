@@ -7,6 +7,12 @@
  * forwards the user's intent, and the tests drive it directly.
  *
  *     Idle ──Start()──▶ Recording ──Stop() / engine failure──▶ Idle
+ *                                      └─ with Enhance voice on ──▶ Enhancing ──▶ Idle
+ *
+ * Enhancing is the clearer copy being made after a recording that ended well; the recording is already
+ * saved, and Start() ends the enhancement (and removes its unfinished file) to record again at once, even if
+ * the recording then cannot start.  Tick() polls the engine for its progress, but the enhancement is not an
+ * animation: Animating() stays false, and the UI uses Enhancing() to keep its slower timer going.
  *
  * The UI calls Tick() about 60 times a second with the time since the last
  * call.  Passing the time in (instead of reading a clock) keeps the
@@ -36,7 +42,7 @@
 
 namespace audiorgui {
 
-enum class Phase { Idle, Recording };
+enum class Phase { Idle, Recording, Enhancing };
 
 /* How the last recording (or attempt) turned out. */
 struct Outcome {
@@ -47,6 +53,9 @@ struct Outcome {
     std::vector<std::wstring> files;        /* what was written, even if Failed */
     std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcribed stream that was spoken on */
     std::wstring              transcriptProblem;    /* a transcript file that could not be saved, in a few words */
+    EnhanceState              enhancement = EnhanceState::Off;  /* the voice enhancement after the recording, if there was one */
+    std::vector<std::wstring> enhanced;     /* the clearer copies that were made                                      */
+    std::wstring              enhanceProblem;   /* Failed: why, in a few words                                          */
 };
 
 class RecorderController {
@@ -74,7 +83,7 @@ public:
 
     /* ---- recording ---- */
     Phase GetPhase() const { return phase_; }
-    bool  CanStart() const { return phase_ == Phase::Idle; }
+    bool  CanStart() const { return phase_ != Phase::Recording; }
     bool  CanStop() const { return phase_ == Phase::Recording; }
 
     /* Returns false if recording did not start; LastOutcome() says why. */
@@ -99,6 +108,17 @@ public:
 
     /* The settings in force: the snapshot while recording, else the draft. */
     const RecordingSettings &Active() const;
+
+    /* ---- voice enhancement ----
+     * Whether the engine can write the clearer copies; only then does the switch appear. */
+    bool  CanEnhanceVoice() const { return engine_.CanEnhanceVoice(); }
+    bool  Enhancing() const { return phase_ == Phase::Enhancing; }
+    float EnhanceProgress() const { return enhanceProgress_; }      /* 0 to 1, while Enhancing() */
+    void  CancelEnhancement();                                      /* the recording stays; the copy is given up */
+
+    /* For the end of the program: finalises a recording and gives up any enhancement, so that no half-written copy is
+     * left behind (a recording that is stopped at the end of the program is not enhanced). */
+    void  Shutdown();
 
     /* ---- live transcripts ----
      * A transcript is kept per stream, like its waveform, and stays on show
@@ -156,6 +176,8 @@ private:
     std::wstring NextOutputPath();
     void DrainPeaks();
     void DrainTranscripts();
+    void PollEnhancement();
+    void TakeEnhancement(const EnhanceStatus &status);
     void PollSetup(double dtSeconds);
     bool TakeSetup();
     void Finish();
@@ -164,6 +186,8 @@ private:
     /* The transcript files this recording will make: none where the engine cannot transcribe, however the
      * (saved) switches stand: their boxes are hidden then, so they cannot be switched off. */
     std::vector<std::wstring> PlannedTranscripts(const std::wstring &path) const;
+    /* The same for the enhanced copies: their names are numbered with the recording's, too. */
+    std::vector<std::wstring> PlannedEnhanced(const std::wstring &path) const;
 
     IRecordingEngine  &engine_;
     Clock              clock_;
@@ -176,6 +200,7 @@ private:
     TranscriptStatus   transcriptStatus_[kStreamCount];
     std::wstring       transcriptProblem_[kStreamCount];
     RecordingStats     stats_;
+    float              enhanceProgress_ = 0.0f;
     Outcome            outcome_;
     std::vector<DeviceInfo> devices_[2];
     std::vector<TranscriptModel> transcriptModels_;

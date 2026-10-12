@@ -660,3 +660,87 @@ TEST(Sim_MicrophoneStreamExistsOnlyWhenIncluded)
     CHECK_EQ(rig.Take(StreamId::System).size(), std::size_t(100));
     CHECK_EQ(rig.engine.OutputFiles().size(), std::size_t(1));
 }
+
+/* ---- the voice enhancement ---- */
+
+TEST(Sim_EnhancesOnlyARecordingThatAsksForIt)
+{
+    Rig rig;
+    CHECK(rig.engine.CanEnhanceVoice());
+    CHECK(Rig().engine.Enhancement().state == EnhanceState::Off);
+    CHECK(rig.Start());
+    rig.now = 1.0;
+    rig.engine.Stop();
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Off);
+    CHECK(rig.engine.EnhancedFiles().empty());
+}
+
+TEST(Sim_AnEnhancementWorksForAFewSecondsThenIsDone)
+{
+    Rig rig;
+    rig.settings.enhanceVoice = true;
+    CHECK(rig.Start());
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Off);     /* it follows the recording */
+    rig.now = 10.0;
+    rig.engine.Stop();
+
+    EnhanceStatus status = rig.engine.Enhancement();
+    CHECK(status.state == EnhanceState::Working);
+    CHECK_EQ(status.progress, 0.0f);
+    rig.now = 11.5;
+    status = rig.engine.Enhancement();
+    CHECK(status.state == EnhanceState::Working);
+    CHECK_NEAR(status.progress, 0.5, 0.01);
+    CHECK(rig.engine.EnhancedFiles().empty());                      /* nothing is complete before the end */
+
+    rig.now = 14.0;
+    status = rig.engine.Enhancement();
+    CHECK(status.state == EnhanceState::Done);
+    CHECK_EQ(status.progress, 1.0f);
+    CHECK_EQ(rig.engine.EnhancedFiles().size(), std::size_t(1));
+    CHECK_EQ(rig.engine.EnhancedFiles()[0], std::wstring(L"C:\\Rec\\a - enhanced.mp3"));
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Done);    /* and stays so */
+}
+
+TEST(Sim_AnEnhancementCanBeCancelledOrMadeToFail)
+{
+    Rig rig;
+    rig.settings.enhanceVoice = true;
+    CHECK(rig.Start());
+    rig.engine.Stop();
+    rig.now = 1.0;
+    rig.engine.CancelEnhancement();
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Cancelled);
+    rig.now = 10.0;
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Cancelled);
+    CHECK(rig.engine.EnhancedFiles().empty());
+
+    rig.engine.FailEnhancement(L"no space");
+    CHECK(rig.Start());
+    rig.engine.Stop();
+    rig.now = 10.5;
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Working);
+    rig.now = 12.0;
+    const EnhanceStatus failed = rig.engine.Enhancement();
+    CHECK(failed.state == EnhanceState::Failed);
+    CHECK_EQ(failed.problem, std::wstring(L"no space"));
+    CHECK_EQ(rig.engine.Enhancement().problem, std::wstring(L"no space"));       /* it can be asked again */
+    CHECK(rig.engine.EnhancedFiles().empty());
+
+    CHECK(rig.Start());                                             /* the failure was for one recording */
+    rig.engine.Stop();
+    rig.now = 20.0;
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Done);
+}
+
+TEST(Sim_ARecordingThatFailsGetsNoEnhancement)
+{
+    Rig rig;
+    rig.settings.enhanceVoice = true;
+    rig.engine.FailAfter(1.0, L"unplugged");
+    CHECK(rig.Start());
+    rig.now = 2.0;
+    CHECK(!rig.engine.IsRecording());
+    rig.engine.Stop();
+    CHECK(rig.engine.Enhancement().state == EnhanceState::Off);
+}

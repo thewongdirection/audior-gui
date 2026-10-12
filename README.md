@@ -127,7 +127,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "-
 | `-s, --stop` | **Stop** | `-s` stops the recording in progress (audior's own `--stop` works too: same signal) |
 | `-h, --help` | | `-h` |
 
-Beyond audior: a **gain for system audio** (`--system-amplify <0-300>`), a
+Beyond audior: a **gain for system audio** (`--system-amplify <0-300>`), the **Enhance voice** switch (`--enhance-voice`), a
 checkbox to leave the **microphone** out (system audio alone), `--demo`, `--defaults`
 (see [Settings are remembered](#settings-are-remembered)), and live waveforms with a
 peak level and a clipping flag for every stream.
@@ -137,6 +137,36 @@ peak level and a clipping flag for every stream.
 while recording: the text grows about once a second while someone speaks, the
 last words can still change, and a phrase is settled and timestamped when the
 speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
+
+**Enhance voice.** The **Enhance voice** switch next to **Format** (`--enhance-voice`; it is
+**off** until you switch it on, and the choice is remembered) makes a clearer copy of what you
+recorded, so that a lecture, a meeting or a call is easier to follow. When you press **Stop**
+the recording is saved as always; then, in the background, the program reads it twice (the
+first time to listen: how loud the speech is, how loud and what kind the background noise is,
+taken from the pauses; the second time to improve it) and writes the result **beside it** as
+`<name> - enhanced.mp3` (`.wav` for WAV; with two separate tracks, one copy of each). The
+recording itself is never changed, and a copy never replaces a file. What is done to the
+voice:
+
+1. rumble and hum below 80 Hz are cut (a 4th-order high-pass);
+2. the steady noise (fans, air conditioning, the hiss of a microphone) is taken down by up to 12 dB,
+   by a spectral Wiener filter whose picture of the noise comes from the quietest stretches of the
+   recording itself; it never cuts to nothing, and it eases off when the "noise" is almost as loud
+   as the speech (it would be the speech);
+3. a little less boom (-2 dB at 250 Hz) and a little more presence (+2.5 dB at 3 kHz);
+4. the speech is brought to a steady loudness (about -17 dBFS while someone speaks): a fixed gain,
+   then a gentle 2:1 pull of the loud and the soft parts toward it, which leaves the pauses alone
+   so that the noise between sentences is not raised;
+5. a look-ahead limiter at -1 dBFS, so that nothing clips.
+
+The bottom bar shows *Enhancing voice… 42%* with a bar under it, and **Cancel** gives the copy up
+(the half-written file is removed; the recording stays). Starting a new recording ends it too.
+Plan on a minute or two of work per hour of audio on a modern PC, on one core at a priority below
+normal. Nothing is sent anywhere: it is arithmetic on your own files, with no library but Windows
+(an MP3 recording is decoded and encoded again by Media Foundation, so for the best result record
+WAV, or use a high bitrate). It is made for **speech**: it does not remove other people talking,
+echo or music, and it is no use on a recording with no pauses at all, where the program cannot
+tell the noise from the voice.
 
 It is optional and needs two things, otherwise the switch stays hidden (`--demo`
 has a built-in script and always shows it):
@@ -363,6 +393,7 @@ transcribeSystem=off
 transcribeModel=             one of the two model file names above; empty: the first one found
 transcribeLanguage=auto      auto, en, zh, zh-hant, es, fr, de, ja, ko, pt, ru, it, nl, ar, hi, tr, vi, th, pl, uk or id
 transcribeGpu=on
+enhanceVoice=off             on or off: a clearer copy of the voice after each recording
 startHotkey=Ctrl+Alt+R
 stopHotkey=Ctrl+Alt+S
 modelDownload=ask            ask or declined: declined once you press Not now to the offer to download a model
@@ -381,6 +412,12 @@ modelDownload=ask            ask or declined: declined once you press Not now to
   silence up to it, both while nothing is playing (a playback device sends nothing
   when idle) and while a device is still starting (a Bluetooth microphone needs most
   of a second), so the tracks begin together and end together.
+- **Enhance voice** (when switched on) starts after the files are finalised, so a recording
+  never waits for it and never depends on it: if the copy cannot be made (a full disk, a file
+  that is open elsewhere) the window says so, and the recording is as it was. The copy is as
+  long as the recording (an MP3 copy to within a few hundredths of a second: the codec pads
+  its own audio a little). Names are numbered together: if
+  `meeting - enhanced.mp3` already exists, the next recording is `meeting (2).mp3`.
 - **Gain** is applied before the 16-bit clamp, and the waveform shows the stream
   after its gain, so clipping is visible. Merging weights come afterwards.
 - **Memory stays bounded.** Audio is written to disk as it is recorded; each
@@ -506,8 +543,8 @@ If a change adds a picture to the docs, add its scenario to the `:shots` list in
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the text of the settings file (`saved_settings`), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says). |
-| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`; and for its start-up set-up `hardware_scan` (DXGI), `TranscriptionSetup` (the conversation: scan, ask, download, finish), `ModelInstaller` (runs the download program, checks what it brings, moves it into place) and `system_setup` (wires them to this PC). |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the text of the settings file (`saved_settings`), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says); and the voice enhancement, all plain arithmetic on 48 kHz stereo floats: `fft`, `voice_dsp` (filters, the spectrum, the denoiser, the leveler, the limiter) and `voice_enhancer` (the analysis pass and the processing chain). |
+| `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`; and for its start-up set-up `hardware_scan` (DXGI), `TranscriptionSetup` (the conversation: scan, ask, download, finish), `ModelInstaller` (runs the download program, checks what it brings, moves it into place) and `system_setup` (wires them to this PC). For the voice enhancement: `pcm_reader` (WAV) and `mp3_reader` (Media Foundation) read a finished recording back, and `VoiceEnhanceJob` makes the copies on a thread of its own. |
 | `src/fetch` | The download program `audior_fetch.exe`: one HTTPS download from `huggingface.co` with WinHTTP into a new `.part` file. The only code of the project that uses the network (see *What works offline*). |
 | `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
 | `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
@@ -547,7 +584,13 @@ in-memory files. The GUI sees audio only as peak bins through
   installer against a stand-in download program (a wrong size or hash, a program that
   dies, cancelling, no partial files left), and the real `audior_fetch.exe`'s refusals
   (any address but https on huggingface.co, any file but a new `.part`, any size a model
-  cannot have), none of which needs a connection.
+  cannot have), none of which needs a connection;
+  and the voice enhancement: the FFT against the definition, the filters' gains, the short-time
+  spectrum's exact reconstruction, the denoiser (no noise to remove changes nothing; steady noise
+  falls, a tone stays), the leveler, a limiter that never passes its ceiling, the whole chain on
+  made-up speech with noise of known levels (the speech lands at the target level, the pauses fall
+  away, the length is kept whatever the size of the pieces), and the job that writes the copies
+  (read twice, written once, cancelled or failed copies removed, a corrupt WAV never crashes it).
 - **Import check** (`tests\check_imports.ps1`): only in-box Windows DLLs, and `winhttp`
   only for `audior_fetch.exe`.
 - **UI smoke test** (`tests\ui_smoke.ps1`): launches the real executable, drives
@@ -580,3 +623,10 @@ in-memory files. The GUI sees audio only as peak bins through
 - The tray and the hotkeys are exercised by hand (see
   [docs/FIRST-TEST.md](docs/FIRST-TEST.md)); `ui_smoke.ps1` does not cover them.
 - Shared mode only: a device another program holds exclusively cannot be recorded.
+- **Enhance voice** was tuned on made-up speech with noise of a known level (the unit tests check
+  the numbers), not by ear on real lectures: listening to a few of yours is the first thing to do
+  (see [docs/FIRST-TEST.md](docs/FIRST-TEST.md)). It is a statistical noise filter, not a model of
+  speech, so it cannot tell a steady voice-like hum from a voice, and a recording with no pauses
+  gives it nothing to learn the noise from; the same goes for a
+  recording whose pauses are digital silence (a muted microphone, a noise gate): the program
+  cannot see the noise there, so it takes none out.

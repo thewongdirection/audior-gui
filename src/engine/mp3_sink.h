@@ -20,6 +20,11 @@
 
 namespace audiorgui {
 
+/* An audio media type at the recorder's rate and channel count: MP3 (the file) or PCM (what goes to the encoder
+ * and comes from the decoder, see mp3_reader.h). */
+HRESULT MakeAudioType(Microsoft::WRL::ComPtr<IMFMediaType> *type, const GUID &subtype, UINT32 bytesPerSecond,
+                      UINT32 blockAlign, UINT32 bits);
+
 class Mp3Sink final : public IAudioSink {
 public:
     /* False when Media Foundation is not installed (Windows N editions). */

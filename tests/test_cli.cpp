@@ -211,6 +211,22 @@ TEST(Cli_TheGraphicsCardIsUsedUnlessTheProcessorIsAskedFor)
     CHECK(HelpText().find(L"--transcribe-cpu") != std::wstring::npos);
 }
 
+TEST(Cli_VoiceEnhancementIsOffUnlessAskedFor)
+{
+    CHECK(!Parse({}).settings.enhanceVoice);
+    CHECK(!Parse({L"-i", L"--transcribe-mic"}).settings.enhanceVoice);
+    const Parsed on = Parse({L"--ENHANCE-VOICE"});                  /* options ignore case */
+    CHECK(on.result.error.empty());
+    CHECK(on.settings.enhanceVoice);
+    CHECK(HelpText().find(L"--enhance-voice") != std::wstring::npos);
+
+    Parsed saved;                                                   /* it can only be switched on, like the other switches */
+    saved.settings.outputDirectory = L"C:\\Docs";
+    saved.settings.enhanceVoice = true;
+    ParseCommandLine({L"-i"}, kCwd, &saved.settings);
+    CHECK(saved.settings.enhanceVoice);
+}
+
 TEST(Cli_AnUnknownTranscriptionModelOrLanguageIsRejected)
 {
     const Parsed model = Parse({L"--transcribe-model", L"mystery.bin"});

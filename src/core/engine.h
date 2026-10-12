@@ -29,6 +29,15 @@
 
 namespace audiorgui {
 
+/* How the enhancement of the voice after a recording stands (see IRecordingEngine::Enhancement). */
+enum class EnhanceState { Off, Working, Done, Failed, Cancelled };
+
+struct EnhanceStatus {
+    EnhanceState state    = EnhanceState::Off;
+    float        progress = 0.0f;       /* 0 to 1 of all the files, while Working */
+    std::wstring problem;               /* Failed: what went wrong, in a few words */
+};
+
 class IRecordingEngine {
 public:
     virtual ~IRecordingEngine() = default;
@@ -125,6 +134,23 @@ public:
     /* A sentence for the user if a transcript file could not be saved (the recording itself is not
      * affected), else empty. */
     virtual std::wstring TranscriptFileProblem() { return std::wstring(); }
+
+    /* ---- voice enhancement (optional) -----------------------------------
+     * An engine that can write a clearer copy of what it recorded says so with CanEnhanceVoice().  With
+     * RecordingSettings::enhanceVoice on, a recording that ended well is followed by that work (see
+     * voice_enhancer.h), which the engine does on a thread of its own: Stop() still returns at once, and
+     * Enhancement() tells how far the work has got.  The copy of each file is named by EnhancedPath(), the
+     * recorded file is not touched, and nothing is ever overwritten.  Trouble with it never harms the recording. */
+    virtual bool CanEnhanceVoice() const { return false; }
+
+    /* Off if the last recording is not being enhanced. */
+    virtual EnhanceStatus Enhancement() { return EnhanceStatus(); }
+
+    /* Stops the work, waiting for it to end, and removes the copy it was writing.  Does nothing when not working. */
+    virtual void CancelEnhancement() {}
+
+    /* The copies made so far by the last recording's enhancement, complete once it is no longer Working. */
+    virtual std::vector<std::wstring> EnhancedFiles() { return {}; }
 };
 
 }  // namespace audiorgui

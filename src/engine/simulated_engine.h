@@ -44,6 +44,10 @@ public:
      * (status CatchingUp, a lag of several seconds, a smaller model running). */
     void FallBehindAfter(double seconds);
 
+    /* The voice enhancement that follows the next recording (when its settings ask for one) fails halfway
+     * through, with `message`, as a full disk would. */
+    void FailEnhancement(std::wstring message) { enhanceFailMessage_ = std::move(message); }
+
     /* Pretends that no speech model is installed, so that it cannot transcribe, until
      * RescanTranscription() "finds" one (for the demos and tests of the start-up set-up). */
     void LackModels() { modelsPresent_ = false; }
@@ -67,6 +71,12 @@ public:
     std::wstring TranscriptionProblem(StreamId) override { return transcriptFailMessage_; }
     std::size_t TakeTranscript(StreamId stream, TranscriptEvent *out, std::size_t capacity) override;
     std::vector<std::wstring> TranscriptFiles() override { return transcriptFiles_; }     /* the names; nothing is written */
+
+    /* The enhancement takes a few seconds of the injected clock and writes nothing. */
+    bool CanEnhanceVoice() const override { return true; }
+    EnhanceStatus Enhancement() override;
+    void CancelEnhancement() override;
+    std::vector<std::wstring> EnhancedFiles() override;
 
 private:
     double Elapsed();
@@ -96,6 +106,11 @@ private:
     double        transcriptFailAt_    = -1.0;
     double        behindAfter_ = -1.0, behindAt_ = -1.0;    /* the same, for falling behind */
     std::wstring  transcriptFailMessage_;
+
+    EnhanceState  enhanceState_ = EnhanceState::Off;        /* Working until the clock says it is over */
+    double        enhanceStart_ = 0.0;
+    std::wstring  enhanceFailMessage_;                      /* armed for the next recording, as FailEnhancement() says */
+    std::wstring  enhanceProblem_;                          /* this recording's enhancement fails with this, if not empty */
 };
 
 }  // namespace audiorgui

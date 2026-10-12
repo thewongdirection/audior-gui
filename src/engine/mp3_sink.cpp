@@ -15,7 +15,8 @@ using Microsoft::WRL::ComPtr;
 
 constexpr long long kHnsPerSecond = 10000000;
 
-/* An audio media type: MP3 (the file) or PCM (what we feed the encoder). */
+}  // namespace
+
 HRESULT MakeAudioType(ComPtr<IMFMediaType> *type, const GUID &subtype, UINT32 bytesPerSecond, UINT32 blockAlign,
                       UINT32 bits)
 {
@@ -33,8 +34,6 @@ HRESULT MakeAudioType(ComPtr<IMFMediaType> *type, const GUID &subtype, UINT32 by
         t->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, bits);
     return S_OK;
 }
-
-}  // namespace
 
 Mp3Sink::Mp3Sink(std::wstring path) : path_(std::move(path)) {}
 

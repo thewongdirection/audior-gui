@@ -28,6 +28,8 @@
  *   --transcribe-model / --transcribe-language   model, and the language spoken (or automatic)
  *   (not in audior)         transcribeGpu: on the graphics card or the processor only
  *   --transcribe-cpu        (the card is used by default, when the engine can)
+ *   (not in audior)         enhanceVoice: after the recording, a clearer copy of the voice is made
+ *   --enhance-voice         beside it (see voice_enhancer.h); off by default
  */
 #pragma once
 
@@ -72,6 +74,7 @@ struct RecordingSettings {
     std::wstring transcribeModel;                       /* a file of kAsrModels; "" = the first one installed */
     SpeechLanguage transcribeLanguage = SpeechLanguage::Auto;
     bool         transcribeGpu      = true;             /* may use the graphics card, if the engine has a backend for it */
+    bool         enhanceVoice       = false;            /* afterwards, a copy with clearer speech is written beside each file */
 };
 
 /* True when both streams are recorded: only then do merging and separate
@@ -153,6 +156,14 @@ std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &settings,
 /* Where a stream's live transcript is saved: beside the recording, named like it, one text file for each
  * stream that has one: ("a\rec.mp3", Microphone) -> "a\rec - microphone.txt", and "a\rec - system audio.txt". */
 std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream);
+
+/* Where the clearer copy of a recorded file goes, beside it and named like it: "a\rec.mp3" -> "a\rec - enhanced.mp3".
+ * The original is never touched. */
+std::wstring EnhancedPath(const std::wstring &recordedFile);
+
+/* The enhanced copies a recording to `outputPath` will have: one for each of its files, none if the voice is not
+ * to be enhanced. */
+std::vector<std::wstring> PlannedEnhancedFiles(const RecordingSettings &settings, const std::wstring &outputPath);
 
 /* The transcript files of a recording to `outputPath`: one for each stream whose transcript is on, the
  * microphone's first. */

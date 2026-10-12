@@ -202,3 +202,27 @@ No blocker; each is worth doing when it starts to matter.
 - **Languages of the drop-down:** the twenty of the table (`core/asr_languages.h`); the others Whisper knows
   (about eighty) can only be had through *Auto*. Cantonese (`yue`) has no entry because its prompt has not
   been tried.
+
+## Voice enhancement
+
+- **Not yet heard on real recordings.** The filters were tuned on made-up speech with noise of known
+  levels; the first thing to do is to listen to real lectures (see `docs/FIRST-TEST.md`, section 7)
+  and adjust the constants in `src/core/voice_enhancer.cpp` and `src/core/voice_dsp.cpp`: the
+  denoiser floor (12 dB), the leveler's target (-17 dBFS) and its 2:1 ratio, the two EQ bands.
+- **Enhance a file that already exists** (a command-line option or a button), and a choice of how
+  strong the noise reduction is. Today it only follows a recording the program has just made.
+- **Hum at 50/60 Hz** is only reduced as far as the denoiser reduces any steady noise (up to 12 dB);
+  a notch filter set from the analysis would do better.
+- **Speed.** The chain runs on one core, about 30 s per hour of audio in a test build made for speed on a development machine; the
+  program is built for size (`/O1`), so it is slower here. Packing the left and right channels
+  into one transform already halves the work; a second thread for the analysis would help most.
+- The copy of an MP3 is encoded again (a second generation of lossy coding); a WAV recording
+  has no such loss.
+- **Muted or gated recordings.** Digital silence counts among the quietest stretches the noise is
+  learned from (a clean recording with real silences must not have its quiet speech taken for noise),
+  so a recording with a second or so of it gets no noise reduction at all, even if the speech is
+  noisy. Telling "silence between sentences" from "a gate that closed" would need a look at the
+  levels around each silence.
+- The noise picture is the average of the 128 quietest stretches (a stretch is 21 ms), so on a long
+  recording it is taken from its very quietest pauses and slightly under-estimates a noise that
+  changes (an air conditioner that cycles); a rolling estimate would follow it.

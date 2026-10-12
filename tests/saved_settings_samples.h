@@ -32,6 +32,7 @@ inline audiorgui::SavedSettings UnusualSettings()
     r.transcribeModel = kAsrModels[kAsrModelCount - 1].file;
     r.transcribeLanguage = SpeechLanguage::English;
     r.transcribeGpu = false;
+    r.enhanceVoice = true;
     s.hotkeys[HotkeyIndex(HotkeyAction::Start)] = {kModAlt | kModShift, 'M'};
     s.hotkeys[HotkeyIndex(HotkeyAction::Stop)] = {0, 0x7A};                         /* F11 */
     s.downloadDeclined = true;
@@ -59,6 +60,7 @@ inline void ExpectSame(const audiorgui::SavedSettings &a, const audiorgui::Saved
     CHECK_EQ(x.transcribeModel, y.transcribeModel);
     CHECK(x.transcribeLanguage == y.transcribeLanguage);
     CHECK_EQ(x.transcribeGpu, y.transcribeGpu);
+    CHECK_EQ(x.enhanceVoice, y.enhanceVoice);
     for (int i = 0; i < kHotkeyActionCount; ++i)
         CHECK(a.hotkeys[i] == b.hotkeys[i]);
     CHECK_EQ(a.downloadDeclined, b.downloadDeclined);

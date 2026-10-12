@@ -240,10 +240,13 @@ void AppWindow::OnTimer()
     SyncTray();
 
     const bool moving = ctl_.Animating();
-    if (!hidden_ && (moving || wasMoving_ || ctl_.SetupVersion() != setupBefore))
+    const int percent = ctl_.Enhancing() ? static_cast<int>(ctl_.EnhanceProgress() * 100.0f) : -1;
+    const bool progressed = percent != enhancePercent_;      /* an enhancement is no animation: it draws when its figure changes */
+    enhancePercent_ = percent;
+    if (!hidden_ && (moving || wasMoving_ || progressed || ctl_.SetupVersion() != setupBefore))
         Invalidate();                                   /* (an idle tick that has nothing new draws nothing) */
     wasMoving_ = moving;
-    if (!moving && !ctl_.SetupBusy())
+    if (!moving && !ctl_.SetupBusy() && !ctl_.Enhancing())
         StopTimer();
     else
         RearmTimer();
@@ -257,6 +260,8 @@ std::wstring AppWindow::TrayTip() const
 {
     if (ctl_.GetPhase() == Phase::Recording)
         return std::wstring(kTitle) + L" · recording " + FormatDuration(ctl_.Stats().seconds);
+    if (ctl_.Enhancing())
+        return std::wstring(kTitle) + L" · enhancing the voice " + std::to_wstring(static_cast<int>(ctl_.EnhanceProgress() * 100.0f)) + L"%";
     const SetupStatus &setup = ctl_.Setup();
     if (setup.phase == SetupPhase::Downloading && setup.fraction >= 0.0f)
         return std::wstring(kTitle) + L" · downloading a speech model " +
@@ -297,7 +302,8 @@ void AppWindow::RestoreFromTray()
 
 /* Keeps the tray icon true to the recording: its look, and the time in its tip
  * (changed once a second); and, while hidden, says if a recording that was
- * running ended with a problem, which no one would otherwise see.  The same for the
+ * running ended with a problem, which no one would otherwise see, and when the voice
+ * of a recording is enhanced (or could not be).  The same for the
  * start-up set-up: a download's progress goes into the tip, and its question and its
  * result into a balloon. */
 void AppWindow::SyncTray()
@@ -305,7 +311,7 @@ void AppWindow::SyncTray()
     const Phase phase = ctl_.GetPhase();
     const bool changed = phase != lastPhase_;
     if (hidden_ && changed && phase == Phase::Idle)
-        ReportProblem();
+        ReportOutcome();
     lastPhase_ = phase;
     TellTrayAboutSetup();
     if (!hidden_)
@@ -313,7 +319,8 @@ void AppWindow::SyncTray()
 
     const long long seconds = phase == Phase::Recording ? static_cast<long long>(ctl_.Stats().seconds) : -1;
     const SetupStatus &setup = ctl_.Setup();
-    const int percent = setup.phase == SetupPhase::Downloading && setup.fraction >= 0.0f
+    const int percent = ctl_.Enhancing() ? static_cast<int>(ctl_.EnhanceProgress() * 100.0f)
+                        : setup.phase == SetupPhase::Downloading && setup.fraction >= 0.0f
                             ? static_cast<int>(setup.fraction * 100.0f)
                             : -1;
     if (!changed && seconds == traySeconds_ && percent == trayPercent_)
@@ -338,11 +345,18 @@ void AppWindow::TellTrayAboutSetup()
     lastSetupPhase_ = phase;
 }
 
-void AppWindow::ReportProblem()
+/* What a window hidden in the tray cannot show: how the last recording, or its enhancement, ended. */
+void AppWindow::ReportOutcome()
 {
     const Outcome &outcome = ctl_.LastOutcome();
-    if (hidden_ && outcome.kind == Outcome::Kind::Failed)
+    if (!hidden_)
+        return;
+    if (outcome.kind == Outcome::Kind::Failed)
         tray_.Balloon(L"Audior-GUI: recording problem", outcome.message);
+    else if (outcome.enhancement == EnhanceState::Failed)
+        tray_.Balloon(L"Audior-GUI: voice not enhanced", outcome.enhanceProblem);
+    else if (outcome.enhancement == EnhanceState::Done && !outcome.enhanced.empty())
+        tray_.Balloon(L"Audior-GUI: voice enhanced", outcome.enhanced.front(), false);
 }
 
 void AppWindow::ShowTrayMenu(int x, int y)
@@ -418,13 +432,14 @@ void AppWindow::OnHotkey(HotkeyAction action)
 {
     if (action == HotkeyAction::Start) {
         const bool couldStart = view_.CanStart();
+        const Phase before = ctl_.GetPhase();
         view_.StartRecording();
-        if (couldStart && ctl_.GetPhase() == Phase::Idle)       /* it did not start: the reason is the outcome */
-            ReportProblem();
+        if (couldStart && before == Phase::Idle && ctl_.GetPhase() == Phase::Idle)     /* it did not start: the reason is the outcome */
+            ReportOutcome();                    /* (from Enhancing, SyncTray() reports the same change) */
     } else {
         view_.StopRecording();
     }
-    if (ctl_.Animating())
+    if (ctl_.Animating() || ctl_.Enhancing())
         Wake();
     SyncTray();
     if (!hidden_)
@@ -617,13 +632,13 @@ LRESULT AppWindow::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
 
     case WM_CLOSE:
-        ctl_.Stop();                        /* never leave a recording half-written: before anything that can be slow */
+        ctl_.Shutdown();                    /* never leave a recording half-written: before anything that can be slow */
         RememberSettings();
         break;
 
     case WM_ENDSESSION:
         if (wParam) {                       /* the session really is ending */
-            ctl_.Stop();
+            ctl_.Shutdown();                /* (and no half-written copy for the next recording to be numbered around) */
             RememberSettings();
         }
         break;

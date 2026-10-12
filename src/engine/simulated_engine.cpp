@@ -25,6 +25,7 @@ constexpr float  kLagSeconds     = 0.4f;
 constexpr float  kBehindLagSeconds = 4.8f;          /* when FallBehindAfter() has been told to */
 constexpr double kWordSeconds    = 0.26;            /* one word is spoken, and shown, per 0.26 s */
 constexpr double kFinalDelay     = 0.45;            /* from the last word to the final event     */
+constexpr double kEnhanceSeconds = 3.0;             /* the clearer copy takes this long to make */
 constexpr double kScriptSeconds  = 42.0;            /* the conversation then starts over         */
 
 /* One utterance: when it starts, what is said, and one word the engine first
@@ -232,6 +233,9 @@ bool SimulatedEngine::Start(const RecordingSettings &settings, const std::wstrin
     transcriptFailAfter_ = -1.0;
     behindAt_ = behindAfter_;
     behindAfter_ = -1.0;
+    enhanceState_ = EnhanceState::Off;
+    enhanceProblem_ = std::move(enhanceFailMessage_);   /* a failure applies to one recording only */
+    enhanceFailMessage_.clear();
     recording_ = true;
     return true;
 }
@@ -254,6 +258,45 @@ void SimulatedEngine::Stop()
         return;
     recording_ = false;
     endTime_ = now_();
+    if (settings_.enhanceVoice) {                       /* a recording that failed by itself never gets here */
+        enhanceState_ = EnhanceState::Working;
+        enhanceStart_ = endTime_;
+    }
+}
+
+/* Working for kEnhanceSeconds (a failing one gives up halfway), then Done. */
+EnhanceStatus SimulatedEngine::Enhancement()
+{
+    const bool fails = !enhanceProblem_.empty();
+    if (enhanceState_ == EnhanceState::Working &&
+        now_() - enhanceStart_ >= (fails ? kEnhanceSeconds / 2.0 : kEnhanceSeconds))
+        enhanceState_ = fails ? EnhanceState::Failed : EnhanceState::Done;
+
+    EnhanceStatus status;
+    status.state = enhanceState_;
+    if (enhanceState_ == EnhanceState::Working)
+        status.progress = static_cast<float>(std::clamp((now_() - enhanceStart_) / kEnhanceSeconds, 0.0, 1.0));
+    else if (enhanceState_ == EnhanceState::Done)
+        status.progress = 1.0f;
+    if (enhanceState_ == EnhanceState::Failed)
+        status.problem = enhanceProblem_;
+    return status;
+}
+
+void SimulatedEngine::CancelEnhancement()
+{
+    if (enhanceState_ == EnhanceState::Working)
+        enhanceState_ = EnhanceState::Cancelled;
+}
+
+std::vector<std::wstring> SimulatedEngine::EnhancedFiles()
+{
+    std::vector<std::wstring> files;
+    if (enhanceState_ == EnhanceState::Done) {
+        for (const std::wstring &file : files_)
+            files.push_back(EnhancedPath(file));
+    }
+    return files;
 }
 
 double SimulatedEngine::Elapsed()
