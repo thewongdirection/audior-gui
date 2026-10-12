@@ -20,6 +20,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr DWORD     kAudioStream  = static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
+constexpr DWORD     kMediaSource  = static_cast<DWORD>(MF_SOURCE_READER_MEDIASOURCE);       /* (the enums are signed) */
 constexpr int       kMaxEmptyReads = 1000;      /* samples in a row that bring no audio before the file is given up as broken */
 constexpr std::uint64_t kHnsPerSecond = 10000000;
 
@@ -50,7 +51,7 @@ public:
         if (SUCCEEDED(hr)) {
             PROPVARIANT length;
             PropVariantInit(&length);
-            if (SUCCEEDED(reader_->GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE, MF_PD_DURATION, &length)) &&
+            if (SUCCEEDED(reader_->GetPresentationAttribute(kMediaSource, MF_PD_DURATION, &length)) &&
                 length.vt == VT_UI8)
                 total_ = length.uhVal.QuadPart * kPcmRate / kHnsPerSecond;
             PropVariantClear(&length);
