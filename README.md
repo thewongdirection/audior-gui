@@ -157,7 +157,7 @@ has a built-in script and always shows it):
 2. **A speech model**, in `%LOCALAPPDATA%\audior-gui\models` (or the folder named
    by the `AUDIOR_MODELS` environment variable): `ggml-large-v3.bin` (Whisper
    large-v3, about a hundred languages including Chinese, 2.9 GiB, needs a graphics card to keep up
-   with speech) or `ggml-parakeet-tdt-0.6b-v3-q8_0.bin` (Parakeet, 25 European languages, 638 MiB,
+   with speech), its 5-bit version `ggml-large-v3-q5_0.bin` (1.0 GiB, for a card of 4 GiB or more) or `ggml-parakeet-tdt-0.6b-v3-q8_0.bin` (Parakeet, 25 European languages, 638 MiB,
    light on the processor); `ggml-large-v3-turbo-q5_0.bin` (many languages, 547 MiB, slow without a
    GPU) is used too if it is there. Only these files, with these sizes and SHA-256 values (`src/core/asr_models.h`),
    are used. The program downloads one for you if you let it (next section), or you
@@ -166,8 +166,10 @@ has a built-in script and always shows it):
 **Whisper.** `ggml-large-v3.bin` (Whisper large-v3 at full precision, 2.9 GiB) is the top end:
 the most accurate, understanding about a hundred languages (the one to use for Chinese,
 Japanese, Korean, Arabic and the rest that Parakeet does not know), and offered to a PC
-whose graphics card has 8 GiB or more of its own memory (to one with less it is not).
-`ggml-large-v3-turbo-q5_0.bin` (the turbo model, quantised and a little weaker in
+whose graphics card has 8 GiB or more of its own memory. `ggml-large-v3-q5_0.bin` (the same
+model in 5 bits, 1.0 GiB, nearly the same words) is offered to a card of 4 GiB up to 8 GiB
+instead (no card gets both); a PC with a smaller card or none is offered neither, as the
+processor cannot keep up with them. `ggml-large-v3-turbo-q5_0.bin` (the turbo model, quantised and a little weaker in
 languages other than English) is still used if it is in the folder, but is not offered
 any more. There is no English-only model: every model here also understands other languages.
 
@@ -226,7 +228,8 @@ a notification above the two panes says what it is doing and what it found:
    light on the processor) and the small voice-activity detector; a PC whose card has 8 GiB
    or more of its own memory, and can use it for transcription (see step 1), is offered
    Whisper large-v3, the most accurate model and the one for Chinese and the other
-   languages Parakeet does not know, as well.
+   languages Parakeet does not know, as well, and one whose card has 4 GiB up to 8 GiB
+   the 5-bit large-v3 in its place.
 
    ![The start-up notification asking whether to download a speech model: Download Large v3, Parakeet v3 and the Silero voice-activity detector, 3.5 GB, from huggingface.co; the buttons are Download and Not now; the Transcript section of the panel says Waiting for your answer](docs/screenshots/setup-ask.png)
 

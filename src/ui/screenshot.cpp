@@ -107,7 +107,7 @@ bool Build(Scene &scene, const std::wstring &name)
     if (name == L"model") {                              /* idle, a Whisper model chosen, transcripts on */
         RecordingSettings &s = ctl.Settings();
         s.includeSystemAudio = s.transcribeMicrophone = s.transcribeSystem = true;
-        s.transcribeModel = kAsrModels[1].file;
+        s.transcribeModel = FindAsrModel(L"ggml-large-v3.bin")->file;
         return true;
     }
     if (name == L"named" || name == L"typing") {         /* idle, with every setting changed from its default */
@@ -127,7 +127,7 @@ bool Build(Scene &scene, const std::wstring &name)
         if (transcripts)
             ctl.Settings().transcribeMicrophone = ctl.Settings().transcribeSystem = true;
         if (name == L"transcript-chinese") {            /* the meeting in Chinese: Whisper, told the language */
-            ctl.Settings().transcribeModel = kAsrModels[1].file;
+            ctl.Settings().transcribeModel = FindAsrModel(L"ggml-large-v3.bin")->file;
             FindSpeechLanguage(L"zh", &ctl.Settings().transcribeLanguage);
         }
         if (name == L"catching-up")

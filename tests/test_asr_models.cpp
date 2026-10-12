@@ -152,6 +152,21 @@ TEST(Models_TheTurboModelIsUsedWhenItIsThereButNoLongerOffered)
     CHECK(turbo && !turbo->offered);
 }
 
+TEST(Models_Large5BitIsTheSameModelInAThirdOfTheSizeForTheCardsTooSmallForTheFullOne)
+{
+    const AsrModel *fiveBit = FindAsrModel(L"ggml-large-v3-q5_0.bin");
+    const AsrModel *full = FindAsrModel(L"ggml-large-v3.bin");
+    CHECK(fiveBit && full);
+    if (!fiveBit || !full)
+        return;
+    CHECK(fiveBit->engine == AsrEngine::Whisper && !fiveBit->fixedLanguages && fiveBit->offered);
+    CHECK_EQ(std::wstring(fiveBit->licence), std::wstring(full->licence));      /* the same OpenAI weights, quantised */
+    CHECK(fiveBit->bytes * 2 < full->bytes);
+    CHECK_EQ(fiveBit->gpuMemoryBelowBytes, full->gpuMemoryBytes);               /* it ends where the full one begins: no card gets both */
+    CHECK(fiveBit < full);                                                      /* lighter: before it in the table, so a step down goes to it */
+    CHECK_EQ(ModelUrl(*fiveBit), std::wstring(L"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin"));
+}
+
 TEST(Models_TheSmallEnglishModelIsGone)
 {
     CHECK(FindAsrModel(L"ggml-small.en-q5_1.bin") == nullptr);          /* a copy in the models folder is simply not used */
@@ -168,8 +183,10 @@ TEST(Models_AStepDownGoesToTheLighterModelsOfTheSameEngineOnly)
     CHECK(top && turbo && parakeet);
     if (!top || !turbo || !parakeet)
         return;
+    const AsrModel *fiveBit = FindAsrModel(L"ggml-large-v3-q5_0.bin");
+    CHECK(fiveBit != nullptr);
     const std::vector<const AsrModel *> lighter = SmallerModels(kAsrModels, top, installed);
-    CHECK(lighter.size() == 1 && lighter[0] == turbo);                          /* every language still understood */
+    CHECK(lighter.size() == 2 && lighter[0] == fiveBit && lighter[1] == turbo);   /* nearest first, every language still understood */
     CHECK(SmallerModels(kAsrModels, parakeet, installed).empty());              /* nothing lighter of its own kind, and Whisper weighs more */
 }
 

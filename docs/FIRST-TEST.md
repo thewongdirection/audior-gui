@@ -169,13 +169,13 @@ and Windows itself.
 Needs `audior_asr.exe` with its list next to `Audior-GUI.exe`, and `audior_fetch.exe` with
 `audior_fetch.sha256` (`build.bat` makes the second pair; `build.bat x64 asr` the first). The
 downloads are 638 MiB for Parakeet and 864 KiB for the voice detector (and 2.9 GiB for Whisper large-v3,
-only on a PC whose card has 8 GiB or more of its own memory) and need a connection. To start over between rows: delete the files of the models
+only on a PC whose card has 8 GiB or more of its own memory, or 1.0 GiB for its 5-bit version on a card of 4 GiB up to 8 GiB) and need a connection. To start over between rows: delete the files of the models
 folder, and the line `modelDownload=declined` of `Audior-GUI.ini` (set it to `ask`, or delete the file).
 
 | Try | Expect |
 |---|---|
 | Start the program with the models folder empty | A notification above the two panes: *Live transcripts need a speech model*, naming the files, their total size and `huggingface.co`, and saying which graphics card will be used (or why the processor will do the work). Nothing is downloaded yet (check the folder, and Task Manager's network column). The panel's Transcript section says *Waiting for your answer*. |
-| Compare the card named with Device Manager, on a PC with a card of 8 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
+| Compare the card named with Device Manager, on a PC with a card of 4 GiB or more | The same card, with its memory; Whisper large-v3 is in the list of files if the card has 8 GiB or more, its 5-bit version (and not the full one) if it has 4 GiB up to 8. On a PC with a smaller or no card, or without `ggml-vulkan.dll` next to the program, only Parakeet and the voice detector are named, and the sentence says why the processor is used. |
 | Press **Download** | A progress bar and *Downloading ...* with how much has arrived; then *Checking ...*; then *Speech model installed*. The **Transcript** switches and the model choice appear without a restart, and the GPU switch is off if the notification said the processor would be used. The models folder holds the files, and no `.part` file. |
 | Record with a transcript on straight afterwards | Works as in section 5. |
 | Start the program again | *Live transcripts are ready* for a few seconds (naming the card and the model), then it goes away by itself; nothing is downloaded. |

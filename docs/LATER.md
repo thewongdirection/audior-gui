@@ -66,11 +66,12 @@ blocks using it; each item is worth doing when it starts to matter.
   offered Whisper large-v3 afterwards (there is no "More models" choice yet); and the large model
   on a card has not been timed on every card, which is also why it is only offered, never made the
   default.
-- **PCs without an 8 GiB card are offered Parakeet only** (since the small English model was dropped),
-  which has no Chinese, Japanese, Korean, Arabic or Hindi. Such a PC can use Whisper turbo if the person
-  puts the file in the models folder, but it is slow without a card (about seven cores for real-time
-  speech), and nothing lighter that understands those languages is in the table. A middle Whisper
-  model for them (a smaller multilingual one) is the open question.
+- **PCs without a card of 4 GiB or more are offered Parakeet only** (since the small English model was
+  dropped), which has no Chinese, Japanese, Korean, Arabic or Hindi. A card of 4 GiB up to 8 gets Whisper
+  large-v3 in 5 bits (`ggml-large-v3-q5_0.bin`), one of 8 GiB or more the full model. A PC with a weaker card
+  or none can use Whisper turbo if the person puts the file in the models folder, but it is slow without a card
+  (about seven cores for real-time speech), and nothing lighter that understands those languages is in the
+  table: a middle Whisper model for them (a smaller multilingual one) is the open question.
 - A download that is interrupted starts again from the beginning (no resume), and a proxy
   that needs a sign-in is not supported (WinHTTP uses the system's proxy settings, but the
   download program has no way to ask for credentials).

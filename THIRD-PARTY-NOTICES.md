@@ -43,7 +43,7 @@ uses a model only if it is one of those below, with the size and SHA-256 listed 
 | Model | Licence | Source |
 |---|---|---|
 | Whisper large-v3-turbo (`ggml-large-v3-turbo-q5_0.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
-| Whisper large-v3 (`ggml-large-v3.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
+| Whisper large-v3 (`ggml-large-v3.bin`) and its 5-bit version (`ggml-large-v3-q5_0.bin`) | Apache-2.0 | https://huggingface.co/ggerganov/whisper.cpp |
 | Parakeet TDT 0.6B v3 (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) | CC BY 4.0 | https://huggingface.co/ggml-org/parakeet-GGUF |
 
 The Whisper ones are OpenAI's weights converted to the ggml format by the whisper.cpp
