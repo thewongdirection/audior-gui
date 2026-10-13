@@ -896,16 +896,30 @@ int CountWords(const std::wstring &text, const wchar_t *const *words, std::size_
     return found;
 }
 
+/* The Whisper models that are in the models folder, the heaviest first (T16 and T17 use whichever large ones the PC has). */
+std::vector<const audiorgui::AsrModel *> InstalledWhisper()
+{
+    std::vector<const audiorgui::AsrModel *> found;
+    const std::wstring models = audiorgui::ModelsDirectory();
+    for (std::size_t i = audiorgui::kAsrModelCount; i-- > 0;) {
+        const audiorgui::AsrModel &m = audiorgui::kAsrModels[i];
+        if (m.engine == audiorgui::AsrEngine::Whisper && audiorgui::ModelInstalled(models, m.file))
+            found.push_back(&m);
+    }
+    return found;
+}
+
 void T16()
 {
     Section("T16 a busy PC: the transcript changes to a lighter model");
-    const audiorgui::AsrModel *big = audiorgui::FindAsrModel(L"ggml-large-v3.bin");
-    const audiorgui::AsrModel *lesser = audiorgui::FindAsrModel(L"ggml-large-v3-turbo-q5_0.bin");
+    const std::vector<const audiorgui::AsrModel *> installed = InstalledWhisper();
+    const audiorgui::AsrModel *big = installed.size() > 1 ? installed[0] : nullptr;      /* the heaviest steps down to the next one */
+    const audiorgui::AsrModel *lesser = installed.size() > 1 ? installed[1] : nullptr;
     audiorgui::AsrSetup setup, fallback;
     const std::wstring programs = audiorgui::ProgramDirectory(), models = audiorgui::ModelsDirectory();
     if (!big || !lesser || !audiorgui::FindAsr(programs, models, &setup, audiorgui::kAsrModels, audiorgui::kAsrModelCount, big->file) ||
         !audiorgui::FindAsr(programs, models, &fallback, audiorgui::kAsrModels, audiorgui::kAsrModelCount, lesser->file)) {
-        Info("skipped: it needs the helper (build.bat asr) and both Whisper large-v3 and its turbo model");
+        Info("skipped: it needs the helper (build.bat asr) and two Whisper models (large-v3 and turbo, say) in the models folder");
         return;
     }
 
@@ -1101,22 +1115,11 @@ LargeRun RunLarge(const audiorgui::AsrSetup &setup, bool gpu, const std::vector<
     return run;
 }
 
-/* The heaviest Whisper model that is in the models folder (what T17 is about: whichever large one the PC has), or null. */
-const audiorgui::AsrModel *HeaviestWhisper()
-{
-    const std::wstring models = audiorgui::ModelsDirectory();
-    for (std::size_t i = audiorgui::kAsrModelCount; i-- > 0;) {
-        const audiorgui::AsrModel &m = audiorgui::kAsrModels[i];
-        if (m.engine == audiorgui::AsrEngine::Whisper && audiorgui::ModelInstalled(models, m.file))
-            return &m;
-    }
-    return nullptr;
-}
-
 void T17()
 {
     Section("T17 the large model on the graphics card, at the pace of speech");
-    const audiorgui::AsrModel *big = HeaviestWhisper();
+    const std::vector<const audiorgui::AsrModel *> installed = InstalledWhisper();
+    const audiorgui::AsrModel *big = installed.empty() ? nullptr : installed[0];
     audiorgui::AsrSetup setup;
     if (!big || !audiorgui::FindAsr(audiorgui::ProgramDirectory(), audiorgui::ModelsDirectory(), &setup, audiorgui::kAsrModels,
                                     audiorgui::kAsrModelCount, big->file) || !setup.gpu) {
