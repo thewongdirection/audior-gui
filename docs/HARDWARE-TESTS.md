@@ -89,7 +89,7 @@ Every recording below lasts at least 32 s. "Clock" is the time from the window a
 | T13 | Resources over one 60 s recording | in the second half: private memory grows by less than 3 MB, handles by at most 3, threads by at most 2; CPU under 15% of a core; both MP3 files 30 s+ and the same length |
 | T14 | Focus | the foreground window never belonged to the application during the run; any other `Audior-GUI.exe` seen during the run is noted (they share the stop signal) |
 | T15 | Live transcript of the system audio | skipped (with a note) unless the helper and a model are in place. Runs the recording engine in the test process with the system stream's transcript on, once on the processor and, if the helper has the Vulkan backend, once on the graphics card, while a voice speaks a sentence: the helper becomes ready; the transcript does not fail; text appears *while* the voice is still speaking; at least 4 of the 5 key words (quick, brown, fox, lazy, dog) are in the settled text; the text is never 3 s or more behind; no `audior_asr.exe` is left after the recording ends |
-| T16 | A busy PC: the step to a lighter model | skipped (with a note) unless the helper and both Whisper large-v3 and its turbo model are in place. Windows' voice says about a minute of speech into a file (silently); large-v3 reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the turbo model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
+| T16 | A busy PC: the step to a lighter model | skipped (with a note) unless the helper and two Whisper models are in the models folder: the heaviest installed steps down to the next (large-v3 to turbo, or the 5-bit large-v3 to turbo). Windows' voice says about a minute of speech into a file (silently); the heavier model reads it at the pace of speech on the processor, English fixed, and once it is ready **every core is kept busy** at normal priority (the helper runs below normal, so it gets what is left). Checks: the transcript says it is catching up; it changes to the turbo model (6 s or more behind for 10 s); the last sentences, said after the change, are in the text (at least 3 of 5 key words); it is live again once the load is stopped (a few seconds after the change); no `audior_asr.exe` is left. Takes about two minutes, during which the PC is sluggish |
 | T17 | The large model on the graphics card | skipped (with a note) unless the helper has the Vulkan backend (`build.bat vulkan`) and the large (turbo) model is installed. About a minute of speech (a voice, into a file, silently) goes at the pace of speech to a helper with the large model: first on the graphics card (checked: ready; first text within 10 s of the speech beginning, which takes in the card's first use; never 3 s or more behind; the last phrase settled within 5 s of the end; at least 4 of 5 key words from the early and from the late sentences), then on the processor (only reported, for comparison; it must give text). Takes about three minutes |
 | T18 | Parakeet at the pace of speech | skipped (with a note) unless the helper and the Parakeet model (`ggml-parakeet-tdt-0.6b-v3-q8_0.bin`) are in place. The same minute of speech as T17, on the processor and, if the helper has the Vulkan backend, on the card. Checked on each: ready; never 3 s or more behind; the last phrase settled within 5 s of the end; nothing said twice; at least 4 of 5 key words from the early and from the late sentences; no helper left. Takes about two minutes |
 
@@ -188,6 +188,19 @@ Whisper turbo model used 459 s (7.35 cores, 1.7 s behind on average). On the car
 average and 0.2 s at most, 3.9 s of processor time. The same sample with Whisper large-v3 at full
 precision on the card (not a test): 146 words, 0.75 s behind on average and 2.3 s at most, but 62.6 s of
 processor time (1.06 core) while another program held most of the card's memory.
+
+**T16, T17 and T18 again, 2026-10-12 to 13, x64, RTX 5080, after the review fixes, the language work and the
+5-bit large-v3** (the test copy's models folder: the 5-bit large-v3, turbo, Parakeet, Silero; another program,
+a local language-model server, held part of the card): all pass. **T16** (the 5-bit large-v3 on the processor
+under a load on every core, stepping down to turbo; the full-precision large-v3 was not installed, so the
+test now takes the two heaviest Whisper models there are): ready after 5.2 s, behind from 10 s on and 16.6 s
+at worst, changed to turbo at 26.2 s, the last sentences all there (5 of 5 key words), live again once the
+load stopped, no helper left. **T17** with the 5-bit large-v3 (run with the merged tree, 2026-10-12): on the
+card ready after 4.3 s, first text 1.1 s into the speech, 0.1 s behind on average and 0.3 s at most, 146
+words for 146 spoken, the card's memory use up by about 2.2 GiB while it ran; on the processor 1.5 s behind on
+average and 3.0 s at most. **T18**: on the processor ready after 2.6 s, 0.4 s behind on average and 1.5 s at
+most, the last phrase settled 0.5 s after the end; on the card 3.1 s, 0.1 s and 0.3 s; 146 words for 146
+spoken on both, all ten key words.
 
 ## Findings
 
