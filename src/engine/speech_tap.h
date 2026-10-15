@@ -4,7 +4,8 @@
  * Speech recognisers want 16 kHz mono; the recording is 48 kHz stereo.  A
  * capture thread runs the audio it has just converted (after the gain, like the
  * waveform sees it, and before any merging) through a SpeechDecimator and hands
- * the result to an ISpeechSink.  Plain C++, tested without a device.
+ * the result to an ISpeechSink; so does the writer thread with the mix of a merge,
+ * which is what that file holds.  Plain C++, tested without a device.
  */
 #pragma once
 
@@ -21,8 +22,9 @@ class ISpeechSink {
 public:
     virtual ~ISpeechSink() = default;
 
-    /* Called on a capture thread with the next `count` samples of `stream`.  It
-     * must neither block nor fail: a transcriber that cannot keep up loses
+    /* Called on a capture thread (or, for the mix of a merge, the writer thread) with
+     * the next `count` samples of the transcript's slot `stream` (see kMixTranscript).
+     * It must neither block nor fail: a transcriber that cannot keep up loses
      * audio, the recording does not. */
     virtual void Push(StreamId stream, const std::int16_t *samples, std::size_t count) = 0;
 };

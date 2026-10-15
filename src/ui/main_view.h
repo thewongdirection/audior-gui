@@ -22,8 +22,11 @@
  *
  * Each stream has its own pane: a checkbox that says whether it is recorded,
  * a drop-down of every detected device, its gain and its waveform.  When the
- * engine can transcribe, a "Transcript" switch beside the title adds the live
+ * engine can transcribe, a "Live transcription" switch beside the title adds the live
  * text under the waveform, and the panel gets the choice of model and language.
+ * With the two streams merged into one file there is one transcript, of the mix: the
+ * panes then have no switch, and a card between them (see MixView) has the switch
+ * and the text; it is only a bar while the switch is off.
  *
  * While the start-up set-up of transcription has something to say (it is looking at the PC, asks
  * whether to download a speech model, downloads it, or has finished) a notification sits above the
@@ -41,6 +44,7 @@
 #include "../core/hotkey.h"
 #include "../core/recorder_controller.h"
 #include "lane_view.h"
+#include "mix_view.h"
 #include "widgets.h"
 
 namespace audiorgui::ui {
@@ -121,7 +125,7 @@ public:
     void WindowDeactivated() { if (focus_) focus_->FocusLost(); }
 
 private:
-    static constexpr int kWidgetCount = 28;
+    static constexpr int kWidgetCount = 29;
     struct Caption { const wchar_t *text; D2D1_RECT_F rect; };
 
     /* A stream's gain: the slider, where it sits, and its value as text. */
@@ -155,6 +159,7 @@ private:
     void MoveFocus(int direction);
     void LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &transcript, Button &device);
     TranscriptPane PaneOf(StreamId stream) const;
+    TranscriptPane MixPane() const;
 
     void PaintHeader(Painter &p);
     void PaintBanner(Painter &p);
@@ -169,7 +174,7 @@ private:
     float               width_ = 0.0f, height_ = 0.0f;
 
     Checkbox  micCheck_, systemCheck_;
-    Switch    micTranscript_, systemTranscript_, gpuSwitch_, enhanceSwitch_;
+    Switch    micTranscript_, systemTranscript_, mixTranscript_, gpuSwitch_, enhanceSwitch_;
     Button    micField_, systemField_, folderField_, bitrateField_, languageField_, modelField_, bluetoothLink_;
     Button    startButton_, stopButton_, showButton_, cancelButton_;
     Button    bannerPrimary_, bannerSecondary_, retryLink_;
@@ -186,7 +191,7 @@ private:
     Hotkey hotkeys_[kHotkeyActionCount] = {kDefaultStartHotkey, kDefaultStopHotkey};
     bool   hotkeyActive_[kHotkeyActionCount] = {true, true};    /* the system accepted it */
 
-    D2D1_RECT_F micCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
+    D2D1_RECT_F micCard_ = {}, mixCard_ = {}, systemCard_ = {}, panel_ = {}, transport_ = {}, messageArea_ = {};
     D2D1_RECT_F bannerRect_ = {}, transcriptNoteRect_ = {};
     D2D1_RECT_F shareRow_ = {}, mixHintRect_ = {}, nameHintRect_ = {}, hotkeyHintRect_ = {}, micNoteRect_ = {};
     bool        micBluetooth_ = false;  /* the microphone to be recorded is a Bluetooth one: say what that does */
@@ -204,6 +209,9 @@ private:
     bool          sectionShown_ = false;
 
     LaneView micView_, systemView_;
+    MixView  mixView_;
+    bool     mixShown_ = false;         /* the card between the panes, for the one transcript of a merge, is laid out... */
+    bool     mixOpen_ = false;          /* ...and its transcript is on, so that the card is tall (else it is a bar) */
 
     /* Text that changes rarely is built when it changes, not every frame. */
     std::wstring shareText_, mixHint_, nameHint_, summary_, savedName_, hotkeyProblem_, hotkeyHint_;

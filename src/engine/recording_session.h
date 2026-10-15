@@ -7,6 +7,10 @@
  *     -> peak bins for the waveform           mix if merging, write to the
  *     -> ring buffer (8 s)                    sinks
  *
+ * A live transcript hears a stream as the capture thread gets it, or, when the
+ * streams are merged, the mix the writer thread makes for the file (one transcript
+ * for the one track).
+ *
  * The rings are the only place audio waits, so memory stays bounded however
  * long the recording runs.  Anything that goes wrong (a device that vanishes,
  * a disk that fills, a writer that cannot keep up) ends the recording at once;
@@ -44,8 +48,10 @@ struct SessionPlan {
     bool  merge      = false;               /* both streams mixed into files[0]    */
     float micWeight  = 0.65f;               /* the microphone's share when merging */
 
-    /* The streams (a bit per StreamId) whose audio also goes to the speech
-     * sink, if the session has one. */
+    /* The transcript slots (a bit per StreamId) whose audio also goes to the
+     * speech sink, if the session has one.  A stream's slot gets that stream;
+     * when merging, the streams do not go there by themselves: the mix that is
+     * written to the file does, in the slot of kMixTranscript. */
     std::uint8_t speech = 0;
 
     /* One file; or, for two streams kept apart, the microphone's then the
@@ -62,8 +68,9 @@ public:
 
     /* `externalStop`, if given, is an event that another process may set to end
      * the recording; it must outlive the session.  `speech`, if given, gets the
-     * audio of the streams in SessionPlan::speech (16 kHz mono, from the capture
-     * threads); it must outlive the session too. */
+     * audio of the slots in SessionPlan::speech (16 kHz mono, from the capture
+     * threads, or from the writer thread for a mix); it must outlive the session
+     * too. */
     RecordingSession(SourceFactory sources, SinkFactory sinks, HANDLE externalStop = nullptr,
                      ISpeechSink *speech = nullptr);
     ~RecordingSession();
@@ -100,6 +107,7 @@ private:
     void Deliver(Stream &stream, const std::vector<std::int16_t> &frames, std::vector<PeakBin> *bins);
     void WriteLoop();
     void Drain(bool final);
+    void SpeakMix(std::size_t frames);
     void Finalise();
     void Fail(const wchar_t *what, long hr);
     void RequestStop();
@@ -112,6 +120,7 @@ private:
     ISpeechSink  *speech_;
 
     SessionPlan   plan_;
+    bool          merging_ = false;                     /* both streams are recorded, into one file */
     HANDLE        stop_ = nullptr;                      /* set to end the recording */
     std::atomic<bool> stopping_{false};
     bool          started_ = false;
@@ -123,6 +132,8 @@ private:
     std::atomic<std::uint64_t> framesWritten_{0};
     bool                    sinkFailed_ = false;        /* writer thread only */
     std::vector<std::int16_t> scratchA_, scratchB_;     /* writer thread only */
+    SpeechDecimator         mixDecimator_;              /* the mix on its way to the transcriber: writer thread only */
+    std::vector<std::int16_t> mixSpeech_;               /* ... and its scratch, reused */
 
     std::mutex              readyMutex_;                /* the devices-are-open handshake */
     std::condition_variable readyCv_;

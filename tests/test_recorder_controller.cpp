@@ -409,6 +409,7 @@ TEST(Controller_TheSystemTranscriptsLongerNameCanBeTheOnlyOneOverTheLimit)
 {
     Rig rig;
     rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;             /* (merged, there is one transcript, and its name is shorter) */
     rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(233, L'd');
     rig.ctl.Settings().fileName = std::wstring(5, L'n');        /* the recording is 246; " - microphone.txt" makes 259: just fits */
     rig.ctl.Settings().transcribeMicrophone = true;
@@ -595,6 +596,7 @@ TEST(Controller_TheOutcomeNamesTheTranscriptFilesOfTheTranscribedStreams)
 {
     Rig rig;
     rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;                 /* two tracks: two transcripts */
     rig.ctl.Settings().transcribeMicrophone = rig.ctl.Settings().transcribeSystem = true;
     CHECK(rig.ctl.Start());
     rig.Run(1.0);
@@ -603,22 +605,51 @@ TEST(Controller_TheOutcomeNamesTheTranscriptFilesOfTheTranscribedStreams)
     const Outcome &o = rig.ctl.LastOutcome();
     CHECK(o.kind == Outcome::Kind::Saved);
     CHECK_EQ(o.transcripts.size(), std::size_t(2));
-    CHECK_EQ(o.transcripts[0], PlannedTranscriptFile(o.files[0], StreamId::Microphone));    /* beside the recording */
-    CHECK_EQ(o.transcripts[1], PlannedTranscriptFile(o.files[0], StreamId::System));
+    CHECK_EQ(o.transcripts[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 - microphone.txt"));    /* beside the recording */
+    CHECK_EQ(o.transcripts[1], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 - system audio.txt"));
     CHECK(o.transcriptProblem.empty());
 
     Rig onlyOne;                                                    /* a pane without a transcript has no file */
     onlyOne.ctl.Settings().includeSystemAudio = true;
+    onlyOne.ctl.Settings().mixMode = MixMode::Separate;
     onlyOne.ctl.Settings().transcribeSystem = true;
     CHECK(onlyOne.ctl.Start());
     onlyOne.Run(1.0);
     onlyOne.ctl.Stop();
     CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts.size(), std::size_t(1));
-    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts[0], PlannedTranscriptFile(onlyOne.ctl.LastOutcome().files[0], StreamId::System));
+    CHECK_EQ(onlyOne.ctl.LastOutcome().transcripts[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 - system audio.txt"));
 
     Rig none;                                                       /* no transcript asked for: none saved */
     none.Record();
     CHECK(none.ctl.LastOutcome().transcripts.empty());
+}
+
+TEST(Controller_AMergedRecordingSavesOneTranscriptOfTheMix)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;                   /* merged is the default */
+    rig.ctl.Settings().transcribeMicrophone = rig.ctl.Settings().transcribeSystem = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(1.0);
+    rig.ctl.Stop();
+
+    const Outcome &o = rig.ctl.LastOutcome();
+    CHECK_EQ(o.files.size(), std::size_t(1));
+    CHECK_EQ(o.transcripts.size(), std::size_t(1));                 /* one transcript for the one file */
+    CHECK_EQ(o.transcripts[0], std::wstring(L"C:\\Rec\\Audior-GUI-20261010-153045 - merged.txt"));
+}
+
+TEST(Controller_AMergedTranscriptIsNumberedWithItsRecording)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().fileName = L"meeting";
+    rig.ctl.Settings().transcribeSystem = true;                     /* either switch asks for the one transcript */
+    rig.existing.insert(L"C:\\Rec\\meeting - merged.txt");          /* an earlier one is there */
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+    CHECK_EQ(rig.ctl.LastOutcome().files[0], std::wstring(L"C:\\Rec\\meeting (2).mp3"));
+    CHECK_EQ(rig.ctl.LastOutcome().transcripts[0], std::wstring(L"C:\\Rec\\meeting (2) - merged.txt"));
 }
 
 namespace {
@@ -658,7 +689,153 @@ TEST(Controller_ShowsATranscriptOnlyForAStreamSwitchedOnAndRecorded)
     rig.ctl.Settings().transcribeSystem = true;                     /* system audio is not recorded */
     CHECK(!rig.ctl.ShowsTranscript(StreamId::System));
     rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().mixMode = MixMode::Separate;                 /* (merged, the panes show none: see the mix card) */
     CHECK(rig.ctl.ShowsTranscript(StreamId::System));
+}
+
+TEST(Controller_MergedStreamsShowTheTranscriptInACardOfItsOwnNotInThePanes)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;                   /* both streams, merged */
+    CHECK(rig.ctl.HasMixCard());                                    /* the card is there for its switch... */
+    CHECK(!rig.ctl.ShowsMixTranscript());                           /* ...whatever the switch says: it is off */
+
+    rig.ctl.Settings().transcribeMicrophone = true;                 /* either stream's switch asks for it */
+    CHECK(rig.ctl.ShowsMixTranscript());
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::Microphone));          /* the panes have none */
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::System));
+    rig.ctl.Settings().transcribeMicrophone = false;
+    rig.ctl.Settings().transcribeSystem = true;
+    CHECK(rig.ctl.ShowsMixTranscript());
+
+    rig.ctl.Settings().mixMode = MixMode::Separate;                 /* two tracks: the panes have theirs, the card goes */
+    CHECK(!rig.ctl.HasMixCard() && !rig.ctl.ShowsMixTranscript());
+    CHECK(rig.ctl.ShowsTranscript(StreamId::System));
+    CHECK(!rig.ctl.ShowsTranscript(StreamId::Microphone));          /* (its switch is off) */
+
+    rig.ctl.Settings().mixMode = MixMode::Merge;                    /* one stream: not a merge */
+    rig.ctl.Settings().includeSystemAudio = false;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(!rig.ctl.HasMixCard());
+    CHECK(rig.ctl.ShowsTranscript(StreamId::Microphone));
+}
+
+TEST(Controller_AnEngineThatCannotTranscribeHasNoMixCard)
+{
+    RefusingEngine engine;
+    RecorderController ctl(engine, [] { return LocalTime(); });
+    ctl.Settings().includeSystemAudio = true;
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(!ctl.HasMixCard() && !ctl.ShowsMixTranscript());
+}
+
+TEST(Controller_ATranscriptShowsOnlyWhileTheStreamsAreMergedOrNotAsTheyWereRecorded)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().transcribeSystem = true;                     /* merged: slot 0 holds the mix, both speakers' words */
+    CHECK(rig.ctl.Start());
+    rig.Run(14.0);
+    rig.ctl.Stop();
+    CHECK(rig.ctl.Transcript(kMixTranscript).Count() >= 4);
+
+    rig.ctl.Settings().mixMode = MixMode::Separate;                 /* slot 0 would now be the microphone's own: it must not show the mix */
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));
+    CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::Microphone).state == TranscriptState::Off);
+    CHECK(rig.ctl.TranscriptionProblem(StreamId::Microphone).empty());
+
+    rig.ctl.Settings().mixMode = MixMode::Merge;                    /* changed back: the transcript is as it was (nothing was lost) */
+    CHECK(rig.ctl.Transcript(kMixTranscript).Count() >= 4);
+
+    rig.ctl.Settings().includeSystemAudio = false;                  /* a stream unticked: no longer a merge */
+    CHECK_EQ(rig.ctl.Transcript(StreamId::Microphone).Count(), std::size_t(0));
+    rig.ctl.Settings().includeSystemAudio = true;
+    CHECK(rig.ctl.Transcript(kMixTranscript).Count() >= 4);
+
+    rig.ctl.Settings().mixMode = MixMode::Separate;                 /* the next recording is its own: separate transcripts */
+    rig.ctl.Settings().transcribeMicrophone = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(14.0);
+    CHECK(rig.ctl.Transcript(StreamId::Microphone).Count() >= 3);   /* the microphone's own words... */
+    CHECK(std::wstring(rig.ctl.Transcript(StreamId::Microphone).At(0).text).compare(0, 4, L"Okay") == 0);
+    CHECK(rig.ctl.Transcript(StreamId::System).Count() >= 1);       /* ...and the system audio's, each in its own */
+    rig.ctl.Stop();
+
+    rig.ctl.Settings().mixMode = MixMode::Merge;                    /* and the reverse: separate, then merged */
+    CHECK_EQ(rig.ctl.Transcript(kMixTranscript).Count(), std::size_t(0));
+    CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
+}
+
+TEST(Controller_AModelThatArrivesDuringARecordingDoesNotAddTheMixCardToIt)
+{
+    LocalTime time;
+    time.year = 2026; time.month = 10; time.day = 10;
+    DeafEngine engine([] { return 0.0; });
+    RecorderController ctl(engine, [&time] { return time; }, [](const std::wstring &) { return false; });
+    ctl.Settings().outputDirectory = L"C:\\Rec";
+    ctl.Settings().includeSystemAudio = true;                       /* merged, with a transcript asked for but nothing to make it with */
+    ctl.Settings().transcribeMicrophone = true;
+    CHECK(!ctl.HasMixCard());
+    CHECK(ctl.Start());
+    engine.hears = true;
+    ctl.RefreshTranscription();                                     /* what the set-up does when its download ends */
+    CHECK(!ctl.HasMixCard() && !ctl.ShowsMixTranscript());          /* no card appears (and the window does not shift) in a recording that has no transcript */
+    ctl.Stop();
+    CHECK(ctl.HasMixCard() && ctl.ShowsMixTranscript());            /* the next one has */
+}
+
+TEST(Controller_AMergedTranscriptsPathIsCheckedAgainstTheLimitToo)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;                   /* merged: " - merged.txt" takes the place of the extension ".mp3" */
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.ctl.Settings().outputDirectory = L"C:\\" + std::wstring(237, L'd');
+    rig.ctl.Settings().fileName = std::wstring(5, L'n');            /* the recording is 250; the transcript 250 - 4 + 13 = 259: just fits */
+    CHECK(rig.ctl.Start());
+    rig.ctl.Stop();
+
+    rig.ctl.Settings().fileName = std::wstring(6, L'n');            /* 251 fits, but the transcript is 260 */
+    CHECK(!rig.ctl.Start());
+    CHECK(rig.ctl.LastOutcome().message.find(L"transcript") != std::wstring::npos);
+    CHECK(rig.ctl.LastOutcome().message.find(L"too long") != std::wstring::npos);
+
+    rig.ctl.Settings().transcribeMicrophone = false;                /* without it there is nothing too long */
+    CHECK(rig.ctl.Start());
+}
+
+TEST(Controller_AMergedTranscriptFlowsIntoTheMixLaneOnly)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().transcribeSystem = true;
+    CHECK(rig.ctl.Start());
+    rig.Run(14.0);                                                  /* the microphone speaks, then the system audio answers */
+
+    const TranscriptLane &mix = rig.ctl.Transcript(kMixTranscript);
+    CHECK(mix.Count() >= 4);
+    CHECK(std::wstring(mix.At(0).text).compare(0, 4, L"Okay") == 0);           /* the microphone's first words... */
+    CHECK(std::wstring(mix.At(mix.Count() - 1).text).compare(0, 4, L"Sure") == 0);   /* ...and the system audio's reply in the same lane */
+    CHECK_EQ(rig.ctl.Transcript(StreamId::System).Count(), std::size_t(0));
+    CHECK(rig.ctl.TranscriptionStatus(kMixTranscript).state == TranscriptState::Live);
+    CHECK(rig.ctl.TranscriptionStatus(StreamId::System).state == TranscriptState::Off);
+
+    rig.ctl.Stop();
+    CHECK(rig.ctl.ShowsMixTranscript());                            /* it stays on show after Stop */
+    CHECK(mix.Count() >= 4);
+}
+
+TEST(Controller_AMergedTranscriptionFailureIsTheOneTranscriptsAndTheRecordingGoesOn)
+{
+    Rig rig;
+    rig.ctl.Settings().includeSystemAudio = true;
+    rig.ctl.Settings().transcribeMicrophone = true;
+    rig.engine.FailTranscriptAfter(2.0, L"The speech engine stopped responding.");
+    rig.ctl.Start();
+    rig.Run(5.0);
+    CHECK(rig.ctl.GetPhase() == Phase::Recording);
+    CHECK(rig.ctl.TranscriptionStatus(kMixTranscript).state == TranscriptState::Failed);
+    CHECK_EQ(rig.ctl.TranscriptionProblem(kMixTranscript), std::wstring(L"The speech engine stopped responding."));
 }
 
 TEST(Controller_OffersTheModelsTheEngineHas)
@@ -766,6 +943,7 @@ TEST(Controller_AsksOnlyForTheTranscriptsSwitchedOn)
     RecorderController ctl(engine, [] { return LocalTime(); });
     ctl.Settings().outputDirectory = L"C:\\Rec";
     ctl.Settings().includeSystemAudio = true;
+    ctl.Settings().mixMode = MixMode::Separate;                     /* (merged, the one transcript is the first slot's) */
 
     ctl.Start();                                                    /* nothing is switched on */
     now = 2.0;
@@ -779,6 +957,15 @@ TEST(Controller_AsksOnlyForTheTranscriptsSwitchedOn)
     ctl.Tick(2.0);
     CHECK_EQ(engine.pulls[0], 0);
     CHECK(engine.pulls[1] > 0);
+    ctl.Stop();
+
+    engine.pulls[0] = engine.pulls[1] = 0;
+    ctl.Settings().mixMode = MixMode::Merge;                        /* the same switch, merged: the mix's slot only */
+    ctl.Start();
+    now = 6.0;
+    ctl.Tick(2.0);
+    CHECK(engine.pulls[StreamIndex(kMixTranscript)] > 0);
+    CHECK_EQ(engine.pulls[StreamIndex(StreamId::System)], 0);
 }
 
 /* ---- the start-up set-up of transcription ---- */

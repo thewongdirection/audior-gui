@@ -14,6 +14,18 @@ blocks using it; each item is worth doing when it starts to matter.
   whisper.cpp's JFK sample it splits at every pause, which is right, but a very
   short pause may be too eager.
 
+## The merged transcript
+
+- A merged recording has one transcript, of the mix the file holds, so it does not say who spoke
+  (the two streams cannot be told apart in a mix) and a phrase said by both at once is heard as
+  one. Transcribing the streams separately and weaving the text by time would label each phrase
+  *Microphone* or *System audio*, at twice the work; it was not done. The mix's weights apply:
+  at 0% or 100% of the *Share of the mix* the transcript hears one stream alone, as the file does.
+- Not yet checked on real hardware: `docs/FIRST-TEST.md` section 5, the merged-file rows (the one
+  transcript between the panes, `<name> - merged.txt`, the slider's ends). The unit tests cover the
+  rules and the mixing for the transcriber; a real mix has not been spoken into, and the card
+  has only been seen in rendered pictures.
+
 ## Graphics card
 
 - An NVIDIA card (RTX 5080) and, forced with `GGML_VK_VISIBLE_DEVICES=1`, an AMD Radeon

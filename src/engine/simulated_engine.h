@@ -13,7 +13,9 @@
  * It also plays a live transcript: a short conversation, spoken word by word
  * (each utterance as partials, one of them revised, then final), on a loop,
  * so the demo and the tests can exercise everything a transcribing engine
- * does.  The script depends on the recording time only.
+ * does.  Each stream's transcript is its own speaker's half of it; a merged
+ * recording has one transcript, in the slot of kMixTranscript, with both halves
+ * in the order they are spoken.  The script depends on the recording time only.
  */
 #pragma once
 

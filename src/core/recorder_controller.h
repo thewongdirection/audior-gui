@@ -51,7 +51,7 @@ struct Outcome {
     Kind                      kind = Kind::None;
     std::wstring              message;      /* Failed: what went wrong          */
     std::vector<std::wstring> files;        /* what was written, even if Failed */
-    std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcribed stream that was spoken on */
+    std::vector<std::wstring> transcripts;  /* the transcript files, one for each transcript that was spoken in */
     std::wstring              transcriptProblem;    /* a transcript file that could not be saved, in a few words */
     EnhanceState              enhancement = EnhanceState::Off;  /* the voice enhancement after the recording, if there was one */
     std::vector<std::wstring> enhanced;     /* the clearer copies that were made                                      */
@@ -121,8 +121,10 @@ public:
     void  Shutdown();
 
     /* ---- live transcripts ----
-     * A transcript is kept per stream, like its waveform, and stays on show
-     * after the recording until the next one starts. */
+     * A transcript is kept per slot (see kMixTranscript), like a stream's waveform, and stays on show
+     * after the recording until the next one starts.  What a slot holds depends on whether the streams
+     * were merged, so after a change of that (the mix mode, or a stream ticked or unticked) the lanes
+     * show nothing until the settings are as they were, or the next recording. */
     bool CanTranscribe() const { return engine_.CanTranscribe(); }
     bool CanTranscribeOnGpu() const { return engine_.CanTranscribeOnGpu(); }
 
@@ -130,12 +132,23 @@ public:
     const std::vector<TranscriptModel> &TranscriptModels() const { return transcriptModels_; }
 
     /* Whether the stream's pane shows a transcript: the engine can make one
-     * and the stream's transcript is switched on. */
-    bool ShowsTranscript(StreamId stream) const { return CanTranscribe() && Transcribes(Active(), stream); }
+     * and the stream's transcript is switched on.  With the two streams merged
+     * into one file neither pane does: there is one transcript, of the mix (below). */
+    bool ShowsTranscript(StreamId stream) const
+    {
+        return CanTranscribe() && !Merges(Active()) && Transcribes(Active(), stream);
+    }
 
-    const TranscriptLane &Transcript(StreamId stream) const { return transcripts_[StreamIndex(stream)]; }
-    TranscriptStatus      TranscriptionStatus(StreamId stream) const { return transcriptStatus_[StreamIndex(stream)]; }
-    const std::wstring   &TranscriptionProblem(StreamId stream) const { return transcriptProblem_[StreamIndex(stream)]; }
+    /* The transcript of a merged recording has a card of its own between the two panes: it is there
+     * whenever the engine can transcribe and the streams are merged, with the switch for the transcript,
+     * and ShowsMixTranscript() says whether the switch is on.  The text and the status are those of the
+     * slot kMixTranscript (Transcript(), TranscriptionStatus(), TranscriptionProblem()). */
+    bool HasMixCard() const { return (Recording() ? recordingTranscribes_ : CanTranscribe()) && Merges(Active()); }
+    bool ShowsMixTranscript() const { return HasMixCard() && Transcribes(Active(), kMixTranscript); }
+
+    const TranscriptLane &Transcript(StreamId stream) const;
+    TranscriptStatus      TranscriptionStatus(StreamId stream) const;
+    const std::wstring   &TranscriptionProblem(StreamId stream) const;
 
     /* Looks again for models (after the set-up downloaded one) and takes up what it finds. */
     void RefreshTranscription();
@@ -182,6 +195,10 @@ private:
     bool TakeSetup();
     void Finish();
 
+    bool Recording() const { return phase_ == Phase::Recording; }
+    /* The lanes hold the text of a recording whose streams were merged or not, and the settings now say the other. */
+    bool TranscriptsAreStale() const { return !Recording() && lanesMerged_ != Merges(settings_); }
+
     bool AnyPlannedFileExists(const std::wstring &path) const;
     /* The transcript files this recording will make: none where the engine cannot transcribe, however the
      * (saved) switches stand: their boxes are hidden then, so they cannot be switched off. */
@@ -197,6 +214,8 @@ private:
     Phase              phase_ = Phase::Idle;
     WaveformLane       lanes_[kStreamCount];
     TranscriptLane     transcripts_[kStreamCount];
+    bool               lanesMerged_ = false;        /* the last recording's streams were merged: slot kMixTranscript holds the mix */
+    bool               recordingTranscribes_ = false;   /* the engine could transcribe when the recording started */
     TranscriptStatus   transcriptStatus_[kStreamCount];
     std::wstring       transcriptProblem_[kStreamCount];
     RecordingStats     stats_;

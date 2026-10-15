@@ -23,7 +23,8 @@
  *                           an empty name means a timestamped one)
  *   (not in audior)         transcribeMicrophone / transcribeSystem: a live
  *                           transcript of that stream, for engines that can
- *   --transcribe-mic / --transcribe-system   make one (see IRecordingEngine)
+ *   --transcribe-mic / --transcribe-system   make one (see IRecordingEngine); with the two streams
+ *                           merged there is one transcript, of the mix, which either asks for
  *   (not in audior)         transcribeModel, transcribeLanguage: which speech
  *   --transcribe-model / --transcribe-language   model, and the language spoken (or automatic)
  *   (not in audior)         transcribeGpu: on the graphics card or the processor only
@@ -81,11 +82,24 @@ struct RecordingSettings {
  * tracks mean anything. */
 inline bool RecordsBoth(const RecordingSettings &s) { return s.includeMicrophone && s.includeSystemAudio; }
 
-/* True when `stream` is recorded and its live transcript is switched on. */
-inline bool Transcribes(const RecordingSettings &s, StreamId stream)
+/* True when both streams are recorded and merged into one file. */
+inline bool Merges(const RecordingSettings &s) { return RecordsBoth(s) && s.mixMode == MixMode::Merge; }
+
+/* A live transcript is made for each track a recording writes, and a transcript's place (its "slot", all the way
+ * from the recorder's queues to the window) is the StreamId of the first stream of its track.  So the one transcript
+ * of a merged recording, which is of the mix and not of either stream, sits in the first stream's slot, the
+ * microphone's; the system audio's slot is then unused. */
+inline constexpr StreamId kMixTranscript = StreamId::Microphone;
+
+/* True when the transcript in `slot` is made: in a merged recording only the mix's, and it is on when either stream's
+ * transcript is switched on (the window has one switch for it, which sets both); else the slot is a stream's, which
+ * must be recorded and have its transcript switched on. */
+inline bool Transcribes(const RecordingSettings &s, StreamId slot)
 {
-    return stream == StreamId::Microphone ? s.includeMicrophone && s.transcribeMicrophone
-                                          : s.includeSystemAudio && s.transcribeSystem;
+    if (Merges(s))
+        return slot == kMixTranscript && (s.transcribeMicrophone || s.transcribeSystem);
+    return slot == StreamId::Microphone ? s.includeMicrophone && s.transcribeMicrophone
+                                        : s.includeSystemAudio && s.transcribeSystem;
 }
 
 /* Record only what the PC plays: the microphone off, the system audio on.  A live transcript asked for
@@ -95,6 +109,16 @@ inline void UseSystemAudioOnly(RecordingSettings *s)
     s->includeMicrophone = false;
     s->includeSystemAudio = true;
     s->transcribeSystem = s->transcribeSystem || s->transcribeMicrophone;
+}
+
+/* A stream is ticked or unticked.  If a merge's one transcript was on (either switch asks for it) and the streams
+ * are no longer merged, it carries on in the stream that is left: the window showed one switch on for both. */
+inline void IncludeStream(RecordingSettings *s, StreamId stream, bool included)
+{
+    const bool mixTranscript = Merges(*s) && (s->transcribeMicrophone || s->transcribeSystem);
+    (stream == StreamId::Microphone ? s->includeMicrophone : s->includeSystemAudio) = included;
+    if (mixTranscript && !Merges(*s))
+        s->transcribeMicrophone = s->transcribeSystem = true;
 }
 
 /* An empty string when the settings are valid, else a message for the user. */
@@ -153,9 +177,10 @@ std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix);
 std::vector<std::wstring> PlannedOutputFiles(const RecordingSettings &settings,
                                              const std::wstring &outputPath);
 
-/* Where a stream's live transcript is saved: beside the recording, named like it, one text file for each
- * stream that has one: ("a\rec.mp3", Microphone) -> "a\rec - microphone.txt", and "a\rec - system audio.txt". */
-std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream);
+/* Where the transcript in `slot` is saved: beside the recording, named like it, one text file for each transcript:
+ * ("a\rec.mp3", Microphone) -> "a\rec - microphone.txt", "a\rec - system audio.txt", and for the one transcript of a
+ * merged recording (see kMixTranscript) "a\rec - merged.txt". */
+std::wstring PlannedTranscriptFile(const RecordingSettings &settings, const std::wstring &outputPath, StreamId slot);
 
 /* Where the clearer copy of a recorded file goes, beside it and named like it: "a\rec.mp3" -> "a\rec - enhanced.mp3".
  * The original is never touched. */
@@ -165,8 +190,8 @@ std::wstring EnhancedPath(const std::wstring &recordedFile);
  * to be enhanced. */
 std::vector<std::wstring> PlannedEnhancedFiles(const RecordingSettings &settings, const std::wstring &outputPath);
 
-/* The transcript files of a recording to `outputPath`: one for each stream whose transcript is on, the
- * microphone's first. */
+/* The transcript files of a recording to `outputPath`: one for each transcript that is made (see Transcribes()),
+ * the microphone's slot first. */
 std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &settings, const std::wstring &outputPath);
 
 }  // namespace audiorgui

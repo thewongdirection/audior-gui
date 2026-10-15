@@ -41,6 +41,7 @@ constexpr D2D1_COLOR_F kTextFaint  = Rgb(0x5E6879);
 /* Accents. */
 constexpr D2D1_COLOR_F kMic        = Rgb(0x38BDF8);     /* microphone stream */
 constexpr D2D1_COLOR_F kSystem     = Rgb(0xA78BFA);     /* system-audio stream */
+constexpr D2D1_COLOR_F kMix        = Rgb(0x70A4F9);     /* the two streams merged: between those two */
 constexpr D2D1_COLOR_F kRecord     = Rgb(0xF43F5E);
 constexpr D2D1_COLOR_F kRecordHot  = Rgb(0xFB5D77);
 constexpr D2D1_COLOR_F kOk         = Rgb(0x34D399);

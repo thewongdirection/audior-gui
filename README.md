@@ -132,11 +132,26 @@ checkbox to leave the **microphone** out (system audio alone), `--demo`, `--defa
 (see [Settings are remembered](#settings-are-remembered)), and live waveforms with a
 peak level and a clipping flag for every stream.
 
-**Live transcripts.** Each pane has a **Live transcription** switch (`--transcribe-mic`,
-`--transcribe-system`) that shows the stream's speech as text under its waveform
-while recording: the text grows about once a second while someone speaks, the
-last words can still change, and a phrase is settled and timestamped when the
-speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
+**Live transcripts.** A **Live transcription** switch (`--transcribe-mic`,
+`--transcribe-system`) shows speech as text while recording: the text grows about once a
+second while someone speaks, the last words can still change, and a phrase is settled and
+timestamped when the speaker pauses. It runs entirely on your PC: nothing is sent anywhere.
+There is one transcript for each track the recording writes:
+
+- **One merged file** (the default, with both streams ticked): **one** transcript, of the
+  mix that is written to the file, in a card of its own **between the two panes**, with its own
+  switch (the panes have none). The card is only a bar with the switch while it is off. Both
+  speakers are in it in the order they are heard (the microphone and the system audio cannot
+  be told apart in a mix), and it hears what the file holds, so the *Share of the mix* slider
+  counts. With `--merge`, either `--transcribe-mic` or `--transcribe-system` asks for it. It is
+  also half the work of two transcripts: the processor or the graphics card has one stream to decode.
+- **Two separate tracks:** **two** distinct transcripts, one for each track, each under its own
+  pane's waveform with its own switch.
+- **One stream only:** that stream's pane has the transcript, as with separate tracks.
+
+![Merged recording with a live transcript: one transcript of the mix in a card between the microphone and system audio panes](docs/screenshots/transcript.png)
+
+![Two separate tracks with a live transcript each: the microphone's under its waveform, the system audio's under its own](docs/screenshots/transcript-separate.png)
 
 **Enhance voice.** The **Enhance voice** switch next to **Format** (`--enhance-voice`; it is
 **off** until you switch it on, and the choice is remembered) makes a clearer copy of what you
@@ -301,27 +316,28 @@ not touched (a model of the same kind, Whisper or Parakeet, and one that underst
 same languages: every Whisper model here does). A phrase that was still not decoded in time is shown
 as `…` instead of being left out silently.
 
-**Saved transcripts.** Each pane's text is also saved, phrase by phrase as it settles, in a
+**Saved transcripts.** Each transcript's text is also saved, phrase by phrase as it settles, in a
 text file beside the recording: `<recording> - microphone.txt` and
-`<recording> - system audio.txt`. A line is a time and a phrase, `[0:06] The weather today is
+`<recording> - system audio.txt` for the two tracks of a separate recording (or for a single
+stream), and `<recording> - merged.txt` for the one transcript of a merged one. A line is a time and a phrase, `[0:06] The weather today is
 cold.`, and the file is UTF-8 with a byte-order mark, so any language (and Notepad) reads right.
 It is written while recording, not at the end, so it is as long as the recording, however far
 behind the window falls, and a recording that ends badly keeps what was said. It holds what the
-pane shows: a phrase still being spoken when the recording stops (or when the helper dies or is
+transcript shows: a phrase still being spoken when the recording stops (or when the helper dies or is
 changed to a smaller model) is written as it stood. What the helper has not decoded by about three
-seconds after Stop is lost, in the pane too. A pane nobody spoke in leaves no file. A recording
+seconds after Stop is lost, in the window too. A transcript nobody spoke in leaves no file. A recording
 and its transcripts take the next free number together (`meeting (2).mp3`,
 `meeting (2) - microphone.txt`), so a transcript is never overwritten. After Stop the status says
 *1 transcript* or *2 transcripts*. A phrase is at most 511 characters (15 s of fast speech is about
 300). If a file cannot be written the status says so and the recording is not affected.
 
-![The window after a recording with both transcripts on: the status says Saved, with the file name and 2 transcripts](docs/screenshots/transcript-saved.png)
+![The window after a merged recording with its transcript on: the status says Saved, with the file name and 1 transcript, and the transcript stays between the panes](docs/screenshots/transcript-saved.png)
 
 Any script works: Chinese, Japanese, Korean, Arabic, Hindi, Thai and the rest are shown as they
 are said, in the panes and in the files (with Chinese, Whisper large-v3 told the language is
 *Chinese*; Parakeet does not know it):
 
-![Both live transcripts in Chinese, mid-sentence, with the language field of the Transcript section set to Chinese and the model Large v3](docs/screenshots/transcript-chinese.png)
+![The live transcript of a merged recording in Chinese, mid-sentence, with the language field of the Transcript section set to Chinese and the model Large v3](docs/screenshots/transcript-chinese.png)
 
 
 The helper is a separate process, so a problem with it can never end or damage a
@@ -396,7 +412,7 @@ systemDevice=
 systemGain=0                 0 to 300 (percent)
 mix=merge                    merge or separate
 mixMicrophone=65             0 to 100 (percent): the microphone's share of the merged mix
-transcribeMicrophone=off
+transcribeMicrophone=off     on or off; with the streams merged, either of these two asks for the one transcript
 transcribeSystem=off
 transcribeModel=             one of the model file names above; empty: the first one found
 transcribeLanguage=auto      auto, en, zh, zh-hant, es, fr, de, ja, ko, pt, ru, it, nl, ar, hi, tr, vi, th, pl, uk or id
@@ -503,7 +519,8 @@ modelDownload=ask            ask or declined: declined once you press Not now to
   newest on the right. The playhead glides at the real-time rate even though audio
   arrives in bursts.
 - **Scrolling text.** With a transcript on, the waveform shrinks to a strip and
-  the newest lines fill the pane, older ones fading upwards. Only the last twelve
+  the newest lines fill the pane (the card between the panes, for a merged recording),
+  older ones fading upwards. Only the last twelve
   lines are kept, so memory stays flat however long you record; a transcript
   problem is shown in its pane and never ends the recording.
 - **Settings lock while recording**, as audior's options do. Everything works from
@@ -524,7 +541,7 @@ bin\x64\Audior-GUI.exe --screenshot ui.png --scenario recording --size 1120x720
 ```
 
 Scenarios: `idle`, `recording`, `mic-only`, `system-only`, `bluetooth-mic` (a
-headset microphone chosen), `clipping`, `saved`, `error`, `transcript`, `transcript-saved`, `transcript-chinese` (the same in Chinese), `catching-up` (the transcription has fallen behind), `model` (a
+headset microphone chosen), `clipping`, `saved`, `error`, `transcript` (merged: the one transcript between the panes), `transcript-separate` (a transcript in each pane), `transcript-saved`, `transcript-chinese` (the same in Chinese), `catching-up` (the transcription has fallen behind), `model` (a
 Whisper model chosen), `named`, `typing`,
 `hotkeys` (a shortcut box waiting for keys), `hotkey-taken` (a shortcut another
 program owns), and the start-up notification of transcription: `setup-scan`,
@@ -551,11 +568,11 @@ If a change adds a picture to the docs, add its scenario to the `:shots` list in
 
 | Path | |
 |------|--|
-| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the text of the settings file (`saved_settings`), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says); and the voice enhancement, all plain arithmetic on 48 kHz stereo floats: `fft`, `voice_dsp` (filters, the spectrum, the denoiser, the leveler, the limiter) and `voice_enhancer` (the analysis pass and the processing chain). |
+| `src/core` | No Windows or UI headers. Settings and their rules (mirroring audior's options and limits), the text of the settings file (`saved_settings`), the command line, the hotkey rules and their text form, the text-box editing model, formatting, `pane_split` (how the window's height is shared by the panes and the transcript card of a merge), `PeakHistory`, `PeakMeter`, `WaveformLane` (smooth scrolling model), `TranscriptLane` (the last lines of a live transcript), `RecorderController` (the state machine), the `IRecordingEngine` interface, and the rules of the start-up set-up of transcription: `setup_plan` (what a scan of the hardware decides: the graphics card, which models to offer), `setup_status` (the notification's words) and `fetch_protocol` (what the download program says); and the voice enhancement, all plain arithmetic on 48 kHz stereo floats: `fft`, `voice_dsp` (filters, the spectrum, the denoiser, the leveler, the limiter) and `voice_enhancer` (the analysis pass and the processing chain). |
 | `src/engine` | `WasapiEngine` and `SimulatedEngine` behind that interface. See below. For transcription: `SpeechDecimator`, `TranscriptionHost`, `ProcessTransport` and `asr_helper`; and for its start-up set-up `hardware_scan` (DXGI), `TranscriptionSetup` (the conversation: scan, ask, download, finish), `ModelInstaller` (runs the download program, checks what it brings, moves it into place) and `system_setup` (wires them to this PC). For the voice enhancement: `pcm_reader` (WAV) and `mp3_reader` (Media Foundation) read a finished recording back, and `VoiceEnhanceJob` makes the copies on a thread of its own. |
 | `src/fetch` | The download program `audior_fetch.exe`: one HTTPS download from `huggingface.co` with WinHTTP into a new `.part` file. The only code of the project that uses the network (see *What works offline*). |
 | `src/asr`, `third_party` | The optional transcription helper `audior_asr.exe` (built by `build.bat asr`) and the trimmed whisper.cpp it is linked with. Nothing else in the program uses either. |
-| `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView`, widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
+| `src/ui` | `AppWindow` (Win32, DPI, frame timer, tray, hotkeys, dialogs, clipboard), `MainView`, `LaneView` (a stream's pane), `MixView` (the card between the panes that holds a merged recording's one transcript), `TranscriptView` (a transcript's status and lines, for those two), widgets, `TrayIcon` (and the icon, drawn in code), `Painter` (Direct2D), `Gfx` (factories and fonts), `screenshot`. |
 | `src/main.cpp`, `src/console.*`, `src/preferences.*` | Entry point; console output for `--help`, `--list-devices`, `--stop`; the settings file `Audior-GUI.ini` beside the exe (read at start-up, written when a recording starts and when the program ends). |
 | `tests` | Unit tests for everything outside `src/ui`, a tiny dependency-free harness, the import check, and `ui_smoke.ps1`. `tests/hardware`: the native hardware tests (`hardware_tests.exe`), which record on real devices. |
 
@@ -566,7 +583,9 @@ If a change adds a picture to the docs, add its scenario to the `:shots` list in
    WASAPI shared mode, mic or loopback             every 100 ms
    -> PcmConverter (48 kHz / 16-bit / stereo,      rings -> MixWeighted (merge)
       gain, downmix, resample)                        -> WavSink / Mp3Sink
-   -> peak bins to the waveform (100 per second)
+   -> peak bins to the waveform (100 per second)      -> 16 kHz mono mix to the transcriber
+   -> 16 kHz mono to the transcriber                     (a merge: one transcript, of the mix)
+      (separate tracks: one transcript each)
    -> 8 s RingBuffer
 ```
 

@@ -135,11 +135,12 @@ std::wstring SuffixedPath(const std::wstring &path, const std::wstring &suffix)
     return path.substr(0, dot) + suffix + path.substr(dot);
 }
 
-std::wstring PlannedTranscriptFile(const std::wstring &outputPath, StreamId stream)
+std::wstring PlannedTranscriptFile(const RecordingSettings &s, const std::wstring &outputPath, StreamId slot)
 {
     const std::size_t dot = ExtensionStart(outputPath);
-    return (dot == std::wstring::npos ? outputPath : outputPath.substr(0, dot)) +
-           (stream == StreamId::Microphone ? L" - microphone.txt" : L" - system audio.txt");
+    const wchar_t *suffix = Merges(s) ? L" - merged.txt"
+                            : slot == StreamId::Microphone ? L" - microphone.txt" : L" - system audio.txt";
+    return (dot == std::wstring::npos ? outputPath : outputPath.substr(0, dot)) + suffix;
 }
 
 std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &s, const std::wstring &outputPath)
@@ -147,7 +148,7 @@ std::vector<std::wstring> PlannedTranscriptFiles(const RecordingSettings &s, con
     std::vector<std::wstring> files;
     for (int i = 0; i < kStreamCount; ++i) {
         if (Transcribes(s, static_cast<StreamId>(i)))
-            files.push_back(PlannedTranscriptFile(outputPath, static_cast<StreamId>(i)));
+            files.push_back(PlannedTranscriptFile(s, outputPath, static_cast<StreamId>(i)));
     }
     return files;
 }

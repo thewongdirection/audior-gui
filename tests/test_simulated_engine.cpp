@@ -394,12 +394,123 @@ TEST(Sim_TranscribesOnlyWhatIsSwitchedOn)
     CHECK(rig.engine.Transcription(StreamId::Microphone).state == TranscriptState::Off);
     rig.engine.Stop();
 
+    rig.settings.mixMode = MixMode::Separate;           /* two tracks: a transcript each */
     rig.settings.transcribeMicrophone = true;
     rig.settings.transcribeSystem = true;
     rig.Start();
     rig.now = 60.0;                                     /* 30 s into the second recording */
     CHECK(!rig.TakeText(StreamId::Microphone).empty());
     CHECK(!rig.TakeText(StreamId::System).empty());
+}
+
+TEST(Sim_SeparateTracksEachPlayTheirOwnSpeaker)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.mixMode = MixMode::Separate;
+    rig.settings.transcribeMicrophone = rig.settings.transcribeSystem = true;
+    rig.Start();
+    rig.now = 20.0;
+    const auto mic = rig.TakeText(StreamId::Microphone);
+    const auto sys = rig.TakeText(StreamId::System);
+    CHECK(!mic.empty() && !sys.empty());
+    CHECK(std::wstring(mic.back().text).compare(0, 4, L"Maya") == 0);    /* the third thing the microphone said */
+    CHECK(std::wstring(sys.front().text).compare(0, 4, L"Sure") == 0);   /* the system audio's first words */
+    CHECK_EQ(rig.engine.TranscriptFiles().size(), std::size_t(2));
+}
+
+TEST(Sim_MergedStreamsPlayOneConversationOfBothSpeakers)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;             /* merged is the default */
+    rig.settings.transcribeSystem = true;               /* either switch asks for the one transcript */
+    rig.Start();
+    rig.now = 32.0;
+    const auto events = rig.TakeText(kMixTranscript);
+    CHECK(!events.empty());
+    CHECK(rig.TakeText(StreamId::System).empty());      /* nothing in the other slot */
+    CHECK(rig.engine.Transcription(kMixTranscript).state == TranscriptState::Live);
+    CHECK(rig.engine.Transcription(StreamId::System).state == TranscriptState::Off);
+
+    std::vector<std::wstring> finals;                   /* what each utterance finally said, in the order of the events */
+    std::vector<std::uint32_t> ids;
+    double last = 0.0;
+    for (const TranscriptEvent &e : events) {
+        CHECK(e.startSeconds >= last);                  /* in the order they are spoken */
+        last = e.startSeconds;
+        if (e.isFinal) {
+            finals.push_back(e.text);
+            ids.push_back(e.utterance);
+        }
+    }
+    CHECK_EQ(finals.size(), std::size_t(7));            /* three from the microphone, two from the system audio, one from the microphone, one from the system audio */
+    CHECK(finals[0].compare(0, 4, L"Okay") == 0);       /* the microphone speaks first... */
+    CHECK(finals[3].compare(0, 4, L"Sure") == 0);       /* ...then the system audio answers... */
+    CHECK(finals[4].compare(0, 6, L"What's") == 0);
+    CHECK(finals[5].compare(0, 3, L"Got") == 0);        /* ...and the microphone again */
+    for (std::size_t i = 0; i < ids.size(); ++i)
+        CHECK_EQ(ids[i], static_cast<std::uint32_t>(i));    /* one numbering for the one transcript */
+}
+
+TEST(Sim_AMergedTranscriptCountsBothSpeakersIntoItsCycle)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.transcribeMicrophone = true;
+    rig.Start();
+    rig.now = 41.0;
+    const auto first = rig.TakeText(kMixTranscript);
+    CHECK_EQ(first.back().utterance, std::uint32_t(8));  /* nine utterances in the merged script: the last is number 8 */
+
+    rig.now = 44.0;
+    const auto next = rig.TakeText(kMixTranscript);
+    CHECK(!next.empty());
+    CHECK_EQ(next.front().utterance, std::uint32_t(9));  /* and the conversation starts over */
+    CHECK_NEAR(next.front().startSeconds, 42.8, 1e-9);
+}
+
+TEST(Sim_AMergedTranscriptInChineseIsTheSameConversation)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.transcribeMicrophone = true;
+    CHECK(FindSpeechLanguage(L"zh", &rig.settings.transcribeLanguage));
+    rig.Start();
+    rig.now = 17.0;
+    const auto events = rig.TakeText(kMixTranscript);
+    CHECK(!events.empty());
+    int finals = 0;
+    for (const TranscriptEvent &e : events) {
+        if (e.isFinal)
+            ++finals;
+    }
+    CHECK_EQ(finals, 4);                                /* the microphone's three and the system audio's first */
+    CHECK(events.back().isFinal);
+    CHECK_EQ(std::wstring(events.back().text), std::wstring(L"可以。核心功能已经完成，质量检查周二已经通过了。"));
+}
+
+TEST(Sim_AMergedRecordingSavesOneTranscript)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.transcribeMicrophone = rig.settings.transcribeSystem = true;
+    rig.Start(L"C:\\Rec\\a.mp3");
+    const std::vector<std::wstring> files = rig.engine.TranscriptFiles();
+    CHECK_EQ(files.size(), std::size_t(1));
+    CHECK_EQ(files[0], std::wstring(L"C:\\Rec\\a - merged.txt"));
+}
+
+TEST(Sim_AFailureOfAMergedTranscriptIsTheOneTranscriptsFailure)
+{
+    Rig rig;
+    rig.settings.includeSystemAudio = true;
+    rig.settings.transcribeMicrophone = true;
+    rig.engine.FailTranscriptAfter(2.0, L"The speech engine stopped responding.");
+    rig.Start();
+    rig.now = 10.0;
+    CHECK(rig.engine.Transcription(kMixTranscript).state == TranscriptState::Failed);
+    CHECK(rig.engine.Transcription(StreamId::System).state == TranscriptState::Off);   /* nothing else to fail */
+    CHECK(rig.engine.IsRecording());
 }
 
 TEST(Sim_NoTextForAStreamThatIsNotRecorded)
@@ -532,6 +643,7 @@ TEST(Sim_AWordIsHeardWrongThenCorrected)
 {
     Rig rig;
     rig.settings.includeSystemAudio = true;
+    rig.settings.mixMode = MixMode::Separate;           /* the system audio's own transcript */
     rig.settings.transcribeSystem = true;
     rig.Start();
     rig.now = 30.0;

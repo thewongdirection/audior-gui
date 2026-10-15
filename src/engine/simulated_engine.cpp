@@ -1,6 +1,7 @@
 #include "simulated_engine.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <cwchar>
@@ -71,19 +72,39 @@ constexpr Utterance kSystemScriptChinese[] = {
     {35.0, L"我今天再去催一催。", -1, nullptr},
 };
 
+/* Both speakers' utterances in the order they are spoken: what the one transcript of a merged recording hears. */
+template <std::size_t A, std::size_t B>
+constexpr std::array<Utterance, A + B> MergedByTime(const Utterance (&a)[A], const Utterance (&b)[B])
+{
+    std::array<Utterance, A + B> merged{};
+    std::size_t i = 0, j = 0;
+    for (std::size_t k = 0; k < A + B; ++k)
+        merged[k] = j == B || (i < A && a[i].at <= b[j].at) ? a[i++] : b[j++];
+    return merged;
+}
+
+constexpr auto kMixScript = MergedByTime(kMicScript, kSystemScript);
+constexpr auto kMixScriptChinese = MergedByTime(kMicScriptChinese, kSystemScriptChinese);
+
 struct Script {
     const Utterance *items;
     std::size_t      count;
+
+    template <std::size_t N>
+    constexpr Script(const Utterance (&utterances)[N]) : items(utterances), count(N) {}
+    template <std::size_t N>
+    constexpr Script(const std::array<Utterance, N> &utterances) : items(utterances.data()), count(N) {}
 };
 
-Script ScriptOf(StreamId stream, bool chinese)
+/* The script of the transcript in `slot`: that stream's speaker, or, when merging, both. */
+Script ScriptOf(StreamId slot, bool merged, bool chinese)
 {
-    const bool mic = stream == StreamId::Microphone;
+    if (merged)
+        return chinese ? Script(kMixScriptChinese) : Script(kMixScript);
+    const bool mic = slot == StreamId::Microphone;
     if (chinese)
-        return mic ? Script{kMicScriptChinese, sizeof(kMicScriptChinese) / sizeof(kMicScriptChinese[0])}
-                   : Script{kSystemScriptChinese, sizeof(kSystemScriptChinese) / sizeof(kSystemScriptChinese[0])};
-    return mic ? Script{kMicScript, sizeof(kMicScript) / sizeof(kMicScript[0])}
-               : Script{kSystemScript, sizeof(kSystemScript) / sizeof(kSystemScript[0])};
+        return mic ? Script(kMicScriptChinese) : Script(kSystemScriptChinese);
+    return mic ? Script(kMicScript) : Script(kSystemScript);
 }
 
 /* The end of the word at `word`: the next space or, in Chinese, two characters on. */
@@ -364,7 +385,7 @@ std::size_t SimulatedEngine::TakeTranscript(StreamId stream, TranscriptEvent *ou
     if (!Transcribes(settings_, stream))
         return 0;
 
-    const Script script = ScriptOf(stream, std::strcmp(InfoOf(settings_.transcribeLanguage).code, "zh") == 0);
+    const Script script = ScriptOf(stream, Merges(settings_), std::strcmp(InfoOf(settings_.transcribeLanguage).code, "zh") == 0);
     const double elapsed = TranscriptElapsed();
     std::uint64_t &next = transcriptNext_[StreamIndex(stream)];
     std::size_t n = 0;

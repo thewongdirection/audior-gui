@@ -111,7 +111,7 @@ public:
      * and the threads end.  Events can be taken afterwards. */
     void Stop();
 
-    /* ISpeechSink: capture thread. */
+    /* ISpeechSink: a capture thread, or the writer thread (the mix of a merge). */
     void Push(StreamId stream, const std::int16_t *samples, std::size_t count) override;
 
     /* UI thread. */

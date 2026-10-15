@@ -6,6 +6,7 @@
 #include "../core/asr_languages.h"
 #include "../core/bluetooth.h"
 #include "../core/format.h"
+#include "../core/pane_split.h"
 
 namespace audiorgui::ui {
 
@@ -55,12 +56,12 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
 {
     micCheck_.accent = theme::kMic;
     micCheck_.onChange = [this](bool on) {
-        ctl_.Settings().includeMicrophone = on;
+        IncludeStream(&ctl_.Settings(), StreamId::Microphone, on);
         Refresh();
     };
     systemCheck_.accent = theme::kSystem;
     systemCheck_.onChange = [this](bool on) {
-        ctl_.Settings().includeSystemAudio = on;
+        IncludeStream(&ctl_.Settings(), StreamId::System, on);
         Refresh();
     };
 
@@ -73,6 +74,12 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
     systemTranscript_.accent = theme::kSystem;
     systemTranscript_.onChange = [this](bool on) {
         ctl_.Settings().transcribeSystem = on;
+        Refresh();
+    };
+    mixTranscript_.text = L"Live transcription";
+    mixTranscript_.accent = theme::kMix;
+    mixTranscript_.onChange = [this](bool on) {         /* one transcript of both: either stream's switch stands for it, so both are set */
+        ctl_.Settings().transcribeMicrophone = ctl_.Settings().transcribeSystem = on;
         Refresh();
     };
 
@@ -192,7 +199,7 @@ MainView::MainView(RecorderController &controller, IViewHost *host)
 
     Widget *const order[kWidgetCount] = {
         &bannerPrimary_, &bannerSecondary_, &micCheck_, &micTranscript_, &micField_, &bluetoothLink_,
-        &gain_[0].slider, &systemCheck_, &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_,
+        &gain_[0].slider, &mixTranscript_, &systemCheck_, &systemTranscript_, &systemField_, &gain_[1].slider, &folderField_,
         &fileNameBox_, &enhanceSwitch_, &formatSeg_, &bitrateField_, &mixSeg_, &shareSlider_, &keyBox_[0], &keyBox_[1],
         &gpuSwitch_, &languageField_, &modelField_, &retryLink_, &startButton_, &stopButton_, &showButton_, &cancelButton_};
     std::copy(order, order + kWidgetCount, all_);
@@ -279,7 +286,7 @@ void MainView::Refresh()
     micCheck_.enabled = unlocked;
     micTranscript_.checked = s.transcribeMicrophone;
     micTranscript_.enabled = unlocked;
-    micTranscript_.visible = canTranscribe && s.includeMicrophone;
+    micTranscript_.visible = canTranscribe && s.includeMicrophone && !Merges(s);     /* merged: the card between the panes has the switch */
     micField_.text = DeviceFieldText(DeviceKind::Microphone, s.microphoneId);
     micField_.enabled = unlocked && s.includeMicrophone;
     micBluetooth_ = s.includeMicrophone && MicrophoneIsBluetooth(ctl_.Devices(DeviceKind::Microphone), s.microphoneId);
@@ -292,12 +299,16 @@ void MainView::Refresh()
     systemCheck_.enabled = unlocked;
     systemTranscript_.checked = s.transcribeSystem;
     systemTranscript_.enabled = unlocked;
-    systemTranscript_.visible = canTranscribe && s.includeSystemAudio;
+    systemTranscript_.visible = canTranscribe && s.includeSystemAudio && !Merges(s);
     systemField_.text = DeviceFieldText(DeviceKind::Playback, s.systemDeviceId);
     systemField_.enabled = unlocked && s.includeSystemAudio;
     gain_[1].slider.value = s.systemAmplifyPercent;
     gain_[1].slider.enabled = systemField_.enabled;
     gain_[1].text = GainText(s.systemAmplifyPercent);
+
+    mixTranscript_.checked = s.transcribeMicrophone || s.transcribeSystem;
+    mixTranscript_.enabled = unlocked;
+    mixTranscript_.visible = ctl_.HasMixCard();
 
     folderField_.text = s.outputDirectory.empty() ? L"Choose a folder…" : Tail(s.outputDirectory, 34);
     folderField_.enabled = unlocked;
@@ -365,7 +376,7 @@ void MainView::Refresh()
             savedName_ += L"  +" + std::to_wstring(o.files.size() - 1) + L" more";
         if (!o.transcriptProblem.empty())                   /* the audio is saved; what happened to the text, in a few words */
             savedName_ += L"  ·  " + o.transcriptProblem;
-        else if (!o.transcripts.empty())                    /* beside the recording, one for each transcribed pane */
+        else if (!o.transcripts.empty())                    /* beside the recording, one for each transcript */
             savedName_ += L"  ·  " + std::to_wstring(o.transcripts.size()) + (o.transcripts.size() == 1 ? L" transcript" : L" transcripts");
         savedName_ += EnhancedText(o);
     }
@@ -385,8 +396,9 @@ void MainView::Refresh()
     lastPhase_ = ctl_.GetPhase();
     setupVersion_ = ctl_.SetupVersion();
 
-    /* The notification and the Transcript section take room that the rest gives up. */
-    if (width_ > 0.0f && (ctl_.SetupVisible() != bannerShown_ || (ctl_.CanTranscribe() || ctl_.HasSetup()) != sectionShown_))
+    /* The notification, the Transcript section and the card of a merge's transcript take room that the rest gives up. */
+    if (width_ > 0.0f && (ctl_.SetupVisible() != bannerShown_ || (ctl_.CanTranscribe() || ctl_.HasSetup()) != sectionShown_ ||
+                          ctl_.HasMixCard() != mixShown_ || ctl_.ShowsMixTranscript() != mixOpen_))
         Layout(width_, height_);
 }
 
@@ -639,8 +651,8 @@ void MainView::ListenForHotkey(HotkeyAction action)
 void MainView::LayoutPane(const D2D1_RECT_F &card, Checkbox &include, Switch &transcript, Button &device)
 {
     include.rect = RectXYWH(card.left + 16, card.top + 10, 28, 28);
-    transcript.rect = RectXYWH(card.left + LaneView::kSwitchLeft, card.top + 11, LaneView::kSwitchWidth,
-                               LaneView::kSwitchHeight);
+    transcript.rect = RectXYWH(card.left + TranscriptView::kSwitchLeft, card.top + 11, TranscriptView::kSwitchWidth,
+                               TranscriptView::kSwitchHeight);
     device.rect = RectXYWH(card.left + 20, card.top + 44, std::min(320.0f, Width(card) * 0.5f - 20.0f), 36);
 }
 
@@ -656,6 +668,8 @@ void MainView::Layout(float w, float h)
     height_ = h;
     bannerShown_ = ctl_.SetupVisible();
     sectionShown_ = ctl_.CanTranscribe() || ctl_.HasSetup();
+    mixShown_ = ctl_.HasMixCard();
+    mixOpen_ = ctl_.ShowsMixTranscript();
 
     const float bottom = h - kTransportH - kGap;
     const float contentRight = w - kMargin - kPanelW - kGap;
@@ -664,10 +678,15 @@ void MainView::Layout(float w, float h)
     panel_     = RectF(w - kMargin - kPanelW, kHeaderH, w - kMargin, bottom);
     transport_ = RectF(0, h - kTransportH, w, h);
 
-    /* Two equal panes, each with its own controls. */
-    const float each = (Height(content) - kGap) * 0.5f;
+    /* Two equal panes, each with its own controls.  With the streams merged the card of the one transcript sits
+     * between them: a bar while the transcript is off, else it takes what the panes can spare. */
+    const MiddleCard card = !mixShown_ ? MiddleCard::None : mixOpen_ ? MiddleCard::Open : MiddleCard::Bar;
+    const float each = SplitPanes(Height(content), kGap, card, MixView::kBarHeight).pane;
     micCard_    = RectF(content.left, content.top, content.right, content.top + each);
     systemCard_ = RectF(content.left, content.bottom - each, content.right, content.bottom);
+    mixCard_    = RectF(content.left, micCard_.bottom + kGap, content.right, systemCard_.top - kGap);
+    mixTranscript_.rect = RectXYWH(mixCard_.left + TranscriptView::kSwitchLeft, mixCard_.top + 11,
+                                   TranscriptView::kSwitchWidth, TranscriptView::kSwitchHeight);
     LayoutPane(micCard_, micCheck_, micTranscript_, micField_);
     LayoutPane(systemCard_, systemCheck_, systemTranscript_, systemField_);
     micNoteRect_ = RectF(micField_.rect.left, micField_.rect.bottom + 2, micCard_.right - 20, micField_.rect.bottom + 20);
@@ -732,6 +751,8 @@ void MainView::Paint(Painter &p)
     const bool recording = ctl_.GetPhase() == Phase::Recording;
     micView_.Paint(p, micCard_, kMicStyle, ctl_.Lane(StreamId::Microphone),
                    ctl_.StreamEnabled(StreamId::Microphone), recording, PaneOf(StreamId::Microphone));
+    if (mixShown_)
+        mixView_.Paint(p, mixCard_, MixPane(), recording);
     systemView_.Paint(p, systemCard_, kSystemStyle, ctl_.Lane(StreamId::System),
                       ctl_.StreamEnabled(StreamId::System), recording, PaneOf(StreamId::System));
     PaintPaneControls(p);
@@ -760,6 +781,18 @@ TranscriptPane MainView::PaneOf(StreamId stream) const
         pane.lane = &ctl_.Transcript(stream);
         pane.status = ctl_.TranscriptionStatus(stream);
         pane.problem = &ctl_.TranscriptionProblem(stream);
+    }
+    return pane;
+}
+
+/* The transcript of a merge as its card shows it: none while it is switched off. */
+TranscriptPane MainView::MixPane() const
+{
+    TranscriptPane pane;
+    if (ctl_.ShowsMixTranscript()) {
+        pane.lane = &ctl_.Transcript(kMixTranscript);
+        pane.status = ctl_.TranscriptionStatus(kMixTranscript);
+        pane.problem = &ctl_.TranscriptionProblem(kMixTranscript);
     }
     return pane;
 }
