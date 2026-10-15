@@ -11,7 +11,8 @@
  *   -l, --list-devices         -s, --stop                 -h, --help
  *
  * and a few of its own:  --system-amplify <0-300>,  --transcribe-mic,
- * --transcribe-system (live transcripts, with --transcribe-model <file> and
+ * --transcribe-system (live transcripts, one per track: with --merge, one of the
+ * mix, which either option asks for; with --transcribe-model <file> and
  * --transcribe-language <language>, --transcribe-cpu),  --enhance-voice (a clearer
  * copy of the voice after the recording),  --defaults (see below),
  * --demo (simulated audio).  The options only preset the window; everything

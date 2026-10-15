@@ -23,6 +23,23 @@ RecorderController::RecorderController(IRecordingEngine &engine, Clock clock, Fi
     RefreshDevices();
 }
 
+const TranscriptLane &RecorderController::Transcript(StreamId stream) const
+{
+    static const TranscriptLane kNone;
+    return TranscriptsAreStale() ? kNone : transcripts_[StreamIndex(stream)];
+}
+
+TranscriptStatus RecorderController::TranscriptionStatus(StreamId stream) const
+{
+    return TranscriptsAreStale() ? TranscriptStatus() : transcriptStatus_[StreamIndex(stream)];
+}
+
+const std::wstring &RecorderController::TranscriptionProblem(StreamId stream) const
+{
+    static const std::wstring kNone;
+    return TranscriptsAreStale() ? kNone : transcriptProblem_[StreamIndex(stream)];
+}
+
 const std::vector<DeviceInfo> &RecorderController::Devices(DeviceKind kind) const
 {
     return devices_[kind == DeviceKind::Microphone ? 0 : 1];
@@ -148,6 +165,8 @@ bool RecorderController::Start()
     }
 
     active_ = run;
+    lanesMerged_ = Merges(run);
+    recordingTranscribes_ = engine_.CanTranscribe();
     stats_ = RecordingStats();
     for (WaveformLane &lane : lanes_)
         lane.Reset();
@@ -181,8 +200,8 @@ void RecorderController::DrainPeaks()
     }
 }
 
-/* New transcript text and each transcribed stream's status.  A stream whose
- * transcription failed stays marked until the next recording. */
+/* New transcript text and the status of each transcript (see Transcribes(): a stream's, or the mix's of a
+ * merge).  One whose transcription failed stays marked until the next recording. */
 void RecorderController::DrainTranscripts()
 {
     if (!Transcribes(active_, StreamId::Microphone) && !Transcribes(active_, StreamId::System))

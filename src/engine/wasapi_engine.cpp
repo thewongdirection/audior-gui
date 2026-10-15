@@ -94,7 +94,7 @@ bool WasapiEngine::Start(const RecordingSettings &settings, const std::wstring &
         options.engine = asr.model->engine;
         for (int i = 0; i < kStreamCount; ++i) {        /* a text file for each transcript, beside the recording */
             if (plan.speech & (1u << i))
-                transcriptFiles_[i] = std::make_unique<TranscriptFile>(PlannedTranscriptFile(outputPath, static_cast<StreamId>(i)));
+                transcriptFiles_[i] = std::make_unique<TranscriptFile>(PlannedTranscriptFile(s, outputPath, static_cast<StreamId>(i)));
         }
         options.onEvent = [this](StreamId stream, const TranscriptEvent &event) {
             if (TranscriptFile *file = transcriptFiles_[StreamIndex(stream)].get())

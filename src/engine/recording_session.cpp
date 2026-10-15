@@ -60,7 +60,7 @@ SessionPlan MakePlan(const RecordingSettings &s, const std::wstring &outputPath)
     SessionPlan plan;
     plan.microphone = s.includeMicrophone;
     plan.system     = s.includeSystemAudio;
-    plan.merge      = RecordsBoth(s) && s.mixMode == MixMode::Merge;
+    plan.merge      = Merges(s);
     plan.micWeight  = static_cast<float>(s.mergeMicPercent) / 100.0f;
     plan.files      = PlannedOutputFiles(s, outputPath);
     for (int i = 0; i < kStreamCount; ++i) {
@@ -92,11 +92,13 @@ bool RecordingSession::Start(const SessionPlan &plan, std::wstring *error)
         return false;
     }
     const bool both = plan.microphone && plan.system;
-    if (plan.files.size() != (both && !plan.merge ? 2u : 1u)) {
+    const bool merging = both && plan.merge;            /* (one stream has nothing to merge, whatever the plan says) */
+    if (plan.files.size() != (both && !merging ? 2u : 1u)) {
         *error = L"The recording could not be started: the output files do not match the streams.";
         return false;
     }
     plan_ = plan;
+    merging_ = merging;
     stop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!stop_) {
         *error = WithHr(L"The recording could not be started", HRESULT_FROM_WIN32(GetLastError()));
@@ -156,7 +158,7 @@ bool RecordingSession::OpenOutputs(std::wstring *error)
     const bool both = plan_.microphone && plan_.system;
     for (std::size_t i = 0; i < plan_.files.size(); ++i) {
         Output out;
-        if (both && plan_.merge) {
+        if (merging_) {
             out.first = StreamIndex(StreamId::Microphone);
             out.second = StreamIndex(StreamId::System);
         } else if (both) {
@@ -309,7 +311,8 @@ void RecordingSession::Deliver(Stream &stream, const std::vector<std::int16_t> &
     stream.accumulator.Add(frames.data(), frames.size() / kPcmChannels, bins);
     stream.peaks.Push(bins->data(), bins->size());
 
-    if (speech_ && (plan_.speech & (1u << StreamIndex(stream.id)))) {      /* the transcriber, before the writer's ring */
+    /* The transcriber, before the writer's ring.  A merge's one transcript hears the mix instead: see Drain. */
+    if (speech_ && !merging_ && (plan_.speech & (1u << StreamIndex(stream.id)))) {
         stream.speech.clear();
         stream.decimator.Add(frames.data(), frames.size() / kPcmChannels, &stream.speech);
         speech_->Push(stream.id, stream.speech.data(), stream.speech.size());
@@ -351,15 +354,24 @@ void RecordingSession::WriteLoop()
     Finalise();
 }
 
+/* The mix just made in scratchA_ (`frames` frames of it), for the transcriber's slot of the mix. */
+void RecordingSession::SpeakMix(std::size_t frames)
+{
+    mixSpeech_.clear();
+    mixDecimator_.Add(scratchA_.data(), frames, &mixSpeech_);
+    speech_->Push(kMixTranscript, mixSpeech_.data(), mixSpeech_.size());
+}
+
 /* Writes what the rings hold.  Merging needs both streams, so it only takes
  * what both have (all of it once the recording is over: the shorter one is
- * padded with silence). */
+ * padded with silence).  What a merge writes is also what its transcript hears. */
 void RecordingSession::Drain(bool final)
 {
     for (std::size_t i = 0; i < outputs_.size() && !sinkFailed_; ++i) {
         Output &out = outputs_[i];
         Stream &first = *streams_[out.first];
         Stream *second = out.second >= 0 ? streams_[out.second].get() : nullptr;
+        const bool speaksMix = second && speech_ && (plan_.speech & (1u << StreamIndex(kMixTranscript)));
 
         std::size_t frames = first.ring.Used() / kPcmFrameBytes;
         if (second) {
@@ -373,6 +385,8 @@ void RecordingSession::Drain(bool final)
             if (second) {
                 ReadFrames(second->ring, scratchB_, n);
                 MixWeighted(scratchA_.data(), scratchA_.data(), scratchB_.data(), n * kPcmChannels, plan_.micWeight);
+                if (speaksMix)
+                    SpeakMix(n);                        /* before the sink, which may take a while */
             }
             const HRESULT hr = out.sink->Write(scratchA_.data(), n * kPcmFrameBytes);
             if (FAILED(hr)) {

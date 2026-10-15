@@ -1,10 +1,10 @@
 /*
- * transcript_file.h - One stream's live transcript, saved as a text file while the
- * recording runs.
+ * transcript_file.h - One live transcript (a stream's, or the mix of a merge), saved as a
+ * text file while the recording runs.
  *
  * Each utterance becomes a line, "[0:06] The weather today ...", in a UTF-8 file with a
  * byte-order mark (so any language, and Notepad, read it right).  The file is made when
- * the first line comes, so a stream that is never spoken on leaves none, and it is
+ * the first line comes, so a transcript nobody speaks in leaves none, and it is
  * written line by line, so it is complete however long the recording is and nothing
  * grows in memory.  A problem (a full disk) is remembered and the lines after it are
  * dropped; it never ends the recording.

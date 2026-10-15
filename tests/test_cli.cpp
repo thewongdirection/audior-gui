@@ -179,6 +179,24 @@ TEST(Cli_TranscribeFlagsSwitchOnEachStreamsTranscript)
     CHECK(both.settings.transcribeMicrophone && both.settings.transcribeSystem);
 }
 
+TEST(Cli_WithTheStreamsMergedEitherTranscribeFlagAsksForTheOneTranscript)
+{
+    for (const wchar_t *flag : {L"--transcribe-mic", L"--transcribe-system"}) {
+        const Parsed merged = Parse({L"-i", L"--merge", flag});
+        CHECK(merged.result.error.empty());
+        CHECK(Merges(merged.settings));
+        CHECK(Transcribes(merged.settings, kMixTranscript));                    /* one transcript, of the mix... */
+        CHECK(!Transcribes(merged.settings, StreamId::System));                 /* ...and no other */
+
+        const Parsed separate = Parse({L"-i", L"--separate", flag});
+        CHECK(!Merges(separate.settings));
+        CHECK_EQ(PlannedTranscriptFiles(separate.settings, L"C:\\Work\\a.mp3").size(), std::size_t(1));   /* just that track's */
+    }
+
+    const Parsed both = Parse({L"-i", L"--separate", L"--transcribe-mic", L"--transcribe-system"});
+    CHECK(Transcribes(both.settings, StreamId::Microphone) && Transcribes(both.settings, StreamId::System));   /* a transcript each */
+}
+
 TEST(Cli_TheHelpTextListsTheTranscribeFlags)
 {
     const std::wstring help = HelpText();
@@ -186,6 +204,7 @@ TEST(Cli_TheHelpTextListsTheTranscribeFlags)
     CHECK(help.find(L"--transcribe-system") != std::wstring::npos);
     CHECK(help.find(L"--transcribe-model") != std::wstring::npos);
     CHECK(help.find(L"--transcribe-language") != std::wstring::npos);
+    CHECK(help.find(L"one transcript, of the mix") != std::wstring::npos);     /* and says what merging does to them */
 }
 
 TEST(Cli_TheTranscriptionModelAndLanguageCanBeChosen)

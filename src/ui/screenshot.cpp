@@ -132,12 +132,14 @@ bool Build(Scene &scene, const std::wstring &name)
         return true;
     }
 
-    const bool transcripts = name == L"transcript" || name == L"transcript-saved" || name == L"catching-up" ||
-                             name == L"transcript-chinese";
+    const bool transcripts = name == L"transcript" || name == L"transcript-separate" || name == L"transcript-saved" ||
+                             name == L"catching-up" || name == L"transcript-chinese";
     if (name == L"recording" || name == L"saved" || name == L"error" || name == L"clipping" || transcripts) {
         ctl.Settings().includeSystemAudio = true;
         if (transcripts)
             ctl.Settings().transcribeMicrophone = ctl.Settings().transcribeSystem = true;
+        if (name == L"transcript-separate")             /* the others merge (the default): one transcript, between the panes */
+            ctl.Settings().mixMode = MixMode::Separate;
         if (name == L"transcript-chinese") {            /* the meeting in Chinese: Whisper, told the language */
             ctl.Settings().transcribeModel = FindAsrModel(L"ggml-large-v3.bin")->file;
             FindSpeechLanguage(L"zh", &ctl.Settings().transcribeLanguage);

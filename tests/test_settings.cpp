@@ -73,14 +73,24 @@ TEST(Settings_SystemAudioOnlyCarriesTheMicrophonesTranscriptOver)
 
 TEST(Settings_ATranscriptIsSavedBesideTheRecordingUnderItsOwnName)
 {
-    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::Microphone),
+    RecordingSettings s = Valid();                       /* two tracks: each stream's transcript has its own name */
+    s.includeSystemAudio = true;
+    s.mixMode = MixMode::Separate;
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::Microphone),
              std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - microphone.txt"));
-    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::System),
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\Rec\\Audior-GUI-20261011-173221.mp3", StreamId::System),
              std::wstring(L"C:\\Rec\\Audior-GUI-20261011-173221 - system audio.txt"));
-    CHECK_EQ(PlannedTranscriptFile(L"C:\\Rec\\meeting.wav", StreamId::System), std::wstring(L"C:\\Rec\\meeting - system audio.txt"));
-    CHECK_EQ(PlannedTranscriptFile(L"C:\\My.Calls\\meeting", StreamId::Microphone),
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\Rec\\meeting.wav", StreamId::System), std::wstring(L"C:\\Rec\\meeting - system audio.txt"));
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\My.Calls\\meeting", StreamId::Microphone),
              std::wstring(L"C:\\My.Calls\\meeting - microphone.txt"));            /* a dot in a folder is not an extension */
-    CHECK_EQ(PlannedTranscriptFile(L"meeting (2).mp3", StreamId::Microphone), std::wstring(L"meeting (2) - microphone.txt"));
+    CHECK_EQ(PlannedTranscriptFile(s, L"meeting (2).mp3", StreamId::Microphone), std::wstring(L"meeting (2) - microphone.txt"));
+
+    s.mixMode = MixMode::Merge;                          /* one track: one transcript, named for what it is of */
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\Rec\\meeting.mp3", kMixTranscript), std::wstring(L"C:\\Rec\\meeting - merged.txt"));
+    CHECK_EQ(PlannedTranscriptFile(s, L"meeting (2).wav", kMixTranscript), std::wstring(L"meeting (2) - merged.txt"));
+
+    s.includeSystemAudio = false;                        /* one stream is not a merge, whatever the setting says */
+    CHECK_EQ(PlannedTranscriptFile(s, L"C:\\Rec\\meeting.mp3", StreamId::Microphone), std::wstring(L"C:\\Rec\\meeting - microphone.txt"));
 }
 
 TEST(Settings_VoiceEnhancementIsOffByDefault)
@@ -308,6 +318,94 @@ TEST(Settings_ATranscriptNeedsTheStreamToBeRecorded)
     s.includeMicrophone = false;
     CHECK(!Transcribes(s, StreamId::Microphone));
     CHECK(Transcribes(s, StreamId::System));
+}
+
+TEST(Settings_MergedStreamsHaveOneTranscriptOfTheMix)
+{
+    RecordingSettings s = Valid();
+    s.includeSystemAudio = true;
+    CHECK(Merges(s));                                    /* both streams, merged (the default) */
+    CHECK(!Transcribes(s, kMixTranscript) && !Transcribes(s, StreamId::System));
+
+    s.transcribeMicrophone = true;                       /* either stream's switch asks for it... */
+    CHECK(Transcribes(s, kMixTranscript));
+    CHECK(!Transcribes(s, StreamId::System));            /* ...and it is the only one: nothing in the other slot */
+    s.transcribeMicrophone = false;
+    s.transcribeSystem = true;
+    CHECK(Transcribes(s, kMixTranscript));
+    CHECK(!Transcribes(s, StreamId::System));
+    s.transcribeMicrophone = true;                       /* both switches on: still one */
+    CHECK(Transcribes(s, kMixTranscript));
+    CHECK(!Transcribes(s, StreamId::System));
+    CHECK_EQ(PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3").size(), std::size_t(1));
+    CHECK_EQ(PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3")[0], std::wstring(L"C:\\Rec\\a - merged.txt"));
+}
+
+TEST(Settings_SeparateTracksHaveATranscriptEach)
+{
+    RecordingSettings s = Valid();
+    s.includeSystemAudio = true;
+    s.mixMode = MixMode::Separate;
+    CHECK(!Merges(s));
+    s.transcribeMicrophone = s.transcribeSystem = true;
+    CHECK(Transcribes(s, StreamId::Microphone) && Transcribes(s, StreamId::System));
+    const std::vector<std::wstring> files = PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3");
+    CHECK_EQ(files.size(), std::size_t(2));
+    CHECK_EQ(files[0], std::wstring(L"C:\\Rec\\a - microphone.txt"));
+    CHECK_EQ(files[1], std::wstring(L"C:\\Rec\\a - system audio.txt"));
+
+    s.transcribeSystem = false;                          /* each one is its own switch */
+    CHECK(Transcribes(s, StreamId::Microphone) && !Transcribes(s, StreamId::System));
+    CHECK_EQ(PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3").size(), std::size_t(1));
+}
+
+TEST(Settings_UntickingAStreamKeepsAMergesTranscriptInTheOneThatIsLeft)
+{
+    for (const StreamId gone : {StreamId::Microphone, StreamId::System}) {
+        RecordingSettings s = Valid();
+        s.includeSystemAudio = true;                    /* merged, with the one transcript asked for by one switch only */
+        s.transcribeMicrophone = true;
+        IncludeStream(&s, gone, false);
+        CHECK(!Merges(s));
+        const StreamId left = gone == StreamId::Microphone ? StreamId::System : StreamId::Microphone;
+        CHECK(Transcribes(s, left));                    /* it carries on in the stream that is left... */
+        CHECK(!Transcribes(s, gone));                   /* ...which is the only one that is recorded */
+    }
+
+    RecordingSettings off = Valid();                    /* no transcript: none appears */
+    off.includeSystemAudio = true;
+    IncludeStream(&off, StreamId::Microphone, false);
+    CHECK(!off.transcribeMicrophone && !off.transcribeSystem);
+
+    RecordingSettings separate = Valid();               /* separate tracks: each switch is its own, and untouched */
+    separate.includeSystemAudio = true;
+    separate.mixMode = MixMode::Separate;
+    separate.transcribeMicrophone = true;
+    IncludeStream(&separate, StreamId::Microphone, false);
+    CHECK(separate.transcribeMicrophone && !separate.transcribeSystem);
+
+    RecordingSettings ticked = Valid();                 /* ticking a stream: nothing changes but the stream */
+    ticked.transcribeMicrophone = true;
+    IncludeStream(&ticked, StreamId::System, true);
+    CHECK(ticked.includeSystemAudio && ticked.transcribeMicrophone && !ticked.transcribeSystem);
+    CHECK(Transcribes(ticked, kMixTranscript));         /* merged now: the one transcript is on */
+}
+
+TEST(Settings_AStreamRecordedAloneKeepsItsOwnTranscriptWhateverTheMixModeSays)
+{
+    RecordingSettings s = Valid();                       /* the microphone only, with "merge" left on */
+    s.transcribeMicrophone = true;
+    CHECK(!Merges(s));
+    CHECK(Transcribes(s, StreamId::Microphone) && !Transcribes(s, StreamId::System));
+    CHECK_EQ(PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3")[0], std::wstring(L"C:\\Rec\\a - microphone.txt"));
+
+    s.includeMicrophone = false;                         /* the system audio only */
+    s.includeSystemAudio = true;
+    s.transcribeMicrophone = false;
+    s.transcribeSystem = true;
+    CHECK(!Merges(s));
+    CHECK(Transcribes(s, StreamId::System) && !Transcribes(s, StreamId::Microphone));
+    CHECK_EQ(PlannedTranscriptFiles(s, L"C:\\Rec\\a.mp3")[0], std::wstring(L"C:\\Rec\\a - system audio.txt"));
 }
 
 /* ---- system audio gain and the output file name ---- */

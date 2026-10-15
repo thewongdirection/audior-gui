@@ -241,10 +241,19 @@ TEST(MakePlan_SendsOnlyTheTranscribedStreamsToTheSpeechSink)
     s.transcribeSystem = true;                      /* system audio is not recorded: nothing to transcribe */
     CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 1);
 
-    s.includeSystemAudio = true;
+    s.includeSystemAudio = true;                    /* merged (the default): one transcript, of the mix, in the first slot */
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 1);
+    s.transcribeMicrophone = false;                 /* either switch asks for it */
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 1);
+
+    s.mixMode = MixMode::Separate;                  /* two tracks: a transcript each */
+    s.transcribeMicrophone = true;
     CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 3);
+    s.transcribeMicrophone = false;
+    CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 2);
 
     s.includeMicrophone = false;
+    s.mixMode = MixMode::Merge;                     /* one stream: no merge, so its own transcript */
     CHECK_EQ(int(MakePlan(s, L"C:\\r\\x.mp3").speech), 2);
 }
 
@@ -284,6 +293,151 @@ TEST(Session_TheSpeechTapDoesNotDisturbTheRecording)
     CHECK_EQ(rig.sinks[0]->samples.size(), static_cast<std::size_t>(rig.Frames(StreamId::Microphone)) * kPcmChannels);
     CHECK(AllEqual(rig.sinks[0]->samples, 0, rig.sinks[0]->samples.size(), 1000));      /* the file is untouched */
     CHECK(!spy.Received(StreamId::System).empty());
+}
+
+/* The sample at which the settled mix is read: after the decimator's filter has filled (64 samples). */
+constexpr std::size_t kSettled = 100;
+
+TEST(Session_AMergedTranscriptHearsTheMixTheFileHolds)
+{
+    Rig rig;                                        /* microphone 1000, system 3000 */
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, true, 0.25f);
+    plan.speech = 1;                                /* the mix's slot */
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    CHECK(session.Failure().empty());
+    const std::vector<std::int16_t> heard = spy.Received(kMixTranscript);
+    const std::size_t written = rig.sinks[0]->samples.size() / kPcmChannels;     /* frames in the file */
+    CHECK(heard.size() > 200);
+    CHECK_EQ(heard.size(), written / 3);                                         /* all of it, at 16 kHz */
+    CHECK(AllEqual(heard, kSettled, heard.size() / 2, 2500, 2));                 /* 0.25 * 1000 + 0.75 * 3000: the weights count */
+    CHECK(spy.Received(StreamId::System).empty());                               /* one transcript, not two */
+}
+
+TEST(Session_AMergeDoesNotGiveTheStreamsToTheTranscriberOnTheirOwn)
+{
+    Rig rig;
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, true, 0.5f);
+    plan.speech = 3;                                /* (a plan that asks for both slots) */
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    const std::vector<std::int16_t> heard = spy.Received(kMixTranscript);
+    CHECK(heard.size() > 200);
+    CHECK(AllEqual(heard, kSettled, heard.size() / 2, 2000, 2));                 /* the mix (1000 + 3000) / 2, not the microphone's 1000 */
+    CHECK(spy.Received(StreamId::System).empty());
+}
+
+TEST(Session_TheTranscriptOfAMergeFollowsTheShareToTheEnds)
+{
+    for (const float weight : {0.0f, 1.0f}) {       /* the file holds one stream alone, and so does the transcript */
+        Rig rig;
+        SpySink spy;
+        RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+        SessionPlan plan = Plan(true, true, true, weight);
+        plan.speech = 1;
+        std::wstring error;
+        CHECK(session.Start(plan, &error));
+        RecordBriefly(session, rig, true, true);
+
+        const std::vector<std::int16_t> heard = spy.Received(kMixTranscript);
+        CHECK(heard.size() > 200);
+        CHECK(AllEqual(heard, kSettled, heard.size() / 2, weight == 1.0f ? 1000 : 3000, 2));
+    }
+}
+
+TEST(Session_AMergeWithoutATranscriptGivesTheTranscriberNothing)
+{
+    Rig rig;
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, true);      /* no speech bits */
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    CHECK(session.Failure().empty());
+    CHECK(spy.Received(StreamId::Microphone).empty() && spy.Received(StreamId::System).empty());
+}
+
+TEST(Session_TheMixTapDoesNotDisturbTheFile)
+{
+    Rig rig;
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, true, 0.5f);
+    plan.speech = 1;
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+    RecordBriefly(session, rig, true, true);
+
+    CHECK(session.Failure().empty());
+    CHECK_EQ(rig.sinks.size(), std::size_t(1));
+    const SinkState &file = *rig.sinks[0];
+    CHECK(file.closed && file.kept);
+    const std::size_t shortest = static_cast<std::size_t>(std::min(rig.Frames(StreamId::Microphone), rig.Frames(StreamId::System)));
+    CHECK(AllEqual(file.samples, 0, shortest * kPcmChannels, 2000, 1));          /* the file is the same mix as without a tap */
+}
+
+TEST(Session_AMergeThatLosesADeviceStillFinishesItsFileAndItsTranscript)
+{
+    Rig rig;
+    SourceSpec &sys = rig.sources[StreamIndex(StreamId::System)];
+    sys.failAfterPolls = 6;
+    sys.failHr = static_cast<HRESULT>(0x88890004);
+    SpySink spy;
+    RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+    SessionPlan plan = Plan(true, true, true, 0.5f);
+    plan.speech = 1;
+    std::wstring error;
+    CHECK(session.Start(plan, &error));
+
+    CHECK(WaitUntil([&] { return !session.Running(); }));
+    session.Stop();
+    CHECK(session.Failure().find(L"Audio capture failed") != std::wstring::npos);
+    CHECK_EQ(rig.sinks.size(), std::size_t(1));
+    CHECK(rig.sinks[0]->closed && rig.sinks[0]->kept);
+    const std::size_t written = rig.sinks[0]->samples.size() / kPcmChannels;
+    CHECK(written > 0);
+    CHECK_EQ(spy.Received(kMixTranscript).size(), written / 3);                  /* the transcript heard all that was written, no more */
+}
+
+TEST(Session_OneStreamWithTheMergeFlagStillTranscribesItself)
+{
+    {
+        Rig rig;                                    /* the microphone alone: nothing to merge, whatever the plan says */
+        SpySink spy;
+        RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+        SessionPlan plan = Plan(true, false, true);
+        plan.speech = 1;
+        std::wstring error;
+        CHECK(session.Start(plan, &error));
+        RecordBriefly(session, rig, true, false);
+        const std::vector<std::int16_t> heard = spy.Received(StreamId::Microphone);
+        CHECK(heard.size() > 200);
+        CHECK(AllEqual(heard, kSettled, heard.size() / 2, 1000, 2));             /* its own audio */
+    }
+    {
+        Rig rig;                                    /* the system audio alone, in its own slot */
+        SpySink spy;
+        RecordingSession session(rig.Sources(), rig.Sinks(), nullptr, &spy);
+        SessionPlan plan = Plan(false, true, true);
+        plan.speech = 2;
+        std::wstring error;
+        CHECK(session.Start(plan, &error));
+        RecordBriefly(session, rig, false, true);
+        const std::vector<std::int16_t> heard = spy.Received(StreamId::System);
+        CHECK(heard.size() > 200);
+        CHECK(AllEqual(heard, kSettled, heard.size() / 2, 3000, 2));
+        CHECK(spy.Received(StreamId::Microphone).empty());
+    }
 }
 
 TEST(Session_WithoutASpeechSinkTheMaskIsIgnored)

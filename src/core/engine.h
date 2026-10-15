@@ -82,12 +82,15 @@ public:
     virtual std::vector<std::wstring> OutputFiles() = 0;
 
     /* ---- live transcript (optional) -------------------------------------
-     * An engine that can turn a stream's speech into text says so with
-     * CanTranscribe(); the others keep these defaults.  Start() receives which
-     * streams to transcribe in its settings (see Transcribes()).  The text
+     * An engine that can turn speech into text says so with CanTranscribe();
+     * the others keep these defaults.  Start() receives which transcripts to
+     * make in its settings (see Transcribes()): one for each track the recording
+     * writes, so one for each stream, or, with the two streams merged into one
+     * file, one of the mix, which the engine keeps in the slot of kMixTranscript
+     * (the streams that the functions below take are such slots).  The text
      * reaches the GUI the way peaks do, pulled with TakeTranscript() (see
      * transcript.h for the events).  Trouble with transcription never ends the
-     * recording: it only turns that stream's status into Failed. */
+     * recording: it only turns that transcript's status into Failed. */
     virtual bool CanTranscribe() const { return false; }
 
     /* The models it can use, the one an empty RecordingSettings::transcribeModel
@@ -101,8 +104,8 @@ public:
     /* True if it can also transcribe on the graphics card (RecordingSettings::transcribeGpu). */
     virtual bool CanTranscribeOnGpu() const { return false; }
 
-    /* Where the stream's transcription stands.  Off for a stream that is not
-     * being transcribed, and for every stream once the recording has stopped. */
+    /* Where the transcription of the slot stands.  Off for a slot that is not
+     * being transcribed, and for every slot once the recording has stopped. */
     virtual TranscriptStatus Transcription(StreamId stream)
     {
         (void)stream;
@@ -126,7 +129,7 @@ public:
         return 0;
     }
 
-    /* The text files the current or last recording saved its transcripts in, one for each transcribed stream
+    /* The text files the current or last recording saved its transcripts in, one for each transcript
      * that was spoken on (see PlannedTranscriptFile(); a simulated engine only names them), complete once
      * Stop() has returned.  Empty if there were none. */
     virtual std::vector<std::wstring> TranscriptFiles() { return {}; }

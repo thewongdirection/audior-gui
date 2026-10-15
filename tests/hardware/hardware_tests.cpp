@@ -35,7 +35,8 @@
  * skipped unless the transcription helper and a model are in place), T16 a busy PC (the
  * transcript changes to a lighter model) and T17 the large model on the graphics card at the
  * pace of speech (both also need the large model, and no audio devices), and T18 Parakeet at the
- * pace of speech, on the processor and on the card (skipped without a Parakeet model).
+ * pace of speech, on the processor and on the card (skipped without a Parakeet model), and
+ * T19 the one live transcript of a merged recording (the microphone and the system audio in one file).
  *
  * Not automatable (docs\FIRST-TEST.md): unplugging a device, a loud voice for the CLIP flag,
  * the communications-ducking opt-out, and how the window looks.
@@ -629,6 +630,7 @@ struct Heard {
     bool         failed = false;
     bool         cutShort = false;                      /* the recording ended before the test stopped it */
     std::wstring finals, problem, failure;
+    std::vector<std::wstring> transcriptFiles;          /* what the recording saved its transcripts in */
 };
 
 double SecondsSince(std::chrono::steady_clock::time_point t) { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count(); }
@@ -642,16 +644,18 @@ bool StartSpeaking(ISpVoice **voice, const wchar_t *text)
     return SUCCEEDED((*voice)->Speak(text, static_cast<DWORD>(SPF_ASYNC | SPF_IS_NOT_XML), nullptr));
 }
 
-/* Records the system audio with the real engine and a live transcript, with a voice speaking meanwhile. */
-bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
+/* Records the system audio with the real engine and a live transcript, with a voice speaking meanwhile.  `merged`: the
+ * microphone too, mixed with it into one file (at the usual share), and the one transcript is of that mix. */
+bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard, bool merged = false)
 {
     audiorgui::WasapiEngine engine;
     audiorgui::RecordingSettings s;
     s.outputDirectory = g_dir->Dir();
-    s.fileName = gpu ? L"voice-gpu" : L"voice-cpu";
+    s.fileName = merged ? L"voice-merged" : gpu ? L"voice-gpu" : L"voice-cpu";
     s.format = audiorgui::Format::Wav;
-    s.includeMicrophone = false;
-    s.includeSystemAudio = s.transcribeSystem = true;
+    s.includeMicrophone = s.transcribeMicrophone = merged;
+    s.includeSystemAudio = true;
+    s.transcribeSystem = !merged;
     s.transcribeLanguage = audiorgui::SpeechLanguage::English;
     s.transcribeGpu = gpu;
     std::wstring error;
@@ -660,12 +664,14 @@ bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
         return false;
     }
 
-    constexpr audiorgui::StreamId kSystem = audiorgui::StreamId::System;
+    const audiorgui::StreamId slot = merged ? audiorgui::kMixTranscript : audiorgui::StreamId::System;
     audiorgui::PeakBin peaks[256];
     audiorgui::TranscriptEvent events[8];
     auto drain = [&](double sinceVoice) {
-        while (engine.TakePeaks(kSystem, peaks, 256) > 0) {}      /* the window's job; the queue is bounded, but be tidy */
-        for (std::size_t n; (n = engine.TakeTranscript(kSystem, events, 8)) > 0;) {
+        for (const audiorgui::StreamId stream : {audiorgui::StreamId::Microphone, audiorgui::StreamId::System}) {
+            while (engine.TakePeaks(stream, peaks, 256) > 0) {}   /* the window's job; the queue is bounded, but be tidy */
+        }
+        for (std::size_t n; (n = engine.TakeTranscript(slot, events, 8)) > 0;) {
             for (std::size_t i = 0; i < n; ++i) {
                 if (heard->firstTextAfter < 0.0 && events[i].text[0] != L'\0')
                     heard->firstTextAfter = sinceVoice;
@@ -673,18 +679,18 @@ bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
                     heard->finals += std::wstring(events[i].text) + L" ";
             }
         }
-        const audiorgui::TranscriptStatus status = engine.Transcription(kSystem);
+        const audiorgui::TranscriptStatus status = engine.Transcription(slot);
         heard->maxLag = status.lagSeconds > heard->maxLag ? status.lagSeconds : heard->maxLag;
         if (status.state == audiorgui::TranscriptState::Failed) {
             heard->failed = true;
-            heard->problem = engine.TranscriptionProblem(kSystem);
+            heard->problem = engine.TranscriptionProblem(slot);
         }
     };
 
     const auto began = std::chrono::steady_clock::now();
     while (SecondsSince(began) < 120.0 && !heard->failed) {       /* the helper checks its files and loads the model first */
         drain(-1.0);
-        if (engine.Transcription(kSystem).state == audiorgui::TranscriptState::Live) {
+        if (engine.Transcription(slot).state == audiorgui::TranscriptState::Live) {
             heard->live = true;
             break;
         }
@@ -715,7 +721,24 @@ bool ListenToAVoice(bool gpu, const wchar_t *sentence, Heard *heard)
     engine.Stop();                                                /* the helper says its last words */
     drain(heard->voiceSeconds);
     heard->failure = engine.Failure();
+    heard->transcriptFiles = engine.TranscriptFiles();
     return heard->live;
+}
+
+/* What the voice says, and the words of it that must come out. */
+const wchar_t kVoiceSentence[] = L"Testing, one, two, three. The quick brown fox jumps over the lazy dog. Please write this down.";
+const wchar_t *const kVoiceWords[] = {L"quick", L"brown", L"fox", L"lazy", L"dog"};
+constexpr int kVoiceWordCount = static_cast<int>(sizeof(kVoiceWords) / sizeof(kVoiceWords[0]));
+
+/* How many of the key words are in `text`, whatever the case. */
+int KeyWordsIn(std::wstring text)
+{
+    for (wchar_t &c : text)
+        c = static_cast<wchar_t>(std::towlower(c));
+    int found = 0;
+    for (const wchar_t *word : kVoiceWords)
+        found += text.find(word) != std::wstring::npos ? 1 : 0;
+    return found;
 }
 
 void T15()
@@ -727,8 +750,6 @@ void T15()
         return;
     }
     const bool gpuToo = probe.CanTranscribeOnGpu();
-    static const wchar_t kSentence[] = L"Testing, one, two, three. The quick brown fox jumps over the lazy dog. Please write this down.";
-    static const wchar_t *const kWords[] = {L"quick", L"brown", L"fox", L"lazy", L"dog"};
 
     for (const bool gpu : {false, true}) {
         if (gpu && !gpuToo)
@@ -736,7 +757,7 @@ void T15()
         const char *label = gpu ? "graphics card" : "processor";
         const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
         Heard heard;
-        ListenToAVoice(gpu, kSentence, &heard);
+        ListenToAVoice(gpu, kVoiceSentence, &heard);
 
         Check(Fmt("%s: the recording starts and the helper becomes ready", label), heard.live,
               heard.live ? Fmt("ready after %.1f s", heard.readySeconds) : Narrow(heard.problem));
@@ -749,14 +770,9 @@ void T15()
         Check(Fmt("%s: text appears while the voice is still speaking", label),
               heard.firstTextAfter >= 0.0 && heard.firstTextAfter < heard.voiceSeconds,
               heard.firstTextAfter < 0.0 ? "no text at all" : Fmt("first text %.1f s in, the voice spoke for %.1f s", heard.firstTextAfter, heard.voiceSeconds));
-        std::wstring lowered = heard.finals;
-        for (wchar_t &c : lowered)
-            c = static_cast<wchar_t>(std::towlower(c));
-        int found = 0;
-        for (const wchar_t *word : kWords)
-            found += lowered.find(word) != std::wstring::npos ? 1 : 0;
+        const int found = KeyWordsIn(heard.finals);
         Check(Fmt("%s: the words that were said are in the text", label), found >= 4,
-              Fmt("%d of %d key words; heard: \"%s\"", found, static_cast<int>(sizeof(kWords) / sizeof(kWords[0])), Narrow(heard.finals).c_str()));
+              Fmt("%d of %d key words; heard: \"%s\"", found, kVoiceWordCount, Narrow(heard.finals).c_str()));
         Check(Fmt("%s: the text is never far behind", label), heard.maxLag < 3.0f, Fmt("at most %.1f s behind", heard.maxLag));
 
         std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();      /* it should be gone a moment after Stop() */
@@ -1216,6 +1232,50 @@ void T18()
     }
 }
 
+/* ---- T19: the one live transcript of a merged recording -------------------- */
+
+/* Microphone and system audio go into one file, so there is one transcript, of the mix: the voice the PC speaks is
+ * the system audio's share of it (35% at the usual setting, which the transcript must still make out). */
+void T19()
+{
+    Section("T19 live transcript of a merged recording (one transcript, of the mix)");
+    audiorgui::WasapiEngine probe;                              /* only looks at files: no device is opened */
+    if (!probe.CanTranscribe()) {
+        Info("skipped: the transcription helper (build.bat asr) and a model are not in place (see the README)");
+        return;
+    }
+    const std::size_t helpersBefore = FindProcesses(L"audior_asr.exe").size();
+    Heard heard;
+    ListenToAVoice(false, kVoiceSentence, &heard, true);
+
+    Check("the recording starts and the helper becomes ready", heard.live,
+          heard.live ? Fmt("ready after %.1f s", heard.readySeconds) : Narrow(heard.problem));
+    if (!heard.live)
+        return;
+    Check("the recording is not cut short by anything else", !heard.cutShort,
+          heard.cutShort ? "another program sent the stop signal, which every copy of the program shares: run the test again" : "");
+    Check("the transcript does not fail", !heard.failed && heard.failure.empty(), Narrow(heard.problem + heard.failure));
+    const int found = KeyWordsIn(heard.finals);
+    Check("the words the PC said are in the transcript of the mix", found >= 4,
+          Fmt("%d of %d key words; heard: \"%s\"", found, kVoiceWordCount, Narrow(heard.finals).c_str()));
+
+    static const wchar_t kName[] = L" - merged.txt";
+    const std::size_t nameLength = sizeof(kName) / sizeof(kName[0]) - 1;
+    const bool oneFile = heard.transcriptFiles.size() == 1 && heard.transcriptFiles[0].size() > nameLength &&
+                         heard.transcriptFiles[0].compare(heard.transcriptFiles[0].size() - nameLength, nameLength, kName) == 0;
+    Check("one transcript file is saved, named for the merge", oneFile,
+          heard.transcriptFiles.empty() ? "none" : Fmt("%d files, the first \"%s\"", static_cast<int>(heard.transcriptFiles.size()),
+                                                       Narrow(heard.transcriptFiles[0]).c_str()));
+
+    std::size_t helpersAfter = FindProcesses(L"audior_asr.exe").size();      /* it should be gone a moment after Stop() */
+    for (int i = 0; i < 40 && helpersAfter > helpersBefore; ++i) {
+        Sleep(100);
+        helpersAfter = FindProcesses(L"audior_asr.exe").size();
+    }
+    Check("no helper is left running", helpersAfter <= helpersBefore,
+          Fmt("%d before, %d after", static_cast<int>(helpersBefore), static_cast<int>(helpersAfter)));
+}
+
 struct TestEntry {
     const char *id;
     void      (*run)();
@@ -1226,6 +1286,7 @@ const TestEntry kTests[] = {
     {"T1", T1, false}, {"T2", T2, false}, {"T3", T3, false},  {"T4", T4, false},   {"T5", T5, true},
     {"T6", T6, true},  {"T7", T7, true},  {"T8", T8, false},  {"T9", T9, true},    {"T10", T10, false},
     {"T11", T11, true}, {"T12", T12, false}, {"T13", T13, false}, {"T14", T14, false}, {"T15", T15, true}, {"T16", T16, false}, {"T17", T17, false}, {"T18", T18, false},
+    {"T19", T19, true},
 };
 
 /* ---- start-up ------------------------------------------------------------- */
